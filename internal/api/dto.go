@@ -3,6 +3,7 @@ package api
 import (
 	"time"
 
+	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
@@ -67,4 +68,51 @@ func toCategoryJSON(c core.Category) categoryJSON {
 		out.DirOverride = &dir
 	}
 	return out
+}
+
+// serverJSON is how a Server looks in responses. The password is never part
+// of it: has_password says whether one is stored, and password_unavailable
+// that it is stored but cannot be decrypted, so the user must enter it
+// again. There is deliberately no TLS field: TLS is always on and verified.
+type serverJSON struct {
+	ID                  core.ID   `json:"id"`
+	Name                string    `json:"name"`
+	Host                string    `json:"host"`
+	Port                int       `json:"port"`
+	Username            string    `json:"username"`
+	HasPassword         bool      `json:"has_password"`
+	PasswordUnavailable bool      `json:"password_unavailable"`
+	MaxConnections      int       `json:"max_connections"`
+	RetentionDays       int       `json:"retention_days"`
+	Priority            int       `json:"priority"`
+	Enabled             bool      `json:"enabled"`
+	CreatedAt           time.Time `json:"created_at"`
+}
+
+func toServerJSON(s core.Server) serverJSON {
+	return serverJSON{
+		ID: s.ID, Name: s.Name, Host: s.Host, Port: s.Port, Username: s.Username,
+		HasPassword:         s.Password != "" || s.PasswordUnavailable,
+		PasswordUnavailable: s.PasswordUnavailable,
+		MaxConnections:      s.MaxConnections, RetentionDays: s.RetentionDays, Priority: s.Priority,
+		Enabled: s.Enabled, CreatedAt: s.CreatedAt,
+	}
+}
+
+// probeJSON is the result of a connection test. It is sent with status 200
+// even when the test failed: the request worked, the Server did not.
+type probeJSON struct {
+	OK        bool   `json:"ok"`
+	Class     string `json:"class"`
+	Detail    string `json:"detail"`
+	Message   string `json:"message"`
+	ConnectMS int64  `json:"connect_ms"`
+	LatencyMS int64  `json:"latency_ms"`
+}
+
+func toProbeJSON(r app.ProbeResult) probeJSON {
+	return probeJSON{
+		OK: r.OK, Class: string(r.Class), Detail: r.Detail, Message: r.Message,
+		ConnectMS: r.ConnectTime.Milliseconds(), LatencyMS: r.Latency.Milliseconds(),
+	}
 }

@@ -44,6 +44,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	switch {
+	case isTooLarge(err):
+		writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body is too large")
 	case errors.Is(err, core.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, core.ErrConflict):
@@ -62,6 +64,10 @@ func statusOf(kind error) int {
 		return http.StatusNotFound
 	case errors.Is(kind, core.ErrConflict):
 		return http.StatusConflict
+	case errors.Is(kind, app.ErrTooLarge):
+		return http.StatusRequestEntityTooLarge
+	case errors.Is(kind, app.ErrUpstream):
+		return http.StatusBadGateway
 	}
 	return http.StatusInternalServerError
 }
@@ -71,6 +77,9 @@ func statusOf(kind error) int {
 const (
 	defaultBodyLimit = 1 << 20
 	smallBodyLimit   = 16 << 10
+	// addBodyLimit caps POST /downloads: an NZB of up to 64 MiB plus the
+	// multipart framing and form fields.
+	addBodyLimit = app.DefaultMaxNZBBytes + 1<<20
 )
 
 // decodeJSON reads the request body into dst. It is strict: the body must be

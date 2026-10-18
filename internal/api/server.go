@@ -28,7 +28,9 @@ type Config struct {
 	Logger     *slog.Logger
 	Version    Version
 	Downloads  *app.DownloadService
+	Adder      *app.AddService
 	Categories *app.CategoryService
+	Servers    *app.ServerService
 	Settings   *app.SettingsService
 	Setup      *auth.Setup
 	Sessions   *auth.SessionService
@@ -64,7 +66,7 @@ type Server struct {
 
 // New builds the Server and its routes.
 func New(cfg Config) (*Server, error) {
-	if cfg.Downloads == nil || cfg.Categories == nil || cfg.Settings == nil || cfg.Setup == nil ||
+	if cfg.Downloads == nil || cfg.Adder == nil || cfg.Categories == nil || cfg.Servers == nil || cfg.Settings == nil || cfg.Setup == nil ||
 		cfg.Sessions == nil || cfg.UIAuth == nil || cfg.APIKeys == nil || cfg.Bus == nil {
 		return nil, errors.New("api: Config is missing a service")
 	}

@@ -42,7 +42,7 @@ func exec(t *testing.T, db *store.DB, query string) {
 	require.NoError(t, err, query)
 }
 
-func TestFreshDatabaseHasTheM1Schema(t *testing.T) {
+func TestFreshDatabaseHasTheSchemaOfEveryMigration(t *testing.T) {
 	db := openDefault(t)
 
 	rows, err := db.Reader().Query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
@@ -56,8 +56,8 @@ func TestFreshDatabaseHasTheM1Schema(t *testing.T) {
 	}
 	require.NoError(t, rows.Err())
 
-	assert.Equal(t, []string{"api_keys", "categories", "downloads", "schema_migrations", "sessions", "settings", "users"}, tables)
-	assert.Equal(t, []appliedRow{{1, "initial"}}, applied(t, db.Reader()))
+	assert.Equal(t, []string{"api_keys", "categories", "download_sources", "downloads", "schema_migrations", "servers", "sessions", "settings", "users"}, tables)
+	assert.Equal(t, []appliedRow{{1, "initial"}, {2, "servers"}}, applied(t, db.Reader()))
 }
 
 func TestSchemaStoresARowForEachTable(t *testing.T) {

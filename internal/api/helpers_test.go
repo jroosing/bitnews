@@ -89,6 +89,10 @@ type env struct {
 	users     *store.UserRepo
 	downloads *store.DownloadRepo
 	cats      *store.CategoryRepo
+	servers   *store.ServerRepo
+	sources   *store.DownloadSourceRepo
+	key       store.Key
+	prober    *fakeProber
 	settings  *app.SettingsService
 	setup     *auth.Setup
 	apiKeys   *auth.APIKeyService
@@ -102,6 +106,7 @@ type envConfig struct {
 	noAdmin bool
 	mutate  func(*api.Config)
 	remover app.DataRemover
+	addOpts []app.Option
 }
 
 func withoutAdmin() envOption { return func(c *envConfig) { c.noAdmin = true } }
@@ -110,6 +115,9 @@ func withConfig(f func(*api.Config)) envOption { return func(c *envConfig) { c.m
 
 // withDataRemover installs the hook DELETE ?delete_data=true calls.
 func withDataRemover(r app.DataRemover) envOption { return func(c *envConfig) { c.remover = r } }
+
+// withAddOptions configures the AddService (fetch client, timeouts, limits).
+func withAddOptions(o ...app.Option) envOption { return func(c *envConfig) { c.addOpts = o } }
 
 func newEnv(t *testing.T, opts ...envOption) *env {
 	t.Helper()
@@ -127,6 +135,9 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	e.users = store.NewUserRepo(db)
 	e.downloads = store.NewDownloadRepo(db)
 	e.cats = store.NewCategoryRepo(db)
+	e.key = store.GenerateKey()
+	e.servers = store.NewServerRepo(db, e.key)
+	e.prober = &fakeProber{result: app.ProbeResult{OK: true, Class: app.ProbeOK}}
 	if !ec.noAdmin {
 		require.NoError(t, e.users.Create(ctx, core.User{
 			ID: core.NewID(), Username: "admin", PasswordHash: sharedAdminHash(t), CreatedAt: epoch,
@@ -148,11 +159,16 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	if ec.remover != nil {
 		appOpts = append(appOpts, app.WithDataRemover(ec.remover))
 	}
+	downloadSvc := app.NewDownloadService(e.downloads, e.cats, e.bus, appOpts...)
+	e.sources = store.NewDownloadSourceRepo(db, e.key)
+	addOpts := append([]app.Option{app.WithLogger(logger)}, appOpts...)
 	e.cfg = api.Config{
 		Logger:     logger,
 		Version:    api.Version{Version: "1.2.3", Commit: "abc1234", GoVersion: "go9.99"},
-		Downloads:  app.NewDownloadService(e.downloads, e.cats, e.bus, appOpts...),
+		Downloads:  downloadSvc,
+		Adder:      app.NewAddService(downloadSvc, e.sources, e.settings, append(addOpts, ec.addOpts...)...),
 		Categories: app.NewCategoryService(e.cats, e.downloads, e.bus, appOpts...),
+		Servers:    app.NewServerService(e.servers, e.bus, e.prober, appOpts...),
 		Settings:   e.settings,
 		Setup:      e.setup,
 		Sessions:   sessions,

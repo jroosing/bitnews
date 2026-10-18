@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"log/slog"
+	"net/http"
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
@@ -29,6 +31,12 @@ func (noopRemover) RemoveData(context.Context, core.Download) error { return nil
 type options struct {
 	now     func() time.Time
 	remover DataRemover
+
+	// Used by the AddService.
+	log          *slog.Logger
+	httpClient   *http.Client
+	fetchTimeout time.Duration
+	maxNZBBytes  int64
 }
 
 // Option configures a service constructor.
@@ -45,10 +53,42 @@ func WithDataRemover(r DataRemover) Option {
 	return func(o *options) { o.remover = r }
 }
 
+// WithLogger sets the logger of services that log. The default is
+// slog.Default().
+func WithLogger(l *slog.Logger) Option {
+	return func(o *options) { o.log = l }
+}
+
+// WithHTTPClient sets the client that fetches NZB URLs. Its redirect policy
+// and cookie jar are always replaced by the AddService's own, so a custom
+// client can change the transport (and tests the timeout), not the safety
+// rules.
+func WithHTTPClient(c *http.Client) Option {
+	return func(o *options) { o.httpClient = c }
+}
+
+// WithFetchTimeout sets the total time an NZB URL fetch may take, including
+// reading the body. The default is 30 seconds.
+func WithFetchTimeout(d time.Duration) Option {
+	return func(o *options) { o.fetchTimeout = d }
+}
+
+// WithMaxNZBBytes sets the size cap of an NZB, uploaded or fetched. The
+// default is 64 MiB.
+func WithMaxNZBBytes(n int64) Option {
+	return func(o *options) { o.maxNZBBytes = n }
+}
+
 func newOptions(opts []Option) options {
-	o := options{now: func() time.Time { return time.Now().UTC() }, remover: noopRemover{}}
+	o := options{
+		now: func() time.Time { return time.Now().UTC() }, remover: noopRemover{},
+		fetchTimeout: DefaultFetchTimeout, maxNZBBytes: DefaultMaxNZBBytes,
+	}
 	for _, opt := range opts {
 		opt(&o)
+	}
+	if o.log == nil {
+		o.log = slog.Default()
 	}
 	return o
 }

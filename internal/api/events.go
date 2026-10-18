@@ -133,7 +133,7 @@ func eventPayload(ev core.Event) (name string, payload any, ok bool) {
 		}{e.ID, e.Reason, e.Detail}, true
 	case core.Removed:
 		return name, idPayload{e.ID}, true
-	case core.SettingsChanged:
+	case core.SettingsChanged, core.ServersChanged:
 		return name, struct{}{}, true
 	}
 	return "", nil, false

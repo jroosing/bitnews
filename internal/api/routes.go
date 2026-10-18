@@ -37,6 +37,8 @@ func (s *Server) routes() {
 
 	handle("GET /api/v1/downloads", read, smallBodyLimit, s.listDownloads)
 	handle("GET /api/v1/downloads/{id}", read, smallBodyLimit, s.getDownload)
+	// Uploads are streamed, so this route's cap is the NZB limit, not 1 MiB.
+	handle("POST /api/v1/downloads", write, addBodyLimit, s.addDownload)
 	handle("POST /api/v1/downloads/{id}/pause", write, smallBodyLimit, s.pauseDownload)
 	handle("POST /api/v1/downloads/{id}/resume", write, smallBodyLimit, s.resumeDownload)
 	handle("PATCH /api/v1/downloads/{id}", write, smallBodyLimit, s.patchDownload)
@@ -46,6 +48,14 @@ func (s *Server) routes() {
 	handle("POST /api/v1/categories", write, smallBodyLimit, s.createCategory)
 	handle("PATCH /api/v1/categories/{id}", write, smallBodyLimit, s.patchCategory)
 	handle("DELETE /api/v1/categories/{id}", write, smallBodyLimit, s.deleteCategory)
+
+	handle("GET /api/v1/servers", read, smallBodyLimit, s.listServers)
+	handle("POST /api/v1/servers", write, smallBodyLimit, s.createServer)
+	handle("POST /api/v1/servers/test", write, smallBodyLimit, s.testServerSpec)
+	handle("GET /api/v1/servers/{id}", read, smallBodyLimit, s.getServer)
+	handle("PATCH /api/v1/servers/{id}", write, smallBodyLimit, s.patchServer)
+	handle("DELETE /api/v1/servers/{id}", write, smallBodyLimit, s.deleteServer)
+	handle("POST /api/v1/servers/{id}/test", write, smallBodyLimit, s.testServer)
 
 	handle("GET /api/v1/settings", read, smallBodyLimit, s.getSettings)
 	handle("PUT /api/v1/settings", write, defaultBodyLimit, s.putSettings)

@@ -190,6 +190,21 @@ func (r *DownloadRepo) UpdateState(ctx context.Context, id core.ID, c core.State
 	return d, nil
 }
 
+// UpdateProgress stores done_bytes, total_bytes (when totalBytes is
+// positive) and updated_at in one statement, leaving every other column as
+// it is, so it cannot clobber a concurrent Update.
+func (r *DownloadRepo) UpdateProgress(ctx context.Context, id core.ID, doneBytes, totalBytes int64) error {
+	if doneBytes < 0 {
+		return fmt.Errorf("store: update download progress: negative done bytes %d", doneBytes)
+	}
+	res, err := r.db.Writer().ExecContext(ctx,
+		`UPDATE downloads SET done_bytes = ?, updated_at = ?,
+			total_bytes = CASE WHEN ? > 0 THEN ? ELSE total_bytes END
+		WHERE id = ?`,
+		doneBytes, toMillis(time.Now()), totalBytes, totalBytes, string(id))
+	return mapExec("update download progress", res, err)
+}
+
 // Delete removes the Download.
 func (r *DownloadRepo) Delete(ctx context.Context, id core.ID) error {
 	res, err := r.db.Writer().ExecContext(ctx, `DELETE FROM downloads WHERE id = ?`, string(id))

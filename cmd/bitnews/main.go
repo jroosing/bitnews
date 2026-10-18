@@ -66,6 +66,10 @@ func listenAndServe(ctx context.Context, srv *http.Server, log *slog.Logger) err
 // environment. sys is the process-wide state the privilege drop changes;
 // tests pass a fake.
 func run(ctx context.Context, args []string, getenv func(string) (string, bool), sys privdrop.Syscalls, stdout, stderr io.Writer, serve serveFunc) int {
+	if len(args) > 0 && args[0] == "healthcheck" {
+		return healthcheck(ctx, getenv, stdout, stderr)
+	}
+
 	cfg, err := bootstrap.Load(args, getenv)
 	switch {
 	case errors.Is(err, bootstrap.ErrVersion):
@@ -105,9 +109,11 @@ func run(ctx context.Context, args []string, getenv func(string) (string, bool),
 // serveAll runs startup steps 3 to 6: load the key, open the database, wire
 // the services, serve, and on the way out close everything it opened.
 func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve serveFunc) (err error) {
-	// The master key encrypts Server passwords from M2 on. Loading it now
-	// creates it on first start and fails early when it cannot be read.
-	if _, err := store.LoadOrCreateKey(cfg.KeyFile, log); err != nil {
+	// The master key encrypts Server passwords and archive passwords.
+	// Loading it creates it on first start and fails early when it cannot
+	// be read.
+	key, err := store.LoadOrCreateKey(cfg.KeyFile, log)
+	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(cfg.ConfigDir, 0o700); err != nil {
@@ -123,6 +129,8 @@ func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve
 	users := store.NewUserRepo(db)
 	downloads := store.NewDownloadRepo(db)
 	categories := store.NewCategoryRepo(db)
+	servers := store.NewServerRepo(db, key)
+	sources := store.NewDownloadSourceRepo(db, key)
 
 	settings, err := app.NewSettingsService(ctx, store.NewSettingsRepo(db), bus)
 	if err != nil {
@@ -148,11 +156,14 @@ func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve
 	if err != nil {
 		return err
 	}
+	downloadService := app.NewDownloadService(downloads, categories, bus)
 	server, err := api.New(api.Config{
 		Logger:     log,
 		Version:    api.Version{Version: version, Commit: commit},
-		Downloads:  app.NewDownloadService(downloads, categories, bus),
+		Downloads:  downloadService,
+		Adder:      app.NewAddService(downloadService, sources, settings, app.WithLogger(log)),
 		Categories: app.NewCategoryService(categories, downloads, bus),
+		Servers:    app.NewServerService(servers, bus, app.NewNNTPProber()),
 		Settings:   settings,
 		Setup:      setup,
 		Sessions:   sessions,
