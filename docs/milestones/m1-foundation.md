@@ -314,7 +314,7 @@ M1 routes (more are added in later milestones):
 **Goal:** Implement the core repository interfaces for Downloads, Categories and Settings.
 
 **Work**
-- `DownloadRepo` needs CRUD, list with filters (`state`, `category`, `kind`) and cursor paging ordered by `added_at, id`, plus a transition-checked `UpdateState`.
+- `DownloadRepo` needs CRUD, list with filters (`state`, `category`, `kind`) and cursor paging ordered by `added_at, id`, plus a transition-checked `UpdateState`. `id` and `added_at` are immutable on `Update`, so paging stays stable. The default page size is 50 and the maximum is 200.
 - `CategoryRepo` needs CRUD with unique names. Deleting a Category that Downloads use sets their `category_id` to NULL.
 - `SettingsRepo` loads and saves the typed `Settings` as JSON per key. Validate before writing.
 
@@ -331,13 +331,13 @@ M1 routes (more are added in later milestones):
 
 **Work**
 - Load or generate the key file: 32 bytes, base64. A new file gets mode `0600`, and broader permissions trigger a warning.
-- `Seal(plaintext, aad) string` and `Open(stored, aad)` use XChaCha20-Poly1305 with the `v1:` format, and the AAD is `table/column/rowID`.
+- `Seal(key, plaintext, aad) (string, error)` and `Unseal(key, stored, aad) (string, error)` (not `Open`, which `store.Open` already uses for the database) use XChaCha20-Poly1305 with the `v1:` format, and the AAD is `table/column/rowID` (`AAD(table, column, rowID)` builds it). Wrong key, wrong AAD or tampering returns `ErrDecrypt`; a malformed or unknown-version string returns `ErrUnsupportedFormat`.
 - Add a `Secret` type that redacts itself in `String`, `GoString` and `MarshalJSON`.
 - When the key is wrong or missing for existing ciphertexts, fail with a clear error that names the affected Servers. Startup still works.
 
 **Acceptance criteria**
 - [ ] Round-trip tests pass. A tampered ciphertext, a wrong AAD and a wrong key all fail.
-- [ ] A fuzz test on `Open` parsing never panics.
+- [ ] A fuzz test on `Unseal` parsing never panics.
 - [ ] A `Secret` printed via `slog`, `fmt` or `json` shows `[redacted]`.
 
 ### M1-10: Users, password hashing and first-run setup
