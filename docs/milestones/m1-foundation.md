@@ -90,6 +90,7 @@ A pure function: `Select(queue []Download, limits) (activate, deactivate []ID)`.
 - SQLite via `modernc.org/sqlite`.
   - Pragmas: `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, `synchronous=NORMAL`.
   - One writer connection plus a read pool.
+  - Timestamps are stored as INTEGER unix epoch milliseconds (UTC), and the zero time is stored as NULL. Tables are STRICT.
 - The DB file is created with mode `0600` before it is first opened. If an existing file has broader permissions, log a warning.
 - Migrations are embedded SQL files `NNNN_name.sql`, applied in order inside transactions and tracked in `schema_migrations`. They only move forward; there are no down migrations.
 - M1 tables:
@@ -265,7 +266,7 @@ M1 routes (more are added in later milestones):
 **Goal:** A non-blocking publish/subscribe bus with the delivery semantics from the M1 design.
 
 **Work**
-- Add typed events with `Subscribe(ctx) (<-chan Event, Unsubscribe)`.
+- Add typed events with `Subscribe(ctx) *Subscription`. A `Subscription` has `Events() <-chan Event`, `Close()` and `Err()`, where `Err()` returns `ErrResync` after the bus closed it for a missed lifecycle event.
 - Use a buffered channel of 256 per subscriber. When it overflows, drop progress events. When a lifecycle event can't be delivered, close the subscriber with reason `resync`.
 - Add a progress throttle helper that allows at most 1 event per second per Download ID and always emits the final value.
 
