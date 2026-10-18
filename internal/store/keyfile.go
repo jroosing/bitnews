@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // keySize is the size of the master key in bytes (XChaCha20-Poly1305).
@@ -75,8 +76,14 @@ func LoadOrCreateKey(path string, logger *slog.Logger) (Key, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	for {
+	for emptyReads := 0; ; {
 		key, err := readKeyFile(path, logger)
+		if errors.Is(err, errKeyFileEmpty) && emptyReads < maxEmptyKeyReads {
+			// Another process is creating the file right now.
+			emptyReads++
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return key, err
 		}
@@ -86,6 +93,10 @@ func LoadOrCreateKey(path string, logger *slog.Logger) (Key, error) {
 		}
 	}
 }
+
+// linkFile publishes the finished temp key file. It is a variable so tests can
+// model filesystems without hard links.
+var linkFile = os.Link
 
 func createKeyFile(path string, logger *slog.Logger) (Key, error) {
 	dir := filepath.Dir(path)
@@ -117,15 +128,41 @@ func createKeyFile(path string, logger *slog.Logger) (Key, error) {
 	if err != nil {
 		return Key{}, fmt.Errorf("writing key file %q: %w", path, err)
 	}
-	if err := os.Link(tmpName, path); err != nil {
+	if err := linkFile(tmpName, path); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return Key{}, err
 		}
-		return Key{}, fmt.Errorf("key file %q does not exist and cannot be created: %w\n%s", path, err, keyFileHelp(path))
+		// Some filesystems (certain network and FUSE mounts) have no hard
+		// links. Fall back to an exclusive create; a concurrent starter may
+		// then briefly see an empty file, which LoadOrCreateKey waits out.
+		if err := writeKeyExclusive(path, key); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return Key{}, err
+			}
+			return Key{}, fmt.Errorf("key file %q does not exist and cannot be created: %w\n%s", path, err, keyFileHelp(path))
+		}
 	}
 	logger.Warn("generated a new master key for secret encryption; back this file up, because without it stored secrets cannot be decrypted",
 		"path", path)
 	return key, nil
+}
+
+func writeKeyExclusive(path string, key Key) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(base64.StdEncoding.EncodeToString(key.b[:]) + "\n")
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(path) // Do not leave a truncated key behind.
+	}
+	return err
 }
 
 func readKeyFile(path string, logger *slog.Logger) (Key, error) {
@@ -151,6 +188,9 @@ func readKeyFile(path string, logger *slog.Logger) (Key, error) {
 	if len(content) > maxKeyFileSize {
 		return Key{}, fmt.Errorf("key file %q is too large to be a key", path)
 	}
+	if len(strings.TrimSpace(string(content))) == 0 {
+		return Key{}, fmt.Errorf("key file %q: %w\n%s", path, errKeyFileEmpty, keyFileHelp(path))
+	}
 	key, err := ParseKey(strings.TrimSpace(string(content)))
 	if err != nil {
 		return Key{}, fmt.Errorf("key file %q is invalid: %w\n%s", path, err, keyFileHelp(path))
@@ -161,6 +201,13 @@ func readKeyFile(path string, logger *slog.Logger) (Key, error) {
 	}
 	return key, nil
 }
+
+// errKeyFileEmpty marks a key file that exists but has no content yet.
+var errKeyFileEmpty = errors.New("key file is empty")
+
+// maxEmptyKeyReads bounds how long (about a second) a starter waits for a
+// concurrent creator to finish writing.
+const maxEmptyKeyReads = 50
 
 // maxKeyFileSize bounds how much of a key file is read; a real one is 45 bytes.
 const maxKeyFileSize = 1024
