@@ -29,7 +29,7 @@ fix:
 	go fix ./...
 
 fix-check:
-	@out=$$(go fix -diff ./... 2>&1); \
+	@out=$$(go fix -diff ./...) || exit 1; \
 	if [ -n "$$out" ]; then echo "go fix needed (run 'make fix'):"; echo "$$out"; exit 1; fi
 
 test:
