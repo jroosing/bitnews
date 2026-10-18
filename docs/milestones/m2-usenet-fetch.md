@@ -67,6 +67,17 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
   - `GET/POST /api/v1/servers`, `PATCH/DELETE /api/v1/servers/{id}`. Responses never include the password.
   - `POST /api/v1/servers/{id}/test` connects, authenticates and runs `DATE`, then reports the latency or the exact error class.
 
+- Implementation notes (M2-03, M2-04):
+  - Passwords are stored as `TEXT`, not `BLOB`: `Seal` returns the text form `v1:<base64>` and `STRICT` tables reject text in a `BLOB` column. A Server with no password stores `''`; an NZB Download without one stores `NULL` in `download_sources.password`.
+  - A password that cannot be decrypted (wrong or lost key) does not fail `List`: the Server comes back with `PasswordUnavailable` (API: `password_unavailable: true`, `has_password: true`) so the daemon starts and the UI can ask for it again. A PATCH without a password leaves the stored value alone, a PATCH with one repairs it, and testing such a Server is `409 password_unavailable`.
+  - New event `servers_changed` (no payload) is published after every create, update and delete, so the runner can rebuild its pools.
+  - The connection test classes are `ok`, `dns`, `tcp`, `tls`, `auth` and `protocol`, each with a `detail`. A certificate problem is `tls` with `certificate_untrusted`, `certificate_hostname`, `certificate_expired` or `certificate_invalid`; a wrong password is `auth`/`rejected`; a plain-text port is `tls`/`not_tls`. See `docs/api-v1.md`.
+  - Adding is two-phase. `AddService.Stage` receives the NZB (an upload may send it before its form fields), writes the raw bytes to `<incomplete>/<download id>/` while parsing, and leaves nothing behind on failure. `Add` then validates the request, names the file and stores the Download. The `.nzb` file is named from the display name with `fsutil.SafeName`.
+  - The Download is created `Added` (with its Queue position at the end of the NZB Queue), its `download_sources` row is stored, and only then does it move to `Queued`; `DownloadAdded` is published after that. The runner only handles `Queued` and `Fetching`, so it never sees a Download without its source. On a failure the row is deleted (the source cascades) and the directory is removed.
+  - URL targets on loopback, private and link-local addresses are allowed on purpose (Prowlarr is usually on the LAN); only http and https are spoken, also across redirects (at most 5). The client sends no cookies and no `Authorization`, and does not use `HTTP_PROXY`, like the NNTP connections.
+  - The NZB's own category is matched to a Category by name (case-insensitive); one that matches none is ignored instead of refused. A category in the request must exist (`400 unknown_category`).
+  - `DownloadRepo.UpdateProgress` writes only `done_bytes`, `total_bytes` (when positive) and `updated_at`, so the runner's progress writes cannot overwrite a concurrent edit of the Priority, Category or Paused flag.
+
 ### NNTP client (`internal/usenet/nntp`)
 
 - Connects with TLS, reads the greeting (`200`/`201`), then authenticates with `AUTHINFO USER`/`PASS`:
@@ -88,6 +99,14 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 - An auth failure disables the Server at runtime and emits a `ServerError` event.
 - A pool exposes a `Body(ctx, messageID, sink)` primitive that is used only by the Article scheduler.
 - The pool dials one connection at a time until the first successful dial, and again after any failure streak or a new factory. A wrong password is therefore tried once and not once per connection, which avoids provider lockouts.
+
+- Implementation notes (M2-11, package `internal/usenet/runner`):
+  - The runner reacts to bus events with a 10 s poll as a fallback, applies `core.Select` with the Usenet limit, and builds one shared pool set per Server. A change to the Server set restarts the scheduler for the unresolved Articles.
+  - If every Server rejects the login, the Download goes back to Queued and backs off for 30 s instead of being marked Fetched with every Article missing. Zero enabled Servers leaves Downloads Queued.
+  - `.volNN+MM.par2` files are never requested until M3-07 un-defers them. A file whose Articles are all missing is never created and is reported in `FetchDetail.MissingFiles`; the Download still reaches Fetched so that Verify decides.
+  - The disk guard pauses the whole queue with reason `disk_full` below `min_free` (a runner option defaulting to 5 GiB, because `core.Settings` has no such field yet) and resumes by itself.
+  - Resume works behind the `ProgressStore` interface (writer snapshot plus a record of every resolved Article, versioned `GNRP` v1 and CRC-protected). Without a store, resume state is kept in memory, and a daemon restart re-fetches everything. The SQLite store, `ReportStore` and the migration for them are still open (M2-12).
+  - Wiring must call `Recover` before `Run`, and must use `UpdateProgress` (a narrow repo method) for `DoneBytes`, so that a concurrent API edit of paused or priority is never overwritten.
 
 ### Article scheduler
 

@@ -30,7 +30,7 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/1) · [wiki]
 | M1-12 | [#12](https://gitlab.com/kyura4k/bitnews/-/issues/12) | API keys with scopes | area:auth, ready-for-agent | done |
 | M1-13 | [#13](https://gitlab.com/kyura4k/bitnews/-/issues/13) | HTTP server and own API v1 | area:api, ready-for-agent | done |
 | M1-14 | [#14](https://gitlab.com/kyura4k/bitnews/-/issues/14) | SSE event stream | area:api, ready-for-agent | done |
-| M1-15 | [#15](https://gitlab.com/kyura4k/bitnews/-/issues/15) | Docker image, compose example and systemd unit | area:deploy, ready-for-agent | open |
+| M1-15 | [#15](https://gitlab.com/kyura4k/bitnews/-/issues/15) | Docker image, compose example and systemd unit | area:deploy, ready-for-agent | built, open until run on Docker and systemd |
 
 ### [M2 — Usenet fetch](m2-usenet-fetch.md)
 
@@ -40,16 +40,16 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/2) · [wiki]
 |---|---|---|---|---|
 | M2-01 | [#16](https://gitlab.com/kyura4k/bitnews/-/issues/16) | fsutil — safe names, safe join, same-filesystem check, directory move | area:core, ready-for-agent | done |
 | M2-02 | [#17](https://gitlab.com/kyura4k/bitnews/-/issues/17) | NZB parser | area:usenet, ready-for-agent | done |
-| M2-03 | [#18](https://gitlab.com/kyura4k/bitnews/-/issues/18) | Add Download from NZB (upload and URL) | area:api, area:usenet, ready-for-agent | open |
-| M2-04 | [#19](https://gitlab.com/kyura4k/bitnews/-/issues/19) | Usenet Servers — model, encrypted credentials, API and connection test | area:usenet, area:api, ready-for-agent | open |
+| M2-03 | [#18](https://gitlab.com/kyura4k/bitnews/-/issues/18) | Add Download from NZB (upload and URL) | area:api, area:usenet, ready-for-agent | done |
+| M2-04 | [#19](https://gitlab.com/kyura4k/bitnews/-/issues/19) | Usenet Servers — model, encrypted credentials, API and connection test | area:usenet, area:api, ready-for-agent | done |
 | M2-05 | [#20](https://gitlab.com/kyura4k/bitnews/-/issues/20) | NNTP client | area:usenet, ready-for-agent | done |
 | M2-06 | [#21](https://gitlab.com/kyura4k/bitnews/-/issues/21) | Fake NNTP server test harness | area:usenet, area:ci, ready-for-agent | done |
 | M2-07 | [#22](https://gitlab.com/kyura4k/bitnews/-/issues/22) | Per-Server connection pool | area:usenet, ready-for-agent | done |
 | M2-08 | [#23](https://gitlab.com/kyura4k/bitnews/-/issues/23) | yEnc decoder | area:usenet, ready-for-agent | done |
 | M2-09 | [#24](https://gitlab.com/kyura4k/bitnews/-/issues/24) | Article scheduler with Server Priority fallback | area:usenet, ready-for-agent | done |
 | M2-10 | [#25](https://gitlab.com/kyura4k/bitnews/-/issues/25) | Direct file writer | area:usenet, ready-for-agent | done |
-| M2-11 | [#26](https://gitlab.com/kyura4k/bitnews/-/issues/26) | Usenet Queue runner | area:usenet, area:core, ready-for-agent | open |
-| M2-12 | [#27](https://gitlab.com/kyura4k/bitnews/-/issues/27) | Resume Usenet Downloads after restart | area:usenet, area:store, ready-for-agent | open |
+| M2-11 | [#26](https://gitlab.com/kyura4k/bitnews/-/issues/26) | Usenet Queue runner | area:usenet, area:core, ready-for-agent | done |
+| M2-12 | [#27](https://gitlab.com/kyura4k/bitnews/-/issues/27) | Resume Usenet Downloads after restart | area:usenet, area:store, ready-for-agent | partly built (resume logic behind an interface), open |
 
 ### [M3 — Post-processing](m3-post-processing.md)
 
@@ -63,7 +63,7 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/3) · [wiki]
 | M3-04 | [#31](https://gitlab.com/kyura4k/bitnews/-/issues/31) | GF(2^16) arithmetic and Reed-Solomon solver | area:postproc, ready-for-agent | done |
 | M3-05 | [#32](https://gitlab.com/kyura4k/bitnews/-/issues/32) | PAR2 Repair | area:postproc, ready-for-agent | done |
 | M3-06 | [#33](https://gitlab.com/kyura4k/bitnews/-/issues/33) | PAR2 golden fixtures and benchmarks | area:postproc, area:ci, ready-for-human | done |
-| M3-07 | [#34](https://gitlab.com/kyura4k/bitnews/-/issues/34) | Deferred recovery volumes | area:usenet, area:postproc, ready-for-agent | open |
+| M3-07 | [#34](https://gitlab.com/kyura4k/bitnews/-/issues/34) | Deferred recovery volumes | area:usenet, area:postproc, ready-for-agent | partly built (planning and adapter), open |
 | M3-08 | [#35](https://gitlab.com/kyura4k/bitnews/-/issues/35) | Archive detection and Unpack (RAR and 7z) | area:postproc, ready-for-agent | done |
 | M3-09 | [#36](https://gitlab.com/kyura4k/bitnews/-/issues/36) | Unpack guards — path traversal, entry types and size caps | area:postproc, ready-for-agent | done |
 | M3-10 | [#37](https://gitlab.com/kyura4k/bitnews/-/issues/37) | Cleanup and move to complete | area:postproc, ready-for-agent | done |
