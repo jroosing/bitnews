@@ -81,6 +81,10 @@ type UserRepo interface {
 	GetByUsername(ctx context.Context, username string) (User, error)
 	// Count reports how many Users exist; zero means setup is required.
 	Count(ctx context.Context) (int, error)
+	// UpdatePasswordHash replaces the stored hash, for example to upgrade
+	// it to the current argon2id parameters after a login. An unknown ID
+	// is ErrNotFound.
+	UpdatePasswordHash(ctx context.Context, id ID, hash []byte) error
 }
 
 // TokenHash is the SHA-256 hash of a generated token. Only the hash of a
@@ -101,7 +105,12 @@ type SessionRepo interface {
 	Create(ctx context.Context, s Session) error
 	Get(ctx context.Context, h TokenHash) (Session, error)
 	Touch(ctx context.Context, h TokenHash, lastSeen time.Time) error
+	// Delete removes the Session; an unknown hash is ErrNotFound.
 	Delete(ctx context.Context, h TokenHash) error
+	// DeleteExpired removes every Session created before createdBefore
+	// (absolute expiry) or last seen before seenBefore (idle expiry) and
+	// reports how many it removed.
+	DeleteExpired(ctx context.Context, createdBefore, seenBefore time.Time) (int, error)
 }
 
 // APIKeyScope limits what an API key may do.

@@ -47,6 +47,14 @@ func (r *UserRepo) Count(ctx context.Context) (int, error) {
 	return n, mapErr("count users", err)
 }
 
+// UpdatePasswordHash replaces the password hash of the User with the given
+// ID. An unknown ID is core.ErrNotFound.
+func (r *UserRepo) UpdatePasswordHash(ctx context.Context, id core.ID, hash []byte) error {
+	res, err := r.db.Writer().ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE id = ?`, hash, string(id))
+	return mapExec("update password hash", res, err)
+}
+
 func (r *UserRepo) scanOne(ctx context.Context, op, where string, arg any) (core.User, error) {
 	var (
 		u  core.User
