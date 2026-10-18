@@ -17,7 +17,7 @@ Read first: [architecture](../architecture.md), [glossary](../../CONTEXT.md), an
 ### Module and tooling
 
 - Module path is `gitlab.com/kyura4k/gitnews` (the GitLab project stays `kyura4k/bitnews`), with Go 1.27.2 or later as the `go` directive.
-- External dependencies are kept to a minimum and each one is justified in its MR. M1 allows only `modernc.org/sqlite` and `golang.org/x/crypto` (argon2, chacha20poly1305).
+- External dependencies are kept to a minimum and each one is justified in its MR. M1 allows only `modernc.org/sqlite` and `golang.org/x/crypto` (argon2, chacha20poly1305) in production code. Test code may use `github.com/stretchr/testify` (`require`/`assert`) for clearer assertions; test-only dependencies never ship in the binary.
 - Routing uses the standard `net/http` `ServeMux` with method and path patterns, so there is no router dependency.
 - Logging uses `log/slog`, with text or JSON output.
 
@@ -181,7 +181,7 @@ M1 routes (more are added in later milestones):
 
 - `bitnews` starts in Docker (with and without `PUID`/`PGID`) and under systemd. It creates the DB and key, and requires setup.
 - An admin can log in, create API keys and Categories, read and update settings, and see an SSE stream.
-- CI is green: `-race`, `staticcheck`, `govulncheck`, plus fuzz smoke runs (no fuzz targets yet besides auth parsing).
+- CI is green: `gofmt -s`, `go fix`, `-race`, `staticcheck`, `govulncheck`, plus fuzz smoke runs.
 
 ## Issues
 
@@ -195,8 +195,8 @@ M1 routes (more are added in later milestones):
 - Keep the existing `go.mod` (`module gitlab.com/kyura4k/gitnews`, `go 1.27.2`). Import paths use `gitlab.com/kyura4k/gitnews/...`.
 - Create the package directories from the architecture layout. Each gets a `doc.go` with a one-line package comment.
 - Add `cmd/bitnews/main.go`, which prints its version. The version is injected via `-ldflags` (version, commit).
-- Add a `Makefile` with targets `build`, `test` (`go test -race ./...`), `lint` (`staticcheck`), `vuln` (`govulncheck`) and `fuzz-smoke` (runs each `Fuzz*` for 10 s).
-- Add `.gitlab-ci.yml` with stages `lint`, `test`, `vuln`, `fuzz-smoke` and `build`. `build` produces linux amd64/arm64 static binaries with `CGO_ENABLED=0`. Cache the Go module and build caches.
+- Add a `Makefile` with targets `build`, `fmt` and `fmt-check` (`gofmt -s`), `fix` and `fix-check` (`go fix`), `test` (`go test -race ./...`), `lint` (`go vet` + `staticcheck`), `vuln` (`govulncheck`) and `fuzz-smoke` (runs each `Fuzz*` for 10 s). The `-check` targets only report and fail, and the others rewrite files.
+- Add `.gitlab-ci.yml` with stages `format` (`fmt-check` and `fix-check`), `lint`, `test`, `vuln`, `fuzz-smoke` and `build`. `build` produces linux amd64/arm64 static binaries with `CGO_ENABLED=0`. Cache the Go module and build caches.
 - Add `.gitignore` and a short `README.md` that points to `docs/`.
 
 **Acceptance criteria**

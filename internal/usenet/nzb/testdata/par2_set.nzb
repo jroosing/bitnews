@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+ <file poster="p@example.com" date="1700000000" subject="Rel [1/5] - &quot;rel.part1.rar&quot; yEnc (1/1)">
+  <groups><group>alt.binaries.test</group></groups>
+  <segments><segment bytes="700000" number="1">r1@example.com</segment></segments>
+ </file>
+ <file poster="p@example.com" date="1700000000" subject="Rel [2/5] - &quot;rel.par2&quot; yEnc (1/1)">
+  <groups><group>alt.binaries.test</group></groups>
+  <segments><segment bytes="20000" number="1">i1@example.com</segment></segments>
+ </file>
+ <file poster="p@example.com" date="1700000000" subject="Rel [3/5] - &quot;rel.vol00+01.par2&quot; yEnc (1/1)">
+  <groups><group>alt.binaries.test</group></groups>
+  <segments><segment bytes="90000" number="1">v1@example.com</segment></segments>
+ </file>
+ <file poster="p@example.com" date="1700000000" subject="Rel [4/5] - &quot;rel.vol01+02.par2&quot; yEnc (1/1)">
+  <groups><group>alt.binaries.test</group></groups>
+  <segments><segment bytes="180000" number="1">v2@example.com</segment></segments>
+ </file>
+ <file poster="p@example.com" date="1700000000" subject="Rel [5/5] - &quot;rel.vol03+04.par2&quot; yEnc (1/1)">
+  <groups><group>alt.binaries.test</group></groups>
+  <segments><segment bytes="360000" number="1">v3@example.com</segment></segments>
+ </file>
+</nzb>

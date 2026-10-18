@@ -12,6 +12,8 @@ bitnews is a self-hosted download daemon for homelabs. It handles Usenet (like N
 You need Go 1.27.2 or later. Lint and vulnerability tools are pinned in `go.mod` and run through `go tool`, so there is nothing else to install.
 
 ```sh
+make fmt         # gofmt -s -w (fmt-check only reports)
+make fix         # go fix ./... (fix-check only reports)
 make test        # go test -race ./...
 make lint        # go vet + staticcheck
 make vuln        # govulncheck

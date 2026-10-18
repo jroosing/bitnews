@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+ <head>
+  <meta type="name">Some.Movie.2023.2160p.UHD.BluRay.x265-GRP</meta>
+ </head>
+ <file poster="5c0a9e1b@d4f7.example" date="1698000000" subject="[1/3] - &quot;9f86d081884c7d659a2feaa0c55ad015&quot; yEnc (1/2)">
+  <groups><group>alt.binaries.boneless</group></groups>
+  <segments>
+   <segment bytes="768000" number="1">a1b2c3d4e5f6a7b8@ngPost.local</segment>
+   <segment bytes="511234" number="2">b2c3d4e5f6a7b8c9@ngPost.local</segment>
+  </segments>
+ </file>
+ <file poster="5c0a9e1b@d4f7.example" date="1698000001" subject="[2/3] - &quot;9f86d081884c7d659a2feaa0c55ad015.par2&quot; yEnc (1/1)">
+  <groups><group>alt.binaries.boneless</group></groups>
+  <segments>
+   <segment bytes="40120" number="1">c3d4e5f6a7b8c9d0@ngPost.local</segment>
+  </segments>
+ </file>
+ <file poster="5c0a9e1b@d4f7.example" date="1698000002" subject="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855">
+  <groups><group>alt.binaries.boneless</group></groups>
+  <segments>
+   <segment bytes="768000" number="1">d4e5f6a7b8c9d0e1@ngPost.local</segment>
+  </segments>
+ </file>
+</nzb>

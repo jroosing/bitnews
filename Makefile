@@ -4,7 +4,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 FUZZTIME ?= 10s
 PLATFORMS ?= linux/amd64 linux/arm64
 
-.PHONY: build build-all test lint vuln fuzz-smoke check
+.PHONY: build build-all fmt fmt-check fix fix-check test lint vuln fuzz-smoke check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/bitnews ./cmd/bitnews
@@ -16,6 +16,21 @@ build-all:
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(LDFLAGS)' \
 			-o dist/bitnews-$$os-$$arch ./cmd/bitnews || exit 1; \
 	done
+
+# fmt and fix rewrite files; fmt-check and fix-check only report (used by CI).
+fmt:
+	gofmt -s -w .
+
+fmt-check:
+	@out=$$(gofmt -s -l .); \
+	if [ -n "$$out" ]; then echo "gofmt needed (run 'make fmt'):"; echo "$$out"; exit 1; fi
+
+fix:
+	go fix ./...
+
+fix-check:
+	@out=$$(go fix -diff ./... 2>&1); \
+	if [ -n "$$out" ]; then echo "go fix needed (run 'make fix'):"; echo "$$out"; exit 1; fi
 
 test:
 	go test -race ./...
@@ -36,4 +51,4 @@ fuzz-smoke:
 		done; \
 	done
 
-check: lint test vuln
+check: fmt-check fix-check lint test vuln

@@ -108,7 +108,7 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 ### yEnc decoding (`internal/usenet/yenc`)
 
 - Parses `=ybegin` (`part`, `total`, `line`, `size`, `name`), `=ypart` (`begin`, `end`) and `=yend` (`size`, `part`, `pcrc32`, `crc32`).
-- Decodes escapes (`=x` → `x-64-42`), ignores CR/LF and handles the leading `..` that dot-stuffing leaves behind.
+- Decodes escapes (`=x` → `x-64-42`) and ignores CR/LF. Dot-unstuffing happens only in the NNTP client; the decoder takes lines literally, so a line starting with `..` decodes as two bytes. Unknown `key=value` header tokens are ignored.
 - Computes CRC32 (IEEE) over the decoded part and compares it with `pcrc32` (or `crc32` for single-part files).
 - Rejects these as malformed parts: `end < begin`, `end - begin + 1` different from the decoded length, or `size` larger than 1 TiB.
 - Streaming API: `Decoder.Write(encodedLine)` and `Decoder.Finish() (Part, error)`.
@@ -266,7 +266,7 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 **Goal:** A streaming yEnc decoder with CRC32 verification.
 
 **Work**
-- Parse the headers and trailers (`=ybegin`, `=ypart`, `=yend`), decode escapes, and handle dot-stuffing leftovers.
+- Parse the headers and trailers (`=ybegin`, `=ypart`, `=yend`) and decode escapes. The input lines are already dot-unstuffed by the NNTP client (M2-05).
 - Verify CRC32 per part, and for whole single-part files.
 - Validate the ranges and sizes listed in the design.
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+ <file poster="anon@anon.example" date="1650000000" subject="Docs.Collection [1/1] - &quot;docs.collection.zip&quot; yEnc (1/2)">
+  <groups><group>alt.binaries.ebooks</group></groups>
+  <segments>
+   <segment number="1">zip1.1650000000@anon.example</segment>
+   <segment number="2" bytes="">zip2.1650000000@anon.example</segment>
+  </segments>
+ </file>
+</nzb>

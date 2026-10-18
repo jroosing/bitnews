@@ -10,13 +10,19 @@ cache:
     files: [go.sum]
   paths: [.go/pkg/mod, .cache/go-build]
 
-stages: [lint, test, vuln, fuzz-smoke, build]
+stages: [format, lint, test, vuln, fuzz-smoke, build]
 
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
+
+format:
+  stage: format
+  script:
+    - make fmt-check
+    - make fix-check
 
 lint:
   stage: lint
