@@ -1,0 +1,18 @@
+Third-party test fixtures
+=========================
+
+7z/  (t0.7z t1.7z t2.7z t3.7z t4.7z t5.7z multi.7z.001-006 lzma2.7z empty.7z)
+    Copied unmodified from github.com/bodgit/sevenzip v1.6.5, testdata/.
+    Copyright (c) 2020, Matt Dainty. BSD 3-Clause License
+    (https://github.com/bodgit/sevenzip/blob/master/LICENSE).
+    The encrypted fixtures (t2, t3, t4, t5) use the password "password".
+
+rar/container.rar
+    Copied unmodified from the Homebrew test fixtures
+    (Library/Homebrew/test/support/fixtures/cask/container.rar).
+    Copyright (c) 2009-present, Homebrew contributors. BSD 2-Clause License
+    (https://github.com/Homebrew/brew/blob/master/LICENSE.txt).
+    A tiny RAR 4.x archive holding one file named "container".
+
+All other archives used by the tests are generated in memory by the test
+helpers (rar_builder_test.go) and are not stored here.
