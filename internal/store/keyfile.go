@@ -88,27 +88,40 @@ func LoadOrCreateKey(path string, logger *slog.Logger) (Key, error) {
 }
 
 func createKeyFile(path string, logger *slog.Logger) (Key, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return Key{}, fmt.Errorf("key file %q does not exist and its directory cannot be created: %w\n%s", path, err, keyFileHelp(path))
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	// Write the complete key to a private temp file first and publish it with
+	// a hard link. Link fails with ErrExist when another process won the
+	// race, and the published file is never visible half-written, so a loser
+	// can never read an empty or truncated key.
+	tmp, err := os.CreateTemp(dir, ".bitnews-key-*")
 	if err != nil {
+		return Key{}, fmt.Errorf("key file %q does not exist and cannot be created: %w\n%s", path, err, keyFileHelp(path))
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return Key{}, fmt.Errorf("writing key file %q: %w", path, err)
+	}
+	key := GenerateKey()
+	_, err = tmp.WriteString(base64.StdEncoding.EncodeToString(key.b[:]) + "\n")
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return Key{}, fmt.Errorf("writing key file %q: %w", path, err)
+	}
+	if err := os.Link(tmpName, path); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return Key{}, err
 		}
 		return Key{}, fmt.Errorf("key file %q does not exist and cannot be created: %w\n%s", path, err, keyFileHelp(path))
-	}
-	key := GenerateKey()
-	_, err = f.WriteString(base64.StdEncoding.EncodeToString(key.b[:]) + "\n")
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		_ = os.Remove(path) // Do not leave a truncated key behind.
-		return Key{}, fmt.Errorf("writing key file %q: %w", path, err)
 	}
 	logger.Warn("generated a new master key for secret encryption; back this file up, because without it stored secrets cannot be decrypted",
 		"path", path)
