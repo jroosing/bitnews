@@ -33,9 +33,9 @@
 //
 // Tests compare Mul against an independent bitwise carry-less multiply
 // reduced by 0x1100B, check the field axioms as properties, and round-trip a
-// test-only encoder through Solve. par2cmdline is not available here, so the
-// byte-for-byte comparison of recovery slices against par2cmdline output is
-// deferred to the M3-06 golden fixtures.
+// test-only encoder through Solve. The parent package's golden tests (M3-06)
+// compare every recovery slice written by par2cmdline 1.4.0 byte for byte
+// against InputConstants, Pow and MulAdd, over 12 fixture sets.
 //
 // # Benchmarks
 //
