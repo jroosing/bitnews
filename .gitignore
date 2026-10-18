@@ -1,0 +1,7 @@
+/bin/
+/dist/
+/.go/
+/.cache/
+*.test
+*.out
+coverage.*
