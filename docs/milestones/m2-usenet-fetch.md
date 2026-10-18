@@ -236,7 +236,8 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 **Goal:** An in-process, scriptable NNTP server for integration tests.
 
 **Work**
-- Serve TLS with a test CA, injected only through the test hook.
+- Serve TLS with a test CA for client-level tests. The CA can be injected only inside package `nntp`'s own tests, because `rootCAs` is deliberately unexported and there is no public way to weaken TLS.
+- Tests above the client (M2-07 pool, M2-09 scheduler, M2-11/12 runner) must not need TLS. M2-07 defines a small connection-factory interface (dial and return a `Conn`-like value with `Body`, `Date`, `Close`, `Dead`), and the harness provides an in-memory implementation of it that serves the same scripted articles.
 - Configure articles per server, `430` for chosen message IDs, latency, mid-body disconnects, auth failures, connection limits (`502` when exceeded) and corrupted bodies (bad CRC).
 - Generate fixture NZBs plus their articles from arbitrary payload files, using a yEnc encoder in test code.
 

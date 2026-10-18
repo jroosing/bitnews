@@ -10,7 +10,7 @@ cache:
     files: [go.sum]
   paths: [.go/pkg/mod, .cache/go-build]
 
-stages: [format, lint, test, vuln, fuzz-smoke, build]
+stages: [lint, test, build]
 
 workflow:
   rules:
@@ -18,27 +18,17 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
 
-format:
-  stage: format
-  script:
-    - make fmt-check
-    - make fix-check
-
 lint:
   stage: lint
-  script: [make lint]
+  script:
+    - make lint
+    - make vuln
 
 test:
   stage: test
-  script: [make test]
-
-vuln:
-  stage: vuln
-  script: [make vuln]
-
-fuzz-smoke:
-  stage: fuzz-smoke
-  script: [make fuzz-smoke FUZZTIME=10s]
+  script:
+    - make test
+    - make fuzz-smoke FUZZTIME=10s
 
 build:
   stage: build

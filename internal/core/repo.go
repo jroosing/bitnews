@@ -35,7 +35,8 @@ type DownloadRepo interface {
 	// List returns one page and the cursor of the next one, which is empty
 	// on the last page.
 	List(ctx context.Context, q DownloadQuery) (page []Download, next string, err error)
-	// Update stores every field except State and the fields only a
+	// Update stores every field except ID, AddedAt (both immutable, so
+	// paging on (AddedAt, ID) stays stable), State, and the fields only a
 	// StateChange sets (FetchedAt, ReadyAt, OutputPath, FailureReason,
 	// FailureDetail).
 	Update(ctx context.Context, d Download) error

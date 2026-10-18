@@ -182,7 +182,7 @@ M1 routes (more are added in later milestones):
 
 - `bitnews` starts in Docker (with and without `PUID`/`PGID`) and under systemd. It creates the DB and key, and requires setup.
 - An admin can log in, create API keys and Categories, read and update settings, and see an SSE stream.
-- CI is green: `gofmt -s`, `go fix`, `-race`, `staticcheck`, `govulncheck`, plus fuzz smoke runs.
+- CI is green: `go vet`, `staticcheck`, `govulncheck`, `-race` tests and fuzz smoke runs. `gofmt -s` and `go fix` are run locally (`make check` includes `fmt-check` and `fix-check`).
 
 ## Issues
 
@@ -197,7 +197,7 @@ M1 routes (more are added in later milestones):
 - Create the package directories from the architecture layout. Each gets a `doc.go` with a one-line package comment.
 - Add `cmd/bitnews/main.go`, which prints its version. The version is injected via `-ldflags` (version, commit).
 - Add a `Makefile` with targets `build`, `fmt` and `fmt-check` (`gofmt -s`), `fix` and `fix-check` (`go fix`), `test` (`go test -race ./...`), `lint` (`go vet` + `staticcheck`), `vuln` (`govulncheck`) and `fuzz-smoke` (runs each `Fuzz*` for 10 s). The `-check` targets only report and fail, and the others rewrite files.
-- Add `.gitlab-ci.yml` with stages `format` (`fmt-check` and `fix-check`), `lint`, `test`, `vuln`, `fuzz-smoke` and `build`. `build` produces linux amd64/arm64 static binaries with `CGO_ENABLED=0`. Cache the Go module and build caches.
+- Add `.gitlab-ci.yml` with stages `lint` (one job: `make lint` and `make vuln`), `test` (one job: `make test` and `make fuzz-smoke`) and `build`. Formatting (`make fmt`, `make fix`) is done locally before pushing, so CI has no format job. `build` produces linux amd64/arm64 static binaries with `CGO_ENABLED=0`. Cache the Go module and build caches.
 - Add `.gitignore` and a short `README.md` that points to `docs/`.
 
 **Acceptance criteria**
