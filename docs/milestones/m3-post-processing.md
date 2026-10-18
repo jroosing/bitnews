@@ -95,6 +95,11 @@ By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when
 - Check feasibility first: the number of available recovery slices must be at least the number of damaged ones. If enough exist only in deferred volumes, M3-07 fetches them first. Otherwise the Download is Failed (`repair_insufficient`).
 - Write the reconstructed slices in place, at their offsets in the target files. Missing files are created with their FileDesc length.
 - Run Verify again afterwards. Any remaining damage means Failed.
+- Contract with Verify (M3-03):
+  - A file with intact slices but the wrong length (for example trailing bytes) comes back `Damaged` with an empty slice list and needs 0 recovery slices. Repair must truncate it.
+  - A missing zero-length file comes back `Missing` with 0 damaged slices. Repair must create it.
+  - For `Missing` and `Unverifiable` files the damaged list is not built (`DamagedSlices` is nil and `DamagedCount` equals `TotalSlices`), so Repair iterates `0..TotalSlices`.
+  - A wrong file sitting under the right name is reported `Damaged`. Searching for misaligned slices is out of scope for v1.
 
 ### Deferred recovery volumes
 

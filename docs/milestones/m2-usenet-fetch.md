@@ -86,7 +86,8 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 - One pool per Server, up to `MaxConnections`, connecting lazily and closing after 60 s idle.
 - Reconnects use exponential backoff from 1 s up to 60 s.
 - An auth failure disables the Server at runtime and emits a `ServerError` event.
-- A pool exposes a `Fetch(ctx, messageID, sink)` primitive that is used only by the Article scheduler.
+- A pool exposes a `Body(ctx, messageID, sink)` primitive that is used only by the Article scheduler.
+- The pool dials one connection at a time until the first successful dial, and again after any failure streak or a new factory. A wrong password is therefore tried once and not once per connection, which avoids provider lockouts.
 
 ### Article scheduler
 
@@ -119,7 +120,9 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
   - Take the name from yEnc `name=`, run it through `SafeName`, and make it unique within the Download dir.
   - Create the file under `incomplete/<download>/` and pre-allocate it with `ftruncate(size)`, falling back to `fallocate` where it is supported.
 - Every part is written with `WriteAt(data, begin-1)`.
-- Per-file bookkeeping records the written ranges and the damaged ranges (CRC mismatch or missing). M3 uses these.
+- Per-file bookkeeping records `Done`, `Damaged` (CRC mismatch) and `Lost` (declared missing with `MarkMissing`) ranges as half-open, zero-based ranges. `Missing` is the size minus Done and Damaged, and `Pending` is Missing minus Lost, so the runner treats a file as Fetched when `Pending` is empty. A damaged copy never overwrites good bytes, and a later good copy heals the range. M3 uses these.
+- A file whose Articles are all missing is never created, because the size comes from the first yEnc part. The runner (M2-11) must handle that case from the NZB data.
+- `Snapshot()` and `Restore()` serialize the per-file state compactly for resume (M2-12). `Restore` forgets missing files and resets files of the wrong size.
 - `fsync` runs when a file completes and before a state is persisted.
 
 ### Usenet Queue runner
@@ -254,7 +257,7 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 **Work**
 - Lazy connect up to `MaxConnections`, an idle timeout, and reconnect backoff.
 - Disable the Server at runtime when auth fails, and emit a `ServerError` event.
-- Expose the `Fetch(ctx, messageID, sink)` primitive.
+- Expose the `Body(ctx, messageID, sink)` primitive, and dial one connection at a time until the first success.
 - Apply config changes, such as connection count or credentials, without a restart.
 
 **Acceptance criteria**
