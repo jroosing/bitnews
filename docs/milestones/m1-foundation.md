@@ -175,6 +175,13 @@ M1 routes (more are added in later milestones):
 - Format: `event: <type>` plus `data: <json>`.
 - A `hello` event carries the instance ID. A `: ping` comment is sent every 15 s.
 - `Last-Event-ID` is not supported, because events are not persisted. Clients refetch state on connect.
+- **Implementation notes (M1-13, M1-14):**
+  - Download JSON, the PATCH body and the list filter use `category_id` (an ID or null), not `category`. PATCH `queue_position` accepts only `{"move":"top|bottom|up|down"}`.
+  - A write-scoped API key cannot change the `auth` section of the settings: PUT `/api/v1/settings` from a key that changes it returns 403 `session_required`.
+  - The server keeps the 60 s `WriteTimeout`; the SSE route extends the write deadline by 30 s per write, so a client that stops reading is dropped.
+  - The post-processing orchestrator publishes a `postprocess_stage` event (`core.KindPostProcessStage`) that the SSE route must forward once the orchestrator is wired in.
+  - Login, setup and health skip the `allowed_hosts` check. Pausing is allowed only in Added, FetchingMetadata, Queued and Fetching. Deleting a Category announces each affected Download with `DownloadUpdated`.
+  - `api.Serve` shuts down with a grace period. `http.Server.Shutdown` treats a connection that never sent a request as idle only after 5 seconds, so keep the grace above that. The route table is in `docs/api-v1.md`.
 
 ### Packaging
 
