@@ -1,0 +1,41 @@
+{
+  "name": "an empty queue",
+  "provenance": "hand-written from the SABnzbd API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M4-01 recordings",
+  "description": "Sonarr polls this while nothing is downloading.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "target": "/sabnzbd/api?mode=queue&start=0&limit=30&output=json&apikey={{apikey}}",
+        "headers": {
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "queue": {
+            "version": "$re:^\\d+\\.\\d+\\.\\d+$",
+            "paused": false,
+            "pause_int": "0",
+            "speed": "$type:string",
+            "kbpersec": "$re:^\\d+\\.\\d{2}$",
+            "mb": "0.00",
+            "mbleft": "0.00",
+            "timeleft": "0:00:00",
+            "noofslots": 0,
+            "noofslots_total": 0,
+            "diskspace1": "$type:string",
+            "diskspace1_norm": "$type:string",
+            "have_warnings": "0",
+            "slots": [],
+            "status": "Idle"
+          }
+        }
+      }
+    }
+  ]
+}

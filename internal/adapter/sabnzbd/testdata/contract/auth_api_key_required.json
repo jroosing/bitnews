@@ -1,0 +1,26 @@
+{
+  "name": "a call without an apikey is API Key Required, HTTP 200",
+  "provenance": "hand-written from the SABnzbd API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M4-01 recordings",
+  "description": "SABnzbd answers auth errors with HTTP 200 and status false; Sonarr checks the error text.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "target": "/sabnzbd/api?mode=queue&output=json",
+        "headers": {
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "status": false,
+          "error": "API Key Required"
+        }
+      }
+    }
+  ]
+}

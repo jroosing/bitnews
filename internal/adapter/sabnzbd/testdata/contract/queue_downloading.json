@@ -1,0 +1,103 @@
+{
+  "name": "a downloading slot and a paused one",
+  "provenance": "hand-written from the SABnzbd API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M4-01 recordings",
+  "description": "10 MiB/s: 2048 MiB left of the first slot is 204 s; the queue's 4096 MiB left is 409 s. The paused slot has no time left.",
+  "seed": [
+    {
+      "op": "category",
+      "name": "tv"
+    },
+    {
+      "op": "speed",
+      "bytes_per_sec": 10485760
+    },
+    {
+      "op": "download",
+      "ref": "d1",
+      "name": "Show.S01E01",
+      "state": "fetching",
+      "category": "tv",
+      "total": 3221225472,
+      "done": 1073741824
+    },
+    {
+      "op": "download",
+      "ref": "d2",
+      "name": "Show.S01E02",
+      "state": "queued",
+      "priority": "low",
+      "paused": true,
+      "total": 2147483648
+    }
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "target": "/sabnzbd/api?mode=queue&start=0&limit=30&output=json&apikey={{apikey}}",
+        "headers": {
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "queue": {
+            "version": "$re:^\\d+\\.\\d+\\.\\d+$",
+            "paused": false,
+            "pause_int": "0",
+            "speed": "10.0 M",
+            "kbpersec": "10240.00",
+            "mb": "5120.00",
+            "mbleft": "4096.00",
+            "timeleft": "0:06:49",
+            "noofslots": 2,
+            "noofslots_total": 2,
+            "diskspace1": "$type:string",
+            "diskspace1_norm": "$type:string",
+            "have_warnings": "0",
+            "slots": [
+              {
+                "nzo_id": "{{nzo.d1}}",
+                "filename": "Show.S01E01",
+                "cat": "tv",
+                "priority": "Normal",
+                "status": "Downloading",
+                "mb": "3072.00",
+                "mbleft": "2048.00",
+                "size": "3.0 GB",
+                "sizeleft": "2.0 GB",
+                "percentage": "33",
+                "timeleft": "0:03:24",
+                "index": 0,
+                "password": "",
+                "labels": []
+              },
+              {
+                "nzo_id": "{{nzo.d2}}",
+                "filename": "Show.S01E02",
+                "cat": "*",
+                "priority": "Low",
+                "status": "Paused",
+                "mb": "2048.00",
+                "mbleft": "2048.00",
+                "size": "2.0 GB",
+                "sizeleft": "2.0 GB",
+                "percentage": "0",
+                "timeleft": "0:00:00",
+                "index": 1,
+                "password": ""
+              }
+            ],
+            "status": "Downloading",
+            "start": 0,
+            "limit": 30
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "an empty history",
+  "provenance": "hand-written from the SABnzbd API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M4-01 recordings",
+  "description": "",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "target": "/sabnzbd/api?mode=history&start=0&limit=30&category=tv&output=json&apikey={{apikey}}",
+        "headers": {
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "history": {
+            "noofslots": 0,
+            "slots": []
+          }
+        }
+      }
+    }
+  ]
+}
