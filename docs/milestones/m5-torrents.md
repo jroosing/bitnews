@@ -52,8 +52,8 @@ type TorrentEngine interface {
 - **Disabled:** UPnP / port mapping (`NoDefaultPortForwarding = true`, or the equivalent in the pinned version).
 - **DHT, PEX, LSD:**
   - On globally for public torrents. Each has a setting.
-  - Torrents flagged private (BEP 27) never use them; anacrolix enforces this.
-  - A test must assert it anyway.
+  - Torrents flagged private (BEP 27) never use them. anacrolix v1.61.0 does **not** enforce this, so the engine does (see the implementation notes).
+  - A test must assert it.
 - **MSE:** the `prefer` / `require` setting maps onto anacrolix's header obfuscation policy (`Preferred`/`RequirePreferred`). The default is `prefer`.
 - **Rate limits:** `rate.Limiter`s for download and upload, shared with the global limits from M2. They can be changed at runtime.
 - **Storage:** file storage with a per-Download dir, and our own `PieceCompletion` implementation (see below).
@@ -367,3 +367,39 @@ The fixtures are the spec, as in M4. M5-09 records real Sonarr/Radarr ↔ qBitto
 **Acceptance criteria**
 - [ ] CI runs the contract tests on every MR and the e2e job on `main`, and both pass.
 - [ ] The manual checklist is recorded with versions.
+
+## Implementation notes (M5-01, M5-02)
+
+Packages: the port and domain types are in `internal/core/torrent_engine.go`, the fake in `internal/core/coretest`, the adapter in `internal/torrent`, and the row-level store in `internal/store/repo_torrent_pieces.go` (migration `0005_torrent_pieces.sql`). `internal/torrent` is the only package that imports anacrolix; `TestOnlyInternalTorrentImportsAnacrolix` walks the module and fails otherwise.
+
+**Port**
+- `InfoHash` is 20 bytes. A v2-only torrent is not supported: `Add` rejects a torrent or magnet without a v1 hash, because anacrolix panics on a zero v1 hash. `ParseInfoHash` accepts 40 hex characters, and 64 (a v2 hash) truncated to 20.
+- `SetRateLimits(down, up int64)` is bytes per second; zero or less is unlimited. `ShareLimit` uses `-1` for unlimited, so the zero value means "stop at once"; use `core.UnlimitedShareLimit()`.
+- `Add` of a known hash returns an error wrapping `core.ErrConflict` (tracker merging is M5-03's job). Unknown hashes wrap `core.ErrNotFound`.
+- The engine only reports `TorrentShareLimitReached` (once per torrent and limit setting). The caller decides pause or remove. Ratio and seeding time live in memory; M5-06 must persist them (there is no way to seed the counters yet).
+- `Events()` is buffered (default 256). When it is full the engine drops the event and logs it. `Close` closes the channel.
+
+**anacrolix v1.61.0: decisions and surprises**
+- Pinned in `go.mod`; `govulncheck` runs in CI.
+- **Port mapping:** `NoDefaultPortForwarding = true` always; there is no setting. A test asserts it.
+- **Private torrents (BEP 27) are not handled by anacrolix at all.** The engine enforces them: (1) it starts the DHT announces itself (`PeriodicallyAnnounceTorrentsToDht = false`) and skips private torrents; (2) the DHT server ignores `announce_peer` for private info hashes; (3) a private torrent's connections offer only `ut_metadata` and the peer's `ut_pex` and `ut_holepunch` are removed from its extended handshake, so PEX is never initialised. A magnet starts as public, because its flag is unknown until the metadata arrives; at that point DHT announcing stops and the connections are cycled. Tests: a loopback DHT node observes `get_peers` for a public torrent (the control) and nothing for a private one; two engines negotiate `ut_pex` for a public torrent and not for a private one.
+- **LSD:** v1.61.0 has none. `Config.LSD` is accepted and logs a warning.
+- **MSE:** `prefer` is `{Preferred}`, `require` is `{Preferred, RequirePreferred}`, `disable` is the zero policy.
+- **Web seeds, WebTorrent, magnet `xs`/`as` sources and DHT nodes from metainfo are off or dropped.** A hostile torrent must not make the daemon fetch arbitrary URLs.
+- **Storage:** anacrolix's file storage is not used. Its default I/O in v1.61.0 is mmap, which (a) fails with `invalid argument` for any piece spanning a zero-length file, so such torrents never download (reproduced with plain anacrolix storage), (b) turns a full disk or a flaky share into SIGBUS, and (c) can only be changed through an environment variable read at init. `internal/torrent/filestorage.go` is a small positional-I/O storage (open, read or write, close per operation; no part files; empty files are created when the torrent opens; sparse files, no preallocation). Pieces are fsynced before they are marked complete.
+- **Paths:** every file path is `fsutil.SafeName` per component and `fsutil.SafeJoin` into the storage dir (`torrentPaths`). Torrents are refused (`ErrInvalidMetainfo`) if a component cannot be made safe (`..`, empty), if two files map to the same path (also case-insensitively) or if a file would also be a directory, or if they exceed 100,000 files, 4 Mi pieces or a 256 MiB piece length. This runs before anything is created on disk. For a magnet the same check runs when the metadata arrives, and failure gives a `TorrentErrored` event. Layout: `<StorageDir>/<torrent name>/<file path>`.
+- **Piece completion:** anacrolix treats a piece that storage reports as "unknown" as not requestable, so `Set(false)` must read back as known-incomplete. That state is memory only; the persisted bitmap holds verified pieces. After a restart a piece without a persisted mark is unknown and is hashed, a lost write-behind mark costs a hash, never correctness. Torrent_pieces stores the exact piece count (`Register` is called when the storage opens).
+- **Downloads start only when pieces are wanted:** the engine calls `DownloadAll()` once the metadata is known.
+- **Pause:** disallow download and upload, and drop to zero connections. Trackers are still announced to.
+- **Relocate:** stops DHT, drops the anacrolix torrent (closing its files), `fsutil.MoveDir`, re-adds the same metainfo at the new dir with piece completion intact, restores the peers that had a dialable address, and restores the paused or running state. On any failure it moves the directory back and re-adds at the old place. `Uploaded` carries over. The destination must not exist. The `Fetched` event is not repeated.
+- **Bind address:** `Config.BindAddr` makes listeners, tracker HTTP dials and UDP tracker sockets use that address and disables the other IP family. The interface binding and monitor are M5-07.
+- **Rate limiters:** one `rate.Limiter` each for download and upload, adjustable at runtime. The burst is the limit (at least 64 KiB, at most 1 MiB).
+- **Stall watchdog:** under heavy load a local-swarm transfer sometimes stopped for good: a connection kept an "update requests" flag set (or an unanswered request) and never asked for data again. Once a second the engine checks every downloading torrent that has peers; after 4 s without a received byte it cancels and re-allows the download, and after 10 s it drops the connections and offers the peers again. A torrent choked by every peer is therefore cycled at most every 10 s. There is no direct test for the watchdog; it was introduced because the suite failed about 1 in 10 runs under 5x load before it and passed 66 of 66 runs after.
+- **uTP:** `Config.DisableUTP` exists because in v1.61.0 peers dial TCP and uTP at once and the race occasionally stalls a transfer. The local-swarm tests use TCP only. With `CGO_ENABLED=1` anacrolix uses its C++ libutp (and `go-llsqlite`), so the project builds and tests with `CGO_ENABLED=0` to stay pure Go.
+
+**Tests (local swarm, no network, `-race`, about 10 s in total)**
+Seeder and leecher engines on 127.0.0.1 with torrents built by anacrolix's metainfo builder (16 KiB pieces): multi-file (with an empty file) and single-file download byte-exact; magnet metadata fetch (BEP 9) with events in order, with and without a peer hint; private torrent downloads and is flagged; DHT silence and PEX absence for private torrents; hostile `.torrent` names (contained or refused, nothing written outside the storage dir, including real downloads); hostile magnet metadata (error event, nothing written); relocate while a leecher is connected (no rehash, seeding resumes, no second `Fetched`); relocate failure leaves the torrent seeding where it was; pause and resume for leecher and seeder; remove with and without data (foreign files survive, completion rows deleted); restart without rehash against a real SQLite DB, with a control that rehashes when completion is lost; download and upload rate limits within 25 percent; share limit by ratio and by seeding time with a fake clock; events never block the engine; fuzz targets for path validation and spec parsing.
+
+**Dependency tree and vulnerabilities**
+- `go list -deps ./internal/torrent | wc -l`: 507 packages with cgo and 500 with `CGO_ENABLED=0`, from 78 modules (`go list -deps ./internal/store` is 182 packages from 12). About 70 of the packages are `pion/*` (WebRTC) and 15 are OpenTelemetry. They are linked because anacrolix imports them unconditionally, although the engine turns WebTorrent off. The tree also holds a second SQLite (`go-llsqlite`, cgo builds only). This is the largest supply-chain cost in the project and is accepted for the pure-Go BitTorrent client; the alternative is writing one.
+- `go tool govulncheck ./...` (run with the anacrolix tree in `go.mod`) reports three vulnerabilities that static analysis considers reachable, all in transitive modules that only the WebRTC/WebTorrent code uses (the engine disables it, but it stays linked): GO-2026-6278 `gorilla/websocket` v1.5.0 (fixed in v1.5.3), GO-2026-6165 `pion/dtls/v3` v3.0.3 (fixed in v3.1.4) and GO-2026-6163 `pion/stun/v3` v3.0.0 (fixed in v3.1.5). It also lists GO-2026-5506 `go.opentelemetry.io/otel` v1.38.0 (fixed in v1.41.0, not called) and GO-2026-5932 `golang.org/x/crypto` v0.58.0 (no fix yet, not called). **Follow-up:** bump the three reachable modules (and otel) in `go.mod` with `go get`, which needs network access; `make vuln` fails until then.

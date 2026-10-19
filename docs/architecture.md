@@ -61,7 +61,8 @@ Domain terms (**Download**, **Source**, **Fetched**, **Ready**, …) are defined
 
 ```
 gitlab.com/kyura4k/gitnews   (Go module; GitLab project is kyura4k/bitnews)
-cmd/bitnews/            bootstrap flags/env, PUID/PGID privilege drop, wiring
+cmd/bitnews/            bootstrap flags/env, PUID/PGID privilege drop, opens the DB
+internal/daemon/        composition root: wires stores, services, API, runner, post-processing
 internal/core/          domain model, lifecycle, scheduler, event bus, ports
 internal/usenet/nzb/    NZB parser
 internal/usenet/nntp/   NNTP client, per-Server connection pool, Server Priority fallback
