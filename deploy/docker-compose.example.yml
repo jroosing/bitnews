@@ -2,20 +2,18 @@
 #
 # Before the first `docker compose up -d`:
 #
-#   1. Create the master key (outside ./config, never inside it):
-#        mkdir -p secrets config
-#        head -c 32 /dev/urandom | base64 > secrets/bitnews_key
-#        chmod 600 secrets/bitnews_key
+#   1. Make the config dir writable for PUID:PGID below. bitnews runs as that
+#      user after startup and cannot chown anything itself:
+#        mkdir -p config && sudo chown 1000:1000 config
 #
-#   2. Make the files readable and writable for PUID:PGID below. bitnews runs
-#      as that user after startup and cannot chown anything itself:
-#        sudo chown 1000:1000 secrets/bitnews_key config
-#
-#   3. Decide where /data lives on the host (see the layout below) and make
+#   2. Decide where /data lives on the host (see the layout below) and make
 #      sure PUID:PGID may write to it.
 #
-# Back up secrets/bitnews_key. Without it the Server passwords stored in the
-# database cannot be decrypted (nothing else is lost).
+# The master key that encrypts the stored Server and archive passwords is
+# generated on first start as ./config/bitnews.key, so back up ./config as a
+# whole. Without that file the Server passwords cannot be decrypted (nothing
+# else is lost). To keep the key apart from the database, mount it elsewhere
+# and set BITNEWS_KEY_FILE (see docs/deploy.md).
 #
 # Open http://<host>:9494 for the setup screen. The one-time setup token is
 # printed in the log: `docker compose logs bitnews`.
@@ -53,7 +51,7 @@ services:
       # BITNEWS_LOG_FORMAT: text       # text | json
 
     volumes:
-      # Database. Must be writable by PUID:PGID. Do not put the key in here.
+      # Database and master key (bitnews.key). Must be writable by PUID:PGID.
       - ./config:/config
       # ONE mount for everything, at the same path in every container
       # (TRaSH layout). Downloads and the media library must be on the same
@@ -63,9 +61,6 @@ services:
       #   /data/torrents            torrent Downloads (M5)
       #   /data/media               the Sonarr/Radarr library
       - /data:/data
-
-    secrets:
-      - bitnews_key   # appears at /run/secrets/bitnews_key (the image default)
 
     # Hardening. The healthcheck is inherited from the image.
     read_only: true
@@ -143,9 +138,3 @@ services:
   # Sonarr then reaches bitnews at http://gluetun:9494 (if it is on gluetun's
   # compose network), not http://bitnews:9494. The bitnews healthcheck keeps
   # working: it queries 127.0.0.1, which is the shared namespace.
-
-secrets:
-  bitnews_key:
-    # Host file. With plain `docker compose` (not Swarm) this is a bind
-    # mount, so the host file's owner and mode apply inside the container.
-    file: ./secrets/bitnews_key
