@@ -17,6 +17,13 @@ const (
 // URL returns raw with the userinfo password and the values of
 // secret-bearing query and fragment parameters masked.
 func URL(raw string) string {
+	return redactURL(raw, 0)
+}
+
+// maxNesting bounds how many URLs inside URL parameters are followed.
+const maxNesting = 4
+
+func redactURL(raw string, depth int) string {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return Invalid
@@ -32,7 +39,7 @@ func URL(raw string) string {
 		}
 		u.Path, u.RawPath = path, escaped
 	}
-	u.RawQuery = redactQuery(u.RawQuery, "&;")
+	u.RawQuery = redactQuery(u.RawQuery, "&;", depth)
 
 	// Single-page apps and OAuth redirects put parameters in the fragment,
 	// sometimes behind a client-side route ("#/route?apikey=..."), so '?'
@@ -41,7 +48,7 @@ func URL(raw string) string {
 	u.Fragment, u.RawFragment = "", ""
 	out := u.String()
 	if fragment != "" {
-		out += "#" + redactQuery(fragment, "&;?")
+		out += "#" + redactQuery(fragment, "&;?", depth)
 	}
 	return out
 }
@@ -99,7 +106,7 @@ func isTokenChar(c byte) bool {
 // redactQuery masks secret values in a raw query-style string. Any byte of
 // seps separates parameters ('&' and ';' are both accepted by servers), and
 // separators are preserved so the result stays recognisable.
-func redactQuery(raw, seps string) string {
+func redactQuery(raw, seps string, depth int) string {
 	var b strings.Builder
 	for raw != "" {
 		end := strings.IndexAny(raw, seps)
@@ -107,8 +114,14 @@ func redactQuery(raw, seps string) string {
 			end = len(raw)
 		}
 		part := raw[:end]
-		if name, _, hasValue := strings.Cut(part, "="); hasValue && isSecretParam(name) {
-			part = name + "=" + Mask
+		if name, value, hasValue := strings.Cut(part, "="); hasValue {
+			if isSecretParam(name) {
+				part = name + "=" + Mask
+			} else if nested, ok := nestedURL(value); ok && depth < maxNesting {
+				// Proxies such as the SABnzbd API carry a whole indexer URL,
+				// secrets included, in one parameter value.
+				part = name + "=" + url.QueryEscape(redactURL(nested, depth+1))
+			}
 		}
 		b.WriteString(part)
 		if end < len(raw) {
@@ -149,4 +162,18 @@ func isSecretParam(rawName string) bool {
 		name = rawName
 	}
 	return secretParams[strings.ToLower(name)]
+}
+
+// nestedURL reports whether an escaped parameter value is an http(s) URL and
+// returns it unescaped.
+func nestedURL(escaped string) (string, bool) {
+	value, err := url.QueryUnescape(escaped)
+	if err != nil {
+		return "", false
+	}
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return value, true
+	}
+	return "", false
 }
