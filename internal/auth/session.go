@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
@@ -49,7 +50,25 @@ type SessionService struct {
 
 	// dummyHash is verified when a login names an unknown user, so that
 	// path costs the same argon2 run as a wrong password for a real user.
+	// It is made on first use: hashing at construction would allocate the
+	// whole argon2 working set (64 MiB) once per service, which is wasted
+	// when nobody ever logs in as an unknown user.
+	dummyOnce sync.Once
 	dummyHash []byte
+	dummyErr  error
+}
+
+// unknownUserHash returns the hash an unknown-user login is verified against.
+func (s *SessionService) unknownUserHash() ([]byte, error) {
+	s.dummyOnce.Do(func() {
+		filler, _, err := NewToken()
+		if err != nil {
+			s.dummyErr = err
+			return
+		}
+		s.dummyHash, s.dummyErr = HashPassword(core.Secret(filler))
+	})
+	return s.dummyHash, s.dummyErr
 }
 
 // SessionOption configures NewSessionService.
@@ -72,9 +91,9 @@ func WithSessionLogger(l *slog.Logger) SessionOption {
 	return func(s *SessionService) { s.log = l }
 }
 
-// NewSessionService returns a SessionService. It hashes one random password
-// with the current argon2 parameters for the unknown-user login path, so
-// build it after the process-wide parameters are settled.
+// NewSessionService returns a SessionService. The hash for the unknown-user
+// login path is made with the argon2 parameters in effect at the first such
+// login.
 func NewSessionService(sessions core.SessionRepo, users core.UserRepo, opts ...SessionOption) (*SessionService, error) {
 	s := &SessionService{
 		sessions: sessions,
@@ -88,14 +107,6 @@ func NewSessionService(sessions core.SessionRepo, users core.UserRepo, opts ...S
 	}
 	if s.limiter == nil {
 		s.limiter = NewLoginLimiter(WithLimiterClock(s.now))
-	}
-	filler, _, err := NewToken()
-	if err != nil {
-		return nil, err
-	}
-	s.dummyHash, err = HashPassword(core.Secret(filler))
-	if err != nil {
-		return nil, fmt.Errorf("auth: dummy hash: %w", err)
 	}
 	return s, nil
 }
