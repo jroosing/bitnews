@@ -28,6 +28,7 @@ type Runner struct {
 	pools    *poolSet
 	throttle *core.ProgressThrottle
 	store    ProgressStore
+	volumes  VolumeStore
 	lim      *limiter
 	wake     chan struct{}
 
@@ -37,6 +38,7 @@ type Runner struct {
 	userPaused  bool
 	diskPaused  bool
 	cooldown    map[core.ID]time.Time
+	held        map[core.ID]time.Time
 	reports     map[core.ID]FetchDetail
 	noServerLog time.Time
 	wg          sync.WaitGroup
@@ -74,6 +76,9 @@ func New(cfg Config) (*Runner, error) {
 	if r.store == nil {
 		r.store = newMemStore()
 	}
+	if r.volumes = cfg.Volumes; r.volumes == nil {
+		r.volumes = newMemVolumes()
+	}
 	r.cfg.PollInterval = orDefault(cfg.PollInterval, defaultPollInterval)
 	r.cfg.DiskCheckInterval = orDefault(cfg.DiskCheckInterval, defaultDiskCheckInterval)
 	r.cfg.SaveInterval = orDefault(cfg.SaveInterval, defaultSaveInterval)
@@ -90,6 +95,7 @@ func New(cfg Config) (*Runner, error) {
 	r.wake = make(chan struct{}, 1)
 	r.jobs = map[core.ID]*job{}
 	r.cooldown = map[core.ID]time.Time{}
+	r.held = map[core.ID]time.Time{}
 	r.reports = map[core.ID]FetchDetail{}
 	return r, nil
 }
@@ -147,6 +153,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			}
 			if rm, isRm := ev.(core.Removed); isRm {
 				r.cancelJob(rm.ID, errRemoved)
+				r.Release(rm.ID)
 			}
 			r.reconcile(ctx)
 		case <-ticker.C:

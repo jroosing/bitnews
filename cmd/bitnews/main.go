@@ -12,15 +12,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/api"
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/bootstrap"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/daemon"
 	"gitlab.com/kyura4k/gitnews/internal/privdrop"
 	"gitlab.com/kyura4k/gitnews/internal/store"
 )
@@ -106,8 +103,10 @@ func run(ctx context.Context, args []string, getenv func(string) (string, bool),
 	return 0
 }
 
-// serveAll runs startup steps 3 to 6: load the key, open the database, wire
-// the services, serve, and on the way out close everything it opened.
+// serveAll runs startup steps 3 to 6: load the key, open the database, build
+// the daemon, serve, and on the way out close the database. Shutdown order:
+// the HTTP server stops first, then the daemon's workers are cancelled and
+// awaited, then the database is closed.
 func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve serveFunc) (err error) {
 	// The master key encrypts Server passwords and archive passwords.
 	// Loading it creates it on first start and fails early when it cannot
@@ -125,63 +124,16 @@ func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
 
-	bus := core.NewBus()
-	users := store.NewUserRepo(db)
-	downloads := store.NewDownloadRepo(db)
-	categories := store.NewCategoryRepo(db)
-	servers := store.NewServerRepo(db, key)
-	sources := store.NewDownloadSourceRepo(db, key)
-
-	settings, err := app.NewSettingsService(ctx, store.NewSettingsRepo(db), bus)
-	if err != nil {
-		return err
-	}
-	// The admin file must be read before NewSetup decides whether setup is
-	// required, or setup would announce a token for an instance that is about
-	// to get its admin.
-	if cfg.AdminPasswordFile != "" {
-		if _, err := auth.BootstrapAdminFromFile(ctx, cfg.AdminPasswordFile, users, log); err != nil {
-			return err
-		}
-	}
-	setup, err := auth.NewSetup(ctx, users, log)
-	if err != nil {
-		return err
-	}
-	sessions, err := auth.NewSessionService(store.NewSessionRepo(db), users, auth.WithSessionLogger(log))
-	if err != nil {
-		return err
-	}
-	uiAuth, err := auth.NewUIAuth(sessions, settings.Current)
-	if err != nil {
-		return err
-	}
-	downloadService := app.NewDownloadService(downloads, categories, bus)
-	server, err := api.New(api.Config{
-		Logger:     log,
-		Version:    api.Version{Version: version, Commit: commit},
-		Downloads:  downloadService,
-		Adder:      app.NewAddService(downloadService, sources, settings, app.WithLogger(log)),
-		Categories: app.NewCategoryService(categories, downloads, bus),
-		Servers:    app.NewServerService(servers, bus, app.NewNNTPProber()),
-		Settings:   settings,
-		Setup:      setup,
-		Sessions:   sessions,
-		UIAuth:     uiAuth,
-		APIKeys:    auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyLogger(log)),
-		Bus:        bus,
+	d, err := daemon.Build(ctx, daemon.Deps{
+		DB: db, Key: key, Logger: log,
+		Version:           api.Version{Version: version, Commit: commit},
+		AdminPasswordFile: cfg.AdminPasswordFile,
+		Tuning:            daemon.Tuning{SessionCleanup: sessionCleanupEvery},
 	})
 	if err != nil {
 		return err
 	}
-
-	cleanupCtx, stopCleanup := context.WithCancel(ctx)
-	var cleanup sync.WaitGroup
-	cleanup.Go(func() { sessions.RunCleanup(cleanupCtx, sessionCleanupEvery) })
-	defer func() {
-		stopCleanup()
-		cleanup.Wait()
-	}()
-
-	return serve(ctx, server.HTTPServer(cfg.Listen), log)
+	return d.Serve(ctx, cfg.Listen, func(ctx context.Context, srv *http.Server) error {
+		return serve(ctx, srv, log)
+	})
 }

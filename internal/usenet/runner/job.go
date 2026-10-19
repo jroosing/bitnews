@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"sync"
@@ -25,6 +26,8 @@ var errReschedule = errors.New("runner: servers changed")
 type job struct {
 	id       core.ID
 	cancelFn context.CancelCauseFunc
+	// done is closed when the job's goroutine has ended.
+	done chan struct{}
 
 	mu       sync.Mutex
 	sched    context.CancelCauseFunc // cancels the current scheduler run
@@ -32,7 +35,7 @@ type job struct {
 }
 
 func newJob(id core.ID, cancel context.CancelCauseFunc) *job {
-	return &job{id: id, cancelFn: cancel}
+	return &job{id: id, cancelFn: cancel, done: make(chan struct{})}
 }
 
 // cancel stops the fetch for cause, unless it is already finishing.
@@ -89,6 +92,12 @@ type jobState struct {
 	answered            atomic.Int64
 	// finalSent is set when a progress event with done == total went out.
 	finalSent atomic.Bool
+	// supplement marks a run that only fetches un-deferred recovery
+	// volumes (indexes in volumes) of a Download fetched before. Its
+	// progress, report and totals are not published: they would replace
+	// those of the Download's main fetch.
+	supplement bool
+	volumes    []int
 }
 
 func newJobState() *jobState {
@@ -144,20 +153,42 @@ func (r *Runner) fetchOne(ctx context.Context, j *job, d core.Download) {
 		}
 		return
 	}
+	und, err := r.volumes.Undeferred(ctx, d.ID)
+	if err != nil {
+		if ctx.Err() == nil {
+			r.fail(ctx, j, d, core.FailureInternal, fmt.Sprintf("read un-deferred volumes: %v", err))
+		}
+		return
+	}
+	// A Download with un-deferred volumes was fetched before: only the
+	// volumes that are not fetched yet are left to do (a supplement run).
+	var supplement map[int]bool
+	if len(und) > 0 {
+		supplement = map[int]bool{}
+		for fi, fetched := range und {
+			if !fetched {
+				supplement[fi] = true
+			}
+		}
+	}
 	r.pools.revive()
-	p := buildPlan(n)
-	if len(p.articles) == 0 {
+	p := buildPlan(n, supplement)
+	if len(p.articles) == 0 && supplement == nil {
 		r.fail(ctx, j, d, core.FailureSourceInvalid, "the NZB has nothing to fetch")
 		return
 	}
 
 	dir := r.cfg.DirFor(d)
-	w, st, err := r.openWriter(ctx, d, p, dir)
+	w, st, err := r.openWriter(ctx, d, p, dir, supplement != nil)
 	if err != nil {
 		r.fail(ctx, j, d, core.FailureInternal, err.Error())
 		return
 	}
 	defer func() { _ = w.Close() }()
+	if supplement != nil {
+		st.supplement = true
+		st.volumes = slices.Sorted(maps.Keys(supplement))
+	}
 	now := r.clock.Now()
 	st.nextSave, st.nextDisk = now.Add(r.cfg.SaveInterval), now.Add(r.cfg.DiskCheckInterval)
 	st.nextDB = now.Add(r.cfg.DoneBytesInterval)
@@ -318,13 +349,13 @@ func (r *Runner) onResult(ctx context.Context, j *job, id core.ID, stop context.
 	remaining := max(total-done, 0)
 	st.mu.Unlock()
 
-	if r.throttle.Allow(id, done, total) {
+	if !st.supplement && r.throttle.Allow(id, done, total) {
 		r.cfg.Bus.Publish(core.DownloadProgress{ID: id, DoneBytes: done, TotalBytes: total, BytesPerSecond: rate})
 		if total > 0 && done == total {
 			st.finalSent.Store(true)
 		}
 	}
-	if dbDue {
+	if dbDue && !st.supplement {
 		r.storeDoneBytes(ctx, id, done, 0)
 	}
 
@@ -414,17 +445,26 @@ func (r *Runner) complete(ctx context.Context, j *job, d core.Download, p plan, 
 	bctx, cancel := bgCtx(ctx)
 	defer cancel()
 	_ = r.store.Delete(bctx, d.ID)
-	r.storeDoneBytes(bctx, d.ID, doneBytes, p.encoded)
-	if !st.finalSent.Load() {
-		r.cfg.Bus.Publish(core.DownloadProgress{ID: d.ID, DoneBytes: doneBytes, TotalBytes: max(st.total, doneBytes)})
-	}
-	r.throttle.Flush(d.ID)
-	r.mu.Lock()
-	r.reports[d.ID] = detail
-	r.mu.Unlock()
-	if r.cfg.Reports != nil {
-		if err := r.cfg.Reports.SaveReport(bctx, d.ID, detail); err != nil {
-			r.log.Warn("usenet runner: cannot store fetch report", "id", d.ID, "err", err)
+	if st.supplement {
+		// Mark the volumes before the state change: a crash in between
+		// leaves a Fetching Download with nothing to do, which completes.
+		if err := r.volumes.MarkFetched(bctx, d.ID, st.volumes); err != nil {
+			r.fail(ctx, j, d, core.FailureInternal, fmt.Sprintf("record fetched volumes: %v", err))
+			return
+		}
+	} else {
+		r.storeDoneBytes(bctx, d.ID, doneBytes, p.encoded)
+		if !st.finalSent.Load() {
+			r.cfg.Bus.Publish(core.DownloadProgress{ID: d.ID, DoneBytes: doneBytes, TotalBytes: max(st.total, doneBytes)})
+		}
+		r.throttle.Flush(d.ID)
+		r.mu.Lock()
+		r.reports[d.ID] = detail
+		r.mu.Unlock()
+		if r.cfg.Reports != nil {
+			if err := r.cfg.Reports.SaveReport(bctx, d.ID, detail); err != nil {
+				r.log.Warn("usenet runner: cannot store fetch report", "id", d.ID, "err", err)
+			}
 		}
 	}
 	if _, err := r.setState(bctx, d.ID, core.StateChange{To: core.StateFetched, At: r.clock.Now()}); err != nil {
@@ -438,10 +478,17 @@ func (r *Runner) complete(ctx context.Context, j *job, d core.Download, p plan, 
 // the ProgressStore holds a valid blob, the files and the resolved Articles
 // are taken over; otherwise the directory is cleared (see the package
 // documentation) and the fetch starts from scratch.
-func (r *Runner) openWriter(ctx context.Context, d core.Download, p plan, dir string) (*filewriter.Writer, *jobState, error) {
+//
+// For a supplement run (only un-deferred recovery volumes), the files of the
+// earlier fetch are not touched: a blob is used only if it is about the
+// volumes, and without one just leftovers of the volumes are removed.
+func (r *Runner) openWriter(ctx context.Context, d core.Download, p plan, dir string, supplement bool) (*filewriter.Writer, *jobState, error) {
 	st := newJobState()
 	if blob, err := r.store.Load(ctx, d.ID); err == nil {
 		rb, derr := decodeBlob(blob)
+		if derr == nil && supplement && !blobIsAbout(rb, p) {
+			derr = errors.New("the blob is not about the recovery volumes")
+		}
 		if derr == nil {
 			w, err := filewriter.New(dir)
 			if err != nil {
@@ -459,8 +506,14 @@ func (r *Runner) openWriter(ctx context.Context, d core.Download, p plan, dir st
 	} else if !errors.Is(err, core.ErrNotFound) {
 		r.log.Warn("usenet resume state unreadable, starting over", "id", d.ID, "err", err)
 	}
-	if err := wipeDir(dir); err != nil {
-		return nil, nil, err
+	var werr error
+	if supplement {
+		werr = removeNamed(dir, p.names)
+	} else {
+		werr = wipeDir(dir)
+	}
+	if werr != nil {
+		return nil, nil, werr
 	}
 	w, err := filewriter.New(dir)
 	if err != nil {

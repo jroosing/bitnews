@@ -52,6 +52,7 @@ func (f *fakeSources) Source(_ context.Context, id core.ID) (string, core.Secret
 // harness wires a Runner to a real store, a bus and in-memory NNTP servers.
 type harness struct {
 	t        *testing.T
+	db       *store.DB
 	repo     *store.DownloadRepo
 	bus      *core.Bus
 	servers  *fakeServers
@@ -77,6 +78,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { _ = db.Close() })
 	h := &harness{
 		t:       t,
+		db:      db,
 		repo:    store.NewDownloadRepo(db),
 		bus:     core.NewBus(),
 		servers: &fakeServers{},

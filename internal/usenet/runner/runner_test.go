@@ -767,3 +767,33 @@ func TestProgressIsStoredWithoutRewritingTheWholeDownloadRow(t *testing.T) {
 	assert.EqualValues(t, 400_000, got.DoneBytes)
 	assert.Zero(t, guard.updates.Load())
 }
+
+func TestHoldStopsTheFetchAndKeepsTheDownloadFromRestartingUntilReleased(t *testing.T) {
+	h := newHarness(t)
+	srv := h.addServer("main", 0, 1)
+	srv.SetLatency(5 * time.Millisecond)
+	files := map[string][]byte{"big.bin": payload(400_000, 1)}
+	fx := nntptest.BuildFixture(t, files, 10_000)
+	fx.Install(srv)
+	d := h.addDownload("big", fx)
+	r := h.start()
+	require.Eventually(t, func() bool { return srv.TotalRequests() >= 5 }, 10*time.Second, time.Millisecond)
+
+	require.NoError(t, r.Hold(context.Background(), d.ID))
+
+	atHold := srv.TotalRequests()
+	time.Sleep(200 * time.Millisecond) // several control-loop passes
+	assert.Equal(t, atHold, srv.TotalRequests(), "no request after Hold returned")
+	assert.NotEqual(t, core.StateFetched, h.get(d.ID).State)
+
+	r.Release(d.ID)
+	h.waitState(d.ID, core.StateFetched)
+	assert.Equal(t, files, readDir(t, h.dirFor(d)))
+}
+
+func TestHoldOfADownloadWithoutAJobReturnsAtOnce(t *testing.T) {
+	h := newHarness(t)
+	r := h.start()
+
+	require.NoError(t, r.Hold(context.Background(), core.NewID()))
+}

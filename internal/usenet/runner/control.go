@@ -118,9 +118,12 @@ func (r *Runner) reconcile(ctx context.Context) {
 	r.syncServers(ctx)
 	ds, err := r.listQueue(ctx)
 	if err != nil {
-		r.log.Error("usenet runner: cannot list downloads", "err", err)
+		if ctx.Err() == nil {
+			r.log.Error("usenet runner: cannot list downloads", "err", err)
+		}
 		return
 	}
+	ds = slices.DeleteFunc(ds, func(d core.Download) bool { return r.isHeld(d.ID) })
 	byID := make(map[core.ID]core.Download, len(ds))
 	for _, d := range ds {
 		byID[d.ID] = d
@@ -285,10 +288,17 @@ func (r *Runner) startJob(ctx context.Context, d core.Download) {
 	jctx, cancel := context.WithCancelCause(ctx)
 	j := newJob(d.ID, cancel)
 	r.mu.Lock()
+	if r.heldLocked(d.ID) {
+		// Held between the control loop's check and now: leave it.
+		r.mu.Unlock()
+		cancel(nil)
+		return
+	}
 	r.jobs[d.ID] = j
 	r.mu.Unlock()
 	r.wg.Go(func() {
 		defer r.poke()
+		defer close(j.done)
 		defer func() {
 			r.mu.Lock()
 			delete(r.jobs, d.ID)
@@ -297,4 +307,61 @@ func (r *Runner) startJob(ctx context.Context, d core.Download) {
 		}()
 		r.fetchOne(jctx, j, d)
 	})
+}
+
+// holdTTL is how long a Hold lasts unless Release or a Removed event ends it
+// first. It keeps a Download whose removal failed half-way from staying
+// parked for ever.
+const holdTTL = 2 * time.Minute
+
+// Hold stops the fetch of the Download, waits until it has stopped, and
+// keeps the Download from being activated again until Release, the Removed
+// event of the Download, or holdTTL. A fetch that is cancelled this way
+// forgets its resume state, as if the Download were removed. Call it before
+// deleting the files of a Download that still exists; it returns at once
+// for a Download without a running fetch. ctx bounds the wait.
+func (r *Runner) Hold(ctx context.Context, id core.ID) error {
+	r.mu.Lock()
+	r.held[id] = r.clock.Now().Add(holdTTL)
+	j := r.jobs[id]
+	r.mu.Unlock()
+	if j == nil {
+		return nil
+	}
+	j.cancel(errRemoved)
+	select {
+	case <-j.done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("runner: waiting for the fetch of %s to stop: %w", id, ctx.Err())
+	}
+}
+
+// Release undoes Hold.
+func (r *Runner) Release(id core.ID) {
+	r.mu.Lock()
+	_, was := r.held[id]
+	delete(r.held, id)
+	r.mu.Unlock()
+	if was {
+		r.poke()
+	}
+}
+
+func (r *Runner) isHeld(id core.ID) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.heldLocked(id)
+}
+
+func (r *Runner) heldLocked(id core.ID) bool {
+	until, ok := r.held[id]
+	if !ok {
+		return false
+	}
+	if !r.clock.Now().Before(until) {
+		delete(r.held, id)
+		return false
+	}
+	return true
 }
