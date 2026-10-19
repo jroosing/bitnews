@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 )
 
 // streamWriteTimeout bounds each single write to an event stream, so a client
@@ -103,7 +104,9 @@ func sendEvent(send func(string, ...any) bool, name string, payload any) bool {
 }
 
 // eventPayload maps a core event to its SSE name and JSON payload. Settings
-// changes carry no payload: receivers fetch the settings.
+// changes carry no payload: receivers fetch the settings. postprocess_stage
+// says which Post-processing stage a Download entered, and
+// usenet_queue_paused and usenet_queue_resumed report the Usenet Queue.
 func eventPayload(ev core.Event) (name string, payload any, ok bool) {
 	name = string(ev.Kind())
 	switch e := ev.(type) {
@@ -135,8 +138,24 @@ func eventPayload(ev core.Event) (name string, payload any, ok bool) {
 		return name, idPayload{e.ID}, true
 	case core.SettingsChanged, core.ServersChanged:
 		return name, struct{}{}, true
+	case core.PostProcessStage:
+		return name, struct {
+			ID    core.ID    `json:"id"`
+			Stage core.Stage `json:"stage"`
+		}{e.ID, e.Stage}, true
+	case runner.QueuePaused:
+		return name, queuePayload{e.Reason, e.Detail}, true
+	case runner.QueueResumed:
+		return name, queuePayload{}, true
 	}
 	return "", nil, false
+}
+
+// queuePayload is the payload of the Usenet Queue events. A resumed Queue
+// has no reason or detail; the fields are there so one shape serves both.
+type queuePayload struct {
+	Reason string `json:"reason"`
+	Detail string `json:"detail"`
 }
 
 type idPayload struct {

@@ -52,5 +52,16 @@
 //   - api_keys(id, name, scope, hash UNIQUE, created_at, last_used_at)
 //   - schema_migrations(version, name, applied_at)
 //
+// # Tables (migration 0003, the Usenet runner's state)
+//
+//   - usenet_progress(download_id, blob, updated_at): the resume blob of a
+//     Download being fetched, capped at MaxUsenetProgressBlob.
+//   - usenet_reports(download_id, missing_articles, missing_bytes,
+//     damaged_articles, damaged_bytes, missing_files, updated_at)
+//   - usenet_undeferred(download_id, file_index, fetched): PAR2 recovery
+//     volumes that Repair asked for (M3-07).
+//
+// All three reference downloads ON DELETE CASCADE.
+//
 // All tables are STRICT.
 package store

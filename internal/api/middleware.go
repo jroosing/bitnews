@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/redact"
@@ -143,7 +144,7 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 			}
 			logFrom(r.Context()).LogAttrs(r.Context(), level, "request",
 				slog.String("method", r.Method),
-				slog.String("url", redact.URL(r.URL.RequestURI())),
+				slog.String("url", loggedURL(r)),
 				slog.Int("status", status),
 				slog.Int64("bytes", size),
 				slog.Duration("duration", time.Since(start)),
@@ -153,6 +154,32 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 		completed = true
 	})
+}
+
+// loggedURL is the request target as it may be logged. URLs go through
+// redact.URL, because a query can carry an API key.
+//
+// The SABnzbd adapter is the exception: its query holds the adapter key and,
+// for mode=addurl, a second URL of an indexer with its own key in an encoded
+// parameter value, which redact.URL does not look into. Only the path and
+// the mode are logged for it.
+func loggedURL(r *http.Request) string {
+	if r.URL.Path != "/sabnzbd/api" && !strings.HasPrefix(r.URL.Path, "/sabnzbd/api/") {
+		return redact.URL(r.URL.RequestURI())
+	}
+	mode := strings.Map(func(c rune) rune {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' {
+			return c
+		}
+		return -1
+	}, r.URL.Query().Get("mode"))
+	if len(mode) > 32 {
+		mode = mode[:32]
+	}
+	if mode == "" {
+		return r.URL.EscapedPath()
+	}
+	return r.URL.EscapedPath() + "?mode=" + mode
 }
 
 // securityHeaders sets the headers every response carries.

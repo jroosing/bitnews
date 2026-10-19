@@ -22,8 +22,8 @@ type Version struct {
 	GoVersion string
 }
 
-// Config holds everything a Server needs. All fields except the last four
-// are required.
+// Config holds everything a Server needs. All fields are required except
+// AdapterCredentials, SABnzbd and the last four.
 type Config struct {
 	Logger     *slog.Logger
 	Version    Version
@@ -37,6 +37,16 @@ type Config struct {
 	UIAuth     *auth.UIAuth
 	APIKeys    *auth.APIKeyService
 	Bus        *core.Bus
+
+	// AdapterCredentials manages the media-manager credentials behind
+	// /api/v1/adapter-credentials. Without it those routes do not exist.
+	AdapterCredentials *auth.AdapterCredentialService
+	// SABnzbd serves the SABnzbd API emulation at /sabnzbd/api for every
+	// method. It authenticates its own requests with adapter credentials,
+	// so it sits outside the UI authentication and CSRF, and inside the
+	// setup gate and the request ID, panic recovery and security header
+	// middleware. Without it the path is a 404.
+	SABnzbd http.Handler
 
 	// InstanceID identifies this process in the SSE hello event, so a
 	// client can tell that the daemon restarted. It defaults to a random ID.
