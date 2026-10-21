@@ -1,6 +1,6 @@
 module gitlab.com/kyura4k/gitnews
 
-go 1.27.2
+go 1.27.3
 
 tool (
 	golang.org/x/vuln/cmd/govulncheck
@@ -10,6 +10,7 @@ tool (
 require (
 	github.com/anacrolix/dht/v2 v2.23.0
 	github.com/anacrolix/torrent v1.61.0
+	github.com/anacrolix/utp v0.1.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/nwaples/rardecode/v2 v2.4.5
 	github.com/stretchr/testify v1.12.1
@@ -36,7 +37,6 @@ require (
 	github.com/anacrolix/stm v0.5.0 // indirect
 	github.com/anacrolix/sync v0.5.5-0.20251119100342-d78dd1f686f1 // indirect
 	github.com/anacrolix/upnp v0.1.4 // indirect
-	github.com/anacrolix/utp v0.1.0 // indirect
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/benbjohnson/immutable v0.4.1-0.20221220213129-8932b999621d // indirect
