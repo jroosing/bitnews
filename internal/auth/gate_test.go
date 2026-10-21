@@ -30,7 +30,18 @@ func TestGateBlocksEverythingWith503SetupRequiredWhileSetupIsOpen(t *testing.T) 
 	h := auth.Gate(okHandler, s)
 
 	for _, tc := range []struct{ method, target string }{
-		{"GET", "/"},
+		{"GET", "/queue"},
+		{"GET", "/history"},
+		{"GET", "/ui/styleguide"},
+		{"POST", "/"}, // only GET / is exempt
+		{"POST", "/login"},
+		{"POST", "/logout"},
+		{"GET", "/setup/"},
+		{"GET", "/setup/extra"},
+		{"GET", "/login/"},
+		{"GET", "//setup"},
+		{"GET", "/./setup"},
+		{"PUT", "/setup"},
 		{"GET", "/api/v1/downloads"},
 		{"POST", "/api/v1/auth/login"},
 		{"GET", "/api/v1/setup"},   // only POST is exempt
@@ -76,10 +87,29 @@ func TestGateLetsSetupHealthAndStaticAssetsThroughWhileSetupIsOpen(t *testing.T)
 	}
 }
 
+func TestGateLetsTheSetupPagesThroughWhileSetupIsOpen(t *testing.T) {
+	s, _, _ := newSetup(t, &fakeUsers{})
+	h := auth.Gate(okHandler, s)
+
+	// The web UI redirects / and /login to /setup itself, and serves the
+	// setup form on GET /setup and its submission on POST /setup.
+	for _, tc := range []struct{ method, target string }{
+		{"GET", "/"},
+		{"GET", "/login"},
+		{"GET", "/setup"},
+		{"POST", "/setup"},
+		{"HEAD", "/setup"},
+	} {
+		rec := do(h, tc.method, tc.target)
+
+		assert.Equal(t, http.StatusTeapot, rec.Code, "%s %s", tc.method, tc.target)
+	}
+}
+
 func TestGatePassesEverythingOnceSetupIsDone(t *testing.T) {
 	s, tok, _ := newSetup(t, &fakeUsers{})
 	h := auth.Gate(okHandler, s)
-	require.Equal(t, http.StatusServiceUnavailable, do(h, "GET", "/").Code)
+	require.Equal(t, http.StatusServiceUnavailable, do(h, "GET", "/queue").Code)
 
 	require.NoError(t, s.Complete(context.Background(), tok, "admin", goodPassword))
 

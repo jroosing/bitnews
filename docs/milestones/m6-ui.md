@@ -14,18 +14,22 @@ By the end of M6, the daemon itself serves a browser UI built with htmx and serv
 
 ### Architecture
 
+- The stack is htmx, Tailwind CSS and Alpine.js (CSP build), all vendored and served by the daemon. See [ADR-0005](../adr/0005-web-ui-stack.md).
 - The UI handlers live in `internal/web`. They call the **same application services** as the own API v1 (the M1-13 service layer) and render HTML fragments. They don't go through the JSON API, because htmx works with HTML responses.
 - Business logic stays in core and services, never in templates or handlers.
 - Templates use `html/template` (contextual auto-escaping) and are embedded with `embed.FS`. Assets are embedded the same way and served with `Cache-Control: immutable` under a content hash path.
-- **htmx and its SSE extension are vendored** as pinned files with their versions recorded in `web/static/VENDOR.md`. They are served from the daemon, never a CDN, so nothing loads from a third-party origin.
+- **htmx, its SSE extension, Alpine.js (CSP build) and the Inter font are vendored** as pinned files, verified against npm's integrity strings, with versions recorded in `internal/web/assets/static/VENDOR.md`. They are served from the daemon, never a CDN, so nothing loads from a third-party origin.
+- **Assets live in `internal/web/assets/`** (`static/` and `templates/`, embedded with `go:embed`). The stylesheet is built from `internal/web/src/app.css` by the Tailwind standalone CLI (`make css`) and the generated `app.css` is committed.
+- **Components** are template partials (`assets/templates/components/`) plus CSS component classes: button, form field, input/select/checkbox/switch, badge (queued, downloading, processing, ready, failed, paused), card, empty state, alert, table shell (cards on narrow screens), modal and confirm dialog, toast region, pagination, progress, tabs and copy button. `/ui/styleguide` renders all of them. Light and dark themes follow `prefers-color-scheme`, with a persisted user toggle.
 
 ### Security
 
 - **CSP:**
-  `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`
-- No inline scripts or styles, and no `hx-on` attributes.
+  `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`
+  The UI sets this on its own responses; the API keeps `default-src 'self'; frame-ancestors 'none'`.
+- No inline scripts or styles (so no `style=""` attribute and no inline `<style>`; htmx indicator rules are in our CSS), no `hx-on` attributes, and Alpine's CSP build (no `unsafe-eval`).
 - htmx config: `htmx.config.allowEval = false`, `htmx.config.allowScriptTags = false` and `htmx.config.selfRequestsOnly = true`.
-- **CSRF:** the token from the session goes into a `<meta>` tag. A small vendored `app.js` (the only first-party JS) adds `X-CSRF-Token` to every htmx request through `htmx:configRequest`. Plain form posts carry a hidden field.
+- **CSRF:** the token from the session goes into a `<meta>` tag. A small first-party `app.js` (plus a tiny `theme.js` that applies the saved theme before first paint) adds `X-CSRF-Token` to every htmx request through `htmx:configRequest`. Plain form posts carry a hidden `_csrf` field, which a small wrapper in `internal/web` copies into the header before `auth.CSRF` runs.
 - **Auth banner:** when disable auth or LAN bypass is active (from M1-11), every page shows a persistent warning banner that can't be dismissed.
 - All dynamic content is escaped by `html/template`. Download names are hostile input (they come from NZBs and torrents), so a test renders malicious names.
 
@@ -70,10 +74,10 @@ Semantic HTML, labels on every input, and keyboard-operable actions. The layout 
 
 **Work**
 - A layout template, embedded templates and assets with content-hash paths and immutable caching.
-- Vendored, pinned htmx and the SSE extension (with `VENDOR.md`), plus a minimal `app.js` that sets the htmx config and attaches the CSRF header.
+- Vendored, pinned htmx, the SSE extension and Alpine's CSP build (with `VENDOR.md`), plus `app.js` that attaches the CSRF header and registers the Alpine components and stores. The htmx config is a `<meta name="htmx-config">`.
 - The strict CSP from the design on all UI routes.
 - The auth-mode warning banner, wired to `/api/v1/auth/session` data.
-- Base CSS covering light/dark, responsive tables and accessible focus styles.
+- Tailwind CSS (standalone CLI, committed output), the component set and the style guide page, covering light/dark, responsive tables and accessible focus styles.
 
 **Acceptance criteria**
 - [ ] A headless browser test finds no CSP violations on an empty page.

@@ -1,0 +1,5 @@
+{{/*
+  badge: a download state pill. Keys: State (queued|downloading|processing|
+  ready|failed|paused), Label (default: the state, capitalised by CSS).
+*/}}
+{{define "badge"}}<span class="badge badge-{{.State}}">{{or .Label .State}}</span>{{end}}

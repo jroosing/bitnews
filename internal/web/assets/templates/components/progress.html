@@ -1,0 +1,11 @@
+{{/*
+  progress: a native <progress> (no inline width). Keys: Value, Max (default
+  100), Label (accessible name, required), Variant (ok|warn|bad), Show (render
+  the percentage text next to it).
+*/}}
+{{define "progress"}}
+<div class="flex w-full items-center gap-3">
+  <progress class="progress min-w-0 flex-1{{with .Variant}} progress-{{.}}{{end}}" value="{{.Value}}" max="{{or .Max 100}}" aria-label="{{.Label}}"></progress>
+  {{- if .Show}}<span class="w-10 shrink-0 text-right text-xs text-fg-muted tabular-nums">{{.Value}}%</span>{{end}}
+</div>
+{{end}}

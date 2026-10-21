@@ -61,6 +61,11 @@ func (p Principal) AuthMode() string {
 	return ""
 }
 
+// CSRFToken is the synchronizer token this principal must send in
+// X-CSRF-Token on state-changing requests. The web UI puts it into its pages.
+// It is empty for an API key, which needs none.
+func (p Principal) CSRFToken() string { return p.csrf }
+
 type principalKey struct{}
 
 func withPrincipal(ctx context.Context, p Principal) context.Context {

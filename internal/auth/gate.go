@@ -12,11 +12,19 @@ const (
 	setupPath  = "/api/v1/setup"
 	healthPath = "/api/v1/health"
 	staticPath = "/static/"
+
+	// The web UI's own first-run pages. It answers GET / and GET /login with
+	// a redirect to /setup, serves the form on GET /setup and takes its
+	// submission on POST /setup.
+	rootPath      = "/"
+	loginPagePath = "/login"
+	setupPagePath = "/setup"
 )
 
 // Gate wraps next so that, while first-run setup is open, every request gets
-// 503 setup_required except POST /api/v1/setup, GET /api/v1/health and static
-// assets. Once setup is done it costs one atomic load per request and never
+// 503 setup_required except POST /api/v1/setup, GET /api/v1/health, static
+// assets and the web UI's setup pages (GET / and GET /login, which redirect
+// to /setup, and GET and POST /setup). Once setup is done it costs one atomic load per request and never
 // queries the database.
 func Gate(next http.Handler, setup *Setup) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +44,10 @@ func setupExempt(r *http.Request) bool {
 		return r.Method == http.MethodPost
 	case p == healthPath:
 		return r.Method == http.MethodGet
+	case p == rootPath, p == loginPagePath:
+		return r.Method == http.MethodGet || r.Method == http.MethodHead
+	case p == setupPagePath:
+		return r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodPost
 	case strings.HasPrefix(p, staticPath):
 		// A path with dot segments or doubled slashes could climb out of
 		// /static/ in a router that cleans it afterwards.

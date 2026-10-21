@@ -1,0 +1,15 @@
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Paths, servers, network and security.</p>{{end}}
+
+{{define "content"}}
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+  {{range .Page.Sections}}
+  <div class="card flex items-start gap-4 p-5">
+    <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-soft-fg">{{icon .Icon "size-5"}}</span>
+    <div class="min-w-0">
+      <h2 class="flex items-center gap-2 text-base">{{.Title}} <span class="badge badge-queued">Soon</span></h2>
+      <p class="mt-1 text-sm text-fg-muted">{{.Body}}</p>
+    </div>
+  </div>
+  {{end}}
+</div>
+{{end}}

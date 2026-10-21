@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/app"
@@ -23,7 +24,7 @@ type Version struct {
 }
 
 // Config holds everything a Server needs. All fields are required except
-// AdapterCredentials, SABnzbd, QBit and the last four.
+// AdapterCredentials, SABnzbd, QBit, Web and the last four.
 type Config struct {
 	Logger     *slog.Logger
 	Version    Version
@@ -53,6 +54,12 @@ type Config struct {
 	// inside the setup gate and the request ID, panic recovery and security
 	// header middleware. Without it the path is a 404.
 	QBit http.Handler
+	// Web serves the browser UI (internal/web) for every path outside
+	// /api/ and /sabnzbd/: pages, /static/ and its own 404 page. It does its
+	// own authentication, CSRF checks and security headers (a stricter CSP
+	// than the API's, which stays unchanged). Unknown /api/ and /sabnzbd/
+	// paths keep the JSON 404. Without it those paths are JSON 404s too.
+	Web http.Handler
 
 	// InstanceID identifies this process in the SSE hello event, so a
 	// client can tell that the daemon restarted. It defaults to a random ID.
@@ -124,6 +131,10 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request) {
 		s.mux.ServeHTTP(w, r)
 		return
 	}
+	if s.Web != nil && !apiPath(r.URL.Path) {
+		s.Web.ServeHTTP(w, r)
+		return
+	}
 	// No route matched. Let the mux say why, but keep its body.
 	probe := &probeWriter{header: http.Header{}}
 	h.ServeHTTP(probe, r)
@@ -137,6 +148,17 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "no such route")
 	}
+}
+
+// apiPath reports whether p belongs to the JSON API or an adapter, which keep
+// the JSON error shape instead of the web UI's pages.
+func apiPath(p string) bool {
+	for _, prefix := range []string{"/api", "/sabnzbd"} {
+		if p == prefix || strings.HasPrefix(p, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // probeWriter captures the status and headers of the mux's own error

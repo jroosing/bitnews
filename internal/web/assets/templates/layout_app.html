@@ -1,0 +1,61 @@
+{{define "layout_app"}}<!doctype html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body class="min-h-dvh">
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<div x-data="shell" @keydown.escape.window="closeNav">
+  {{/* Mobile navigation: a slide-over, opened from the hamburger. */}}
+  <div x-show="navOpen" x-cloak class="relative z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+    <div class="fixed inset-0 bg-black/50" x-show="navOpen" x-transition.opacity @click="closeNav"></div>
+    <div class="fixed inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-line bg-surface shadow-pop"
+         x-show="navOpen"
+         x-transition:enter="transition duration-200 ease-out" x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0"
+         x-transition:leave="transition duration-150 ease-in" x-transition:leave-start="translate-x-0" x-transition:leave-end="-translate-x-full">
+      <div class="flex h-14 items-center justify-between px-4">
+        {{template "brand" .}}
+        <button type="button" x-ref="navClose" class="btn btn-ghost btn-icon" @click="closeNav" aria-label="Close navigation">{{icon "close" "size-5"}}</button>
+      </div>
+      {{template "nav" .NavMobile}}
+    </div>
+  </div>
+
+  {{/* Desktop sidebar. */}}
+  <aside class="hidden border-r border-line bg-surface lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:w-64 lg:flex-col">
+    <div class="flex h-14 items-center border-b border-line px-5">{{template "brand" .}}</div>
+    {{template "nav" .NavDesktop}}
+    <div class="border-t border-line px-5 py-3 text-xs text-fg-subtle">bitnews {{.Version}}</div>
+  </aside>
+
+  <div class="lg:pl-64">
+    <header class="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-surface/85 px-4 backdrop-blur sm:px-6">
+      <button type="button" class="btn btn-ghost btn-icon -ml-2 lg:hidden" @click="openNav" :aria-expanded="navOpen" aria-label="Open navigation">{{icon "menu" "size-5"}}</button>
+      <div class="lg:hidden">{{template "brand" .}}</div>
+      <div class="ml-auto flex items-center gap-3">
+        {{template "live_status" .}}
+        {{template "user_menu" .UserMenu}}
+      </div>
+    </header>
+
+    {{template "auth_banner" .}}
+
+    <main id="main" tabindex="-1" class="mx-auto w-full max-w-7xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8">
+      <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div class="min-w-0">
+          <h1 class="text-2xl">{{.Title}}</h1>
+          {{block "subtitle" .}}{{end}}
+        </div>
+        <div class="flex items-center gap-2">{{block "actions" .}}{{end}}</div>
+      </div>
+      {{template "content" .}}
+    </main>
+  </div>
+
+  {{template "toast_region" .}}
+  {{template "confirm_dialog" .}}
+</div>
+</body>
+</html>
+{{end}}

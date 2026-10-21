@@ -1,0 +1,10 @@
+{{/*
+  table_start / table_end: the card-like table shell. It collapses to a
+  card list below 768 px (.table-responsive): give every <td> a data-label.
+  Keys for table_start: Caption (visually hidden, required for a11y), Class.
+*/}}
+{{define "table_start"}}<div class="table-shell{{with .Class}} {{.}}{{end}}">
+  <table class="table table-responsive">
+    <caption class="sr-only">{{.Caption}}</caption>{{end}}
+{{define "table_end"}}  </table>
+</div>{{end}}
