@@ -68,7 +68,7 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/3) · [wiki]
 | M3-09 | [#36](https://gitlab.com/kyura4k/bitnews/-/issues/36) | Unpack guards — path traversal, entry types and size caps | area:postproc, ready-for-agent | done |
 | M3-10 | [#37](https://gitlab.com/kyura4k/bitnews/-/issues/37) | Cleanup and move to complete | area:postproc, ready-for-agent | done |
 | M3-11 | [#38](https://gitlab.com/kyura4k/bitnews/-/issues/38) | Compatibility spike — pure-Go unpack against real releases | area:postproc, ready-for-human | open |
-| M3-12 | [#66](https://gitlab.com/kyura4k/bitnews/-/issues/66) | 7z header memory guard | area:postproc, ready-for-agent | open |
+| M3-12 | [#66](https://gitlab.com/kyura4k/bitnews/-/issues/66) | 7z header memory guard | area:postproc, ready-for-agent | done |
 
 ### [M4 — SABnzbd adapter](m4-sabnzbd-adapter.md)
 
@@ -109,8 +109,8 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/6) · [wiki]
 
 | ID | Issue | Title | Labels | Status |
 |---|---|---|---|---|
-| M6-01 | [#58](https://gitlab.com/kyura4k/bitnews/-/issues/58) | Web foundation — templates, assets, CSP and CSRF wiring | area:ui, ready-for-agent | open |
-| M6-02 | [#59](https://gitlab.com/kyura4k/bitnews/-/issues/59) | Login and setup pages | area:ui, area:auth, ready-for-agent | open |
+| M6-01 | [#58](https://gitlab.com/kyura4k/bitnews/-/issues/58) | Web foundation — templates, assets, CSP and CSRF wiring | area:ui, ready-for-agent | done |
+| M6-02 | [#59](https://gitlab.com/kyura4k/bitnews/-/issues/59) | Login and setup pages | area:ui, area:auth, ready-for-agent | done |
 | M6-03 | [#60](https://gitlab.com/kyura4k/bitnews/-/issues/60) | Queue page with live SSE updates and actions | area:ui, ready-for-agent | open |
 | M6-04 | [#61](https://gitlab.com/kyura4k/bitnews/-/issues/61) | History page and Download detail | area:ui, ready-for-agent | open |
 | M6-05 | [#62](https://gitlab.com/kyura4k/bitnews/-/issues/62) | Settings — paths and Categories | area:ui, ready-for-agent | open |
