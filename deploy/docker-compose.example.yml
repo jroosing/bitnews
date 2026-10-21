@@ -34,6 +34,10 @@ services:
 
     ports:
       - "9494:9494"
+      # Torrent peers. There is no UPnP: forward this port on your router too.
+      # Change BITNEWS_TORRENT_PORT together with it.
+      - "51413:51413"
+      - "51413:51413/udp"
 
     environment:
       # The container starts as root and bitnews drops to PUID:PGID before it

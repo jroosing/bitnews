@@ -61,20 +61,6 @@ func (e *Engine) addPeerOnce(h core.InfoHash, addr string) error {
 	return nil
 }
 
-// BytesHashed is how many bytes the current incarnation of torrent h has
-// hashed; zero proves piece completion spared it a rehash.
-func (e *Engine) BytesHashed(h core.InfoHash) int64 {
-	ent, err := e.lookup(h)
-	if err != nil {
-		return -1
-	}
-	ent.mu.Lock()
-	t := ent.t
-	ent.mu.Unlock()
-	st := t.Stats()
-	return st.BytesHashed.Int64()
-}
-
 // CheckShareLimits runs one Share Limit check, as the ticker does.
 func (e *Engine) CheckShareLimits() { e.checkShareLimits() }
 
@@ -137,4 +123,17 @@ func (e *Engine) LocalPort() int { return e.cl.LocalPort() }
 func (e *Engine) ParseSpec(spec core.TorrentSpec) error {
 	_, _, err := e.parseSpec(spec)
 	return err
+}
+
+// ListenAddrs are the addresses the engine's peer listeners (TCP and uTP)
+// listen on.
+func (e *Engine) ListenAddrs() []net.Addr { return e.cl.ListenAddrs() }
+
+// DHTAddrs are the local addresses of the engine's DHT sockets.
+func (e *Engine) DHTAddrs() []net.Addr {
+	var out []net.Addr
+	for _, s := range e.cl.DhtServers() {
+		out = append(out, s.Addr())
+	}
+	return out
 }

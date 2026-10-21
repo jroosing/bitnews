@@ -94,6 +94,7 @@ func run(ctx context.Context, args []string, getenv func(string) (string, bool),
 		"listen", cfg.Listen,
 		"config_dir", cfg.ConfigDir,
 		"key_file", cfg.KeyFile,
+		"torrent_port", cfg.TorrentPort,
 	)
 	if err := serveAll(ctx, cfg, log, serve); err != nil {
 		fmt.Fprintf(stderr, "bitnews: %v\n", err)
@@ -128,6 +129,7 @@ func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve
 		DB: db, Key: key, Logger: log,
 		Version:           api.Version{Version: version, Commit: commit},
 		AdminPasswordFile: cfg.AdminPasswordFile,
+		Torrent:           daemon.TorrentOptions{Port: cfg.TorrentPort},
 		Tuning:            daemon.Tuning{SessionCleanup: sessionCleanupEvery},
 	})
 	if err != nil {

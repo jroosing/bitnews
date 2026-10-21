@@ -21,6 +21,7 @@ Only these settings live outside the database. A flag wins over its environment 
 | – | `PUID`, `PGID` | unset | Set both or neither. When started as root, drop to these ids. Setting them while not root is an error. |
 | – | `UMASK` | `002` | Octal, applied process-wide at startup. |
 | – | `BITNEWS_ADMIN_PASSWORD_FILE` | unset | Absolute path of a file holding the initial admin password; skips the setup screen. |
+| – | `BITNEWS_TORRENT_PORT` | `51413` | TCP and uTP port the torrent engine listens on, 1 to 65535. See [Torrent port](#torrent-port). |
 
 `bitnews --help` prints the same list and `bitnews --version` prints the version and commit.
 
@@ -41,11 +42,11 @@ The build stage compiles with `CGO_ENABLED=0` on the build host's own platform a
 Pinning is a hardening step. Tags are mutable; pin both base images to a digest for reproducible builds:
 
 ```sh
-docker buildx imagetools inspect golang:1.27.2                  # note "Digest: sha256:..."
+docker buildx imagetools inspect golang:1.27.3                  # note "Digest: sha256:..."
 docker buildx imagetools inspect gcr.io/distroless/static-debian12
 ```
 
-Then write `FROM golang:1.27.2@sha256:<digest>` and `FROM gcr.io/distroless/static-debian12@sha256:<digest>` in the `Dockerfile`. Distroless images are signed with cosign, and you can verify the one you pin (see the distroless README for the exact command). Renovate or Dependabot can keep the digests current.
+Then write `FROM golang:1.27.3@sha256:<digest>` and `FROM gcr.io/distroless/static-debian12@sha256:<digest>` in the `Dockerfile`. Distroless images are signed with cosign, and you can verify the one you pin (see the distroless README for the exact command). Renovate or Dependabot can keep the digests current.
 
 ### The master key
 
@@ -88,6 +89,21 @@ docker compose logs bitnews        # setup token
 ```
 
 Open `http://<host>:9494`. The healthcheck is inherited from the image.
+
+### Torrent port
+
+The torrent engine listens on `BITNEWS_TORRENT_PORT` (default `51413`) for TCP and uTP (UDP) and, with DHT on, uses the same UDP port. bitnews does **no UPnP or NAT-PMP port mapping**, ever. Peers can only reach you if you forward that port yourself (router: TCP and UDP to the host running bitnews). Without a forwarded port torrents still download and seed over the connections bitnews opens itself, only more slowly and to fewer peers.
+
+With Docker publish both protocols (the example compose file does):
+
+```yaml
+    ports:
+      - "9494:9494"
+      - "51413:51413"       # torrent peers, TCP
+      - "51413:51413/udp"   # torrent peers, uTP and DHT
+```
+
+If you change `BITNEWS_TORRENT_PORT`, change the published port with it. Behind a VPN container the forwarded port is the one your VPN provider gives you; set `BITNEWS_TORRENT_PORT` to it.
 
 ### PUID, PGID and UMASK
 
@@ -171,6 +187,8 @@ What bitnews checks behind a proxy:
 ### VPN
 
 bitnews does not set up a VPN. If you want its Usenet or torrent traffic to leave through one, run it in the network namespace of a VPN container such as gluetun: the commented variant in the compose example uses `network_mode: "service:gluetun"` and publishes the API port on the `gluetun` service. Provider, credentials, DNS and kill switch are the VPN container's configuration, and testing that they work is yours. Torrent peer traffic can additionally be bound to one interface (M5), which acts as a kill switch.
+
+Interface and address binding for Usenet and torrents, what it covers and what it does not (DNS), and the namespace test: [network-binding.md](network-binding.md).
 
 ### The `bitnews healthcheck` subcommand
 

@@ -1,0 +1,128 @@
+{
+  "name": "properties and files",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "seed": [
+    {
+      "op": "download",
+      "ref": "p",
+      "name": "Show.S03E01",
+      "state": "fetched",
+      "total": 3000,
+      "done": 3000,
+      "private": true,
+      "save_path": "{{torrent_dir}}/tv",
+      "content_path": "{{torrent_dir}}/tv/Show.S03E01"
+    },
+    {
+      "op": "files",
+      "ref": "p",
+      "files": [
+        {
+          "name": "Show.S03E01/a.mkv",
+          "size": 2000,
+          "progress": 1
+        },
+        {
+          "name": "Show.S03E01/a.nfo",
+          "size": 1000,
+          "progress": 1
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Sonarr/4.0.0.0"
+        },
+        "body": "username={{user}}&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^text/plain"
+        },
+        "body": "Ok."
+      },
+      "capture": {
+        "sid": "header:Set-Cookie:SID=([^;]+)"
+      }
+    },
+    {
+      "name": "properties",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/properties?hash={{hash.p}}",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "save_path": "{{torrent_dir}}/tv",
+          "total_size": 3000,
+          "is_private": true,
+          "seeding_time": 0,
+          "share_ratio": 0
+        }
+      }
+    },
+    {
+      "name": "files",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/files?hash={{hash.p}}",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "index": 0,
+            "name": "Show.S03E01/a.mkv",
+            "size": 2000,
+            "progress": 0.9999,
+            "priority": 1,
+            "is_seed": false
+          },
+          {
+            "index": 1,
+            "name": "Show.S03E01/a.nfo",
+            "size": 1000,
+            "progress": 0.9999
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown hash is 404",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/properties?hash=0000000000000000000000000000000000000000",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 404
+      }
+    }
+  ]
+}

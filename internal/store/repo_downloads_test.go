@@ -668,3 +668,47 @@ func TestDownloadRepoUpdateProgressDoesNotClobberAConcurrentEdit(t *testing.T) {
 	assert.Equal(t, core.StateQueued, got.State)
 	assert.EqualValues(t, 55, got.DoneBytes)
 }
+
+func TestDownloadRepoUpdateDisplayStoresNameAndTotalWithoutTouchingTheRest(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("magnet", 0)
+	d.Priority, d.Paused, d.QueuePosition = core.DownloadPriorityHigh, true, 3
+	createAll(t, repo, d)
+	before := time.Now().UTC().Add(-time.Second)
+
+	require.NoError(t, repo.UpdateDisplay(ctx, d.ID, "Ubuntu 26.04", 4096))
+
+	got, err := repo.Get(ctx, d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Ubuntu 26.04", got.Name)
+	assert.EqualValues(t, 4096, got.TotalBytes)
+	assert.Equal(t, core.DownloadPriorityHigh, got.Priority)
+	assert.True(t, got.Paused)
+	assert.Equal(t, 3, got.QueuePosition)
+	assert.Equal(t, d.State, got.State)
+	assert.True(t, got.UpdatedAt.After(before))
+}
+
+func TestDownloadRepoUpdateDisplayKeepsTheNameOrTotalWhenGivenNone(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("keep", 0)
+	d.TotalBytes = 100
+	createAll(t, repo, d)
+
+	require.NoError(t, repo.UpdateDisplay(ctx, d.ID, "", 0))
+
+	got, err := repo.Get(ctx, d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "keep", got.Name)
+	assert.EqualValues(t, 100, got.TotalBytes)
+}
+
+func TestDownloadRepoUpdateDisplayUnknownIDIsNotFound(t *testing.T) {
+	repo, _ := newDownloadRepo(t)
+
+	err := repo.UpdateDisplay(context.Background(), core.NewID(), "x", 1)
+
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}

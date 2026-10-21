@@ -24,12 +24,30 @@
 //     output, each only if it lies inside a configured root (never the root
 //     itself, never through a symlink).
 //
+// # Torrents
+//
+// Unless Deps.DisableTorrent is set, Build creates a torrent engine (or takes
+// Deps.TorrentEngine) and the torrent Queue runner of internal/torrent/runner
+// on top of it. The runner moves a Fetched torrent to its complete location
+// itself (the destination comes from finalize.Finisher.Destination), so the
+// Finisher of the torrent side, torrentFinisher, leaves a torrent the engine
+// has alone and returns its directory. DirFor for a torrent is the runner's
+// ContentDir, FetchReport answers with a zero report, and the data remover
+// holds the torrent runner and deletes the whole Download directory inside
+// the torrent roots. The Share Limit actions remove Downloads through the
+// DownloadService. The listen port comes from BITNEWS_TORRENT_PORT
+// (Deps.Torrent.Port); the sockets are bound as settings.network says.
+// A netbind.Killswitch per bound protocol pauses its Queue while the binding
+// is unavailable and resumes only what it paused. Sockets are not rebound
+// live: a change of the network settings logs a warning and needs a restart.
+//
 // # Lifecycle
 //
 // Run recovers interrupted work (Downloads left Fetching go back to Queued,
 // those left PostProcessing start again from the first stage), runs the
 // runner, the Post-processor and the session cleanup, and returns when ctx
-// ends and all of them have stopped. Serve orders a graceful shutdown: it
+// ends and all of them have stopped; the torrent engine, when Build made it, is
+// closed after them. Serve orders a graceful shutdown: it
 // stops the HTTP server first, then cancels the workers and waits for them.
 // The caller closes the database afterwards.
 package daemon

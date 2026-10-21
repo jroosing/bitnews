@@ -29,6 +29,10 @@ type errorBody struct {
 type errorDetail struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// ExistingID and ExistingName are set by duplicate_torrent: the Download
+	// that already has the torrent.
+	ExistingID   string `json:"existing_id,omitempty"`
+	ExistingName string `json:"existing_name,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
@@ -39,6 +43,13 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 // can act on come from the app layer; anything else is a bug or an outage,
 // logged with the request ID and reported generically.
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
+	if dup, ok := errors.AsType[app.ErrDuplicate](err); ok {
+		writeJSON(w, http.StatusConflict, errorBody{Error: errorDetail{
+			Code: "duplicate_torrent", Message: "a download with this torrent already exists",
+			ExistingID: string(dup.ExistingID), ExistingName: dup.Name,
+		}})
+		return
+	}
 	if appErr, ok := errors.AsType[*app.Error](err); ok {
 		writeError(w, statusOf(appErr.Kind), appErr.Code, appErr.Message)
 		return
@@ -68,6 +79,8 @@ func statusOf(kind error) int {
 		return http.StatusRequestEntityTooLarge
 	case errors.Is(kind, app.ErrUpstream):
 		return http.StatusBadGateway
+	case errors.Is(kind, app.ErrUnavailable):
+		return http.StatusServiceUnavailable
 	}
 	return http.StatusInternalServerError
 }

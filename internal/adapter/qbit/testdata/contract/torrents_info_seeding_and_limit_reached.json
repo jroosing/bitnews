@@ -1,0 +1,119 @@
+{
+  "name": "Ready torrents: uploading, stalledUP, pausedUP at the share limit and forcedUP",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "seed": [
+    {
+      "op": "download",
+      "ref": "seed",
+      "name": "Movie.2024.2160p",
+      "state": "ready",
+      "total": 1000,
+      "done": 1000,
+      "up_rate": 10,
+      "output_path": "{{torrent_dir}}/Movie.2024.2160p",
+      "limit_global": false,
+      "limit_ratio": 1.5,
+      "limit_s": 7200
+    },
+    {
+      "op": "download",
+      "ref": "idle",
+      "name": "Movie.2023.1080p",
+      "state": "ready",
+      "total": 1000,
+      "done": 1000,
+      "output_path": "{{torrent_dir}}/Movie.2023.1080p"
+    },
+    {
+      "op": "download",
+      "ref": "limit",
+      "name": "Movie.2022.1080p",
+      "state": "ready",
+      "total": 1000,
+      "done": 1000,
+      "output_path": "{{torrent_dir}}/Movie.2022.1080p",
+      "engine_paused": true
+    },
+    {
+      "op": "download",
+      "ref": "forced",
+      "name": "Movie.2021.1080p",
+      "state": "ready",
+      "total": 1000,
+      "done": 1000,
+      "output_path": "{{torrent_dir}}/Movie.2021.1080p",
+      "priority": "force"
+    }
+  ],
+  "steps": [
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Sonarr/4.0.0.0"
+        },
+        "body": "username={{user}}&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^text/plain"
+        },
+        "body": "Ok."
+      },
+      "capture": {
+        "sid": "header:Set-Cookie:SID=([^;]+)"
+      }
+    },
+    {
+      "name": "info",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?sort=added_on",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "hash": "{{hash.seed}}",
+            "state": "uploading",
+            "progress": 1,
+            "ratio_limit": 1.5,
+            "seeding_time_limit": 120,
+            "max_ratio": 1.5,
+            "max_seeding_time": 120,
+            "category": ""
+          },
+          {
+            "hash": "{{hash.idle}}",
+            "state": "stalledUP",
+            "progress": 1,
+            "ratio_limit": -2,
+            "seeding_time_limit": -2
+          },
+          {
+            "hash": "{{hash.limit}}",
+            "state": "pausedUP",
+            "progress": 1
+          },
+          {
+            "hash": "{{hash.forced}}",
+            "state": "forcedUP",
+            "progress": 1,
+            "force_start": true
+          }
+        ]
+      }
+    }
+  ]
+}

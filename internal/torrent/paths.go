@@ -2,7 +2,6 @@ package torrent
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,17 @@ import (
 
 // ErrInvalidMetainfo is returned for torrents that are malformed or exceed
 // the engine's limits (file count, piece count, piece length).
-var ErrInvalidMetainfo = errors.New("torrent: invalid metainfo")
+//
+// It also matches core.ErrInvalidTorrentSpec under errors.Is, so code that
+// does not import this package can tell an unusable torrent from a transient
+// failure.
+var ErrInvalidMetainfo error = invalidMetainfoError{}
+
+type invalidMetainfoError struct{}
+
+func (invalidMetainfoError) Error() string { return "torrent: invalid metainfo" }
+
+func (invalidMetainfoError) Is(target error) bool { return target == core.ErrInvalidTorrentSpec }
 
 // maxPieceLength bounds a torrent's piece length. Real torrents stay well
 // below 64 MiB.
@@ -100,6 +109,34 @@ func truncate(s string, n int) string {
 	return strings.ToValidUTF8(s[:n], "?") + "..."
 }
 
+// reservedNames are names bitnews creates or replaces itself next to a
+// torrent's files. Unpack replaces "_unpack", so a torrent that owned that
+// name would have its own files deleted while they are being seeded.
+var reservedNames = map[string]struct{}{
+	"_unpack":       {},
+	"_unpack.tmp":   {},
+	".bitnews-done": {},
+}
+
+// checkReserved refuses a file whose top-level name, as seen from the
+// content directory, is one of reservedNames. The content directory is the
+// torrent's root directory for a multi-file torrent, and the download
+// directory for a single-file torrent; the download directory also holds
+// bitnews' marker, so the torrent's own name is checked too.
+func checkReserved(info *metainfo.Info, slash string) error {
+	parts := strings.Split(slash, "/")
+	names := parts[:1]
+	if info.IsDir() && len(parts) > 1 {
+		names = parts[:2]
+	}
+	for _, n := range names {
+		if _, bad := reservedNames[strings.ToLower(n)]; bad {
+			return fmt.Errorf("%w: %q is a name bitnews keeps for itself", ErrInvalidMetainfo, truncate(n, 64))
+		}
+	}
+	return nil
+}
+
 // torrentPaths returns the path of every file of info (in torrent order),
 // relative to dir and slash-separated. It fails if any file name cannot be
 // made safe, if two files would share a path (including paths that differ
@@ -123,6 +160,9 @@ func torrentPaths(dir string, info *metainfo.Info) ([]string, error) {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidMetainfo, err)
 		}
 		slash := filepath.ToSlash(rel)
+		if err := checkReserved(info, slash); err != nil {
+			return nil, err
+		}
 		key := strings.ToLower(slash)
 		if _, dup := seen[key]; dup {
 			return nil, fmt.Errorf("%w: two files map to %q", ErrInvalidMetainfo, slash)

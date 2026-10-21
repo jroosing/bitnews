@@ -1,0 +1,229 @@
+{
+  "name": "category, hashes, paging and sorting",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "seed": [
+    {
+      "op": "category",
+      "name": "tv"
+    },
+    {
+      "op": "category",
+      "name": "movies"
+    },
+    {
+      "op": "download",
+      "ref": "a",
+      "name": "A.Show",
+      "state": "queued",
+      "category": "tv"
+    },
+    {
+      "op": "download",
+      "ref": "b",
+      "name": "B.Movie",
+      "state": "queued",
+      "category": "movies"
+    },
+    {
+      "op": "download",
+      "ref": "c",
+      "name": "C.Show",
+      "state": "queued",
+      "category": "tv"
+    },
+    {
+      "op": "download",
+      "ref": "d",
+      "name": "D.Plain",
+      "state": "queued"
+    }
+  ],
+  "steps": [
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Sonarr/4.0.0.0"
+        },
+        "body": "username={{user}}&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^text/plain"
+        },
+        "body": "Ok."
+      },
+      "capture": {
+        "sid": "header:Set-Cookie:SID=([^;]+)"
+      }
+    },
+    {
+      "name": "category=tv",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?category=tv",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "name": "A.Show"
+          },
+          {
+            "name": "C.Show"
+          }
+        ]
+      }
+    },
+    {
+      "name": "uncategorised",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?category=",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "name": "D.Plain"
+          }
+        ]
+      }
+    },
+    {
+      "name": "hashes",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?hashes={{hash.b}}|{{hash.d}}",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "name": "B.Movie"
+          },
+          {
+            "name": "D.Plain"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no match",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?category=nope",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": []
+      }
+    },
+    {
+      "name": "sort and page",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?sort=name&reverse=true&limit=2&offset=1",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "name": "C.Show"
+          },
+          {
+            "name": "B.Movie"
+          }
+        ]
+      }
+    },
+    {
+      "name": "filter downloading",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?filter=downloading",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "name": "A.Show"
+          },
+          {
+            "name": "B.Movie"
+          },
+          {
+            "name": "C.Show"
+          },
+          {
+            "name": "D.Plain"
+          }
+        ]
+      }
+    },
+    {
+      "name": "filter completed",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?filter=completed",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": []
+      }
+    }
+  ]
+}

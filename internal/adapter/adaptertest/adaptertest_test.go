@@ -179,3 +179,41 @@ func TestCheckPlainTextBodies(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, strings.Contains(strings.Join(diffs, "\n"), `body: want "Fails.", got "Ok."`), diffs)
 }
+
+func TestCaptureReadsAResponseHeaderWithARegexp(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login" {
+			http.SetCookie(w, &http.Cookie{Name: "other", Value: "no"})
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "abc123", Path: "/", HttpOnly: true})
+			return
+		}
+		_, _ = io.WriteString(w, "cookie="+r.Header.Get("Cookie"))
+	})
+	fx := loadOne(t, `{"name":"n","provenance":"p","steps":[
+	  {"request":{"method":"POST","target":"/login"},"response":{"status":200},
+	   "capture":{"sid":"header:Set-Cookie:SID=([^;]+)"}},
+	  {"request":{"method":"GET","target":"/x","headers":{"Cookie":"SID={{sid}}"}},
+	   "response":{"status":200,"body":"cookie=SID=abc123"}}]}`)
+
+	diffs, err := adaptertest.Check(h, fx, nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, diffs)
+
+	bad := loadOne(t, `{"name":"n","provenance":"p","steps":[
+	  {"request":{"method":"POST","target":"/login"},"response":{"status":200},"capture":{"x":"header:Set-Cookie:NOPE=(.*)"}}]}`)
+	_, err = adaptertest.Check(h, bad, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no header Set-Cookie matches")
+}
+
+func TestExpectedObjectKeysAreSubstituted(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `{"torrents":{"abc":{"n":1}}}`) })
+	fx := loadOne(t, `{"name":"n","provenance":"p","steps":[
+	  {"request":{"method":"GET","target":"/"},"response":{"status":200,"json":{"torrents":{"{{hash}}":{"n":1}}}}}]}`)
+
+	diffs, err := adaptertest.Check(h, fx, map[string]string{"hash": "abc"})
+
+	require.NoError(t, err)
+	assert.Empty(t, diffs)
+}

@@ -125,3 +125,42 @@ func TestSettingsRepoLoadFillsFieldsMissingFromStoredJSONWithDefaults(t *testing
 	want.Queues.Usenet = 4
 	assert.Equal(t, want, got)
 }
+
+func TestSettingsRepoLoadKeepsTheSeedingDefaultsForSettingsStoredBeforeTheyExisted(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newSettingsRepo(t)
+	_, err := db.Writer().ExecContext(ctx,
+		`INSERT INTO settings (key, value, updated_at) VALUES ('settings', '{"seeding":{"ratio_limit":2}}', 0)`)
+	require.NoError(t, err)
+
+	got, err := repo.Load(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, core.SeedingSettings{RatioLimit: 2, Action: core.SeedingActionPause}, got.Seeding)
+}
+
+func TestSettingsRepoLoadsSettingsStoredBeforeNetworkBindingExistedWithBindingOff(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newSettingsRepo(t)
+	_, err := db.Writer().ExecContext(ctx,
+		`INSERT INTO settings (key, value, updated_at) VALUES ('settings', '{"queues":{"usenet":3,"torrent":5}}', 0)`)
+	require.NoError(t, err)
+
+	got, err := repo.Load(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, core.NetworkSettings{}, got.Network)
+}
+
+func TestSettingsRepoSaveThenLoadKeepsTheNetworkBinding(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newSettingsRepo(t)
+	s := core.DefaultSettings()
+	s.Network.Torrent = core.ProtocolBinding{Interface: "wg0", Address: "10.2.0.2"}
+
+	require.NoError(t, repo.Save(ctx, s))
+	got, err := repo.Load(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, s.Network, got.Network)
+}

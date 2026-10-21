@@ -413,6 +413,7 @@ func TestUsageDocumentsEveryBootstrapOption(t *testing.T) {
 		"PUID", "PGID",
 		"UMASK", "002",
 		"BITNEWS_ADMIN_PASSWORD_FILE",
+		"BITNEWS_TORRENT_PORT", "51413",
 	} {
 		assert.Contains(t, got, want)
 	}
@@ -423,4 +424,31 @@ func TestLoadPlacesTheDefaultKeyFileInsideAnExplicitConfigDir(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "/config/bitnews.key", cfg.KeyFile)
+}
+
+func TestLoadTorrentPortDefaultsTo51413(t *testing.T) {
+	cfg, err := bootstrap.Load(nil, env(devEnv()))
+	require.NoError(t, err)
+	assert.Equal(t, 51413, cfg.TorrentPort)
+}
+
+func TestLoadTorrentPortFromTheEnvironment(t *testing.T) {
+	vars := devEnv()
+	vars["BITNEWS_TORRENT_PORT"] = "6881"
+	cfg, err := bootstrap.Load(nil, env(vars))
+	require.NoError(t, err)
+	assert.Equal(t, 6881, cfg.TorrentPort)
+}
+
+func TestLoadRejectsAnInvalidTorrentPort(t *testing.T) {
+	for _, v := range []string{"0", "65536", "-1", "abc", "51413.5", "1 2"} {
+		t.Run(v, func(t *testing.T) {
+			vars := devEnv()
+			vars["BITNEWS_TORRENT_PORT"] = v
+			_, err := bootstrap.Load(nil, env(vars))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "BITNEWS_TORRENT_PORT")
+			assert.Contains(t, err.Error(), "1 to 65535")
+		})
+	}
 }

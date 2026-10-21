@@ -205,3 +205,14 @@ func TestHostileNamesDownloadIntoTheSanitizedPathsOnly(t *testing.T) {
 		assert.Equal(t, body, got)
 	}
 }
+
+func TestInvalidMetainfoMatchesTheCoreInvalidSpecError(t *testing.T) {
+	t.Parallel()
+	e := newEngine(t)
+
+	_, err := e.Add(context.Background(), core.TorrentSpec{Metainfo: []byte("not bencode"), StorageDir: t.TempDir()})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, torrent.ErrInvalidMetainfo)
+	assert.ErrorIs(t, err, core.ErrInvalidTorrentSpec, "callers outside this package classify it without importing the adapter")
+}

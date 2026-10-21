@@ -57,7 +57,7 @@ func Check(h http.Handler, fx *Fixture, vars map[string]string) (diffs []string,
 			diffs = append(diffs, label+" "+d)
 		}
 		for _, name := range sortedStrings(step.Capture) {
-			v, err := lookup(got, step.Capture[name])
+			v, err := capture(got, rec, step.Capture[name])
 			if err != nil {
 				return nil, fmt.Errorf("%s: capture %s: %w", label, name, err)
 			}
@@ -235,12 +235,44 @@ func substJSON(v any, vars map[string]string) (any, error) {
 			}
 		}
 	case map[string]any:
-		for k := range x {
-			var err error
-			if x[k], err = substJSON(x[k], vars); err != nil {
+		// Keys are substituted too, so an object keyed by an id ({{hash.a}})
+		// can be matched.
+		out := make(map[string]any, len(x))
+		for k, val := range x {
+			nk, err := subst(k, vars)
+			if err != nil {
+				return nil, err
+			}
+			if out[nk], err = substJSON(val, vars); err != nil {
 				return nil, err
 			}
 		}
+		return out, nil
 	}
 	return v, nil
+}
+
+// capture reads a captured value from the response: a JSON path like
+// "$.nzo_ids[0]", or "header:Name:REGEX" for a response header (the first
+// capture group of the first match over all values of the header, or the
+// whole match without a group), such as "header:Set-Cookie:SID=([^;]+)".
+func capture(got any, rec *httptest.ResponseRecorder, spec string) (string, error) {
+	rest, ok := strings.CutPrefix(spec, "header:")
+	if !ok {
+		return lookup(got, spec)
+	}
+	name, pattern, ok := strings.Cut(rest, ":")
+	if !ok {
+		return "", fmt.Errorf("capture %q: want header:Name:REGEX", spec)
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return "", fmt.Errorf("capture %q: %w", spec, err)
+	}
+	for _, v := range rec.Header().Values(name) {
+		if m := re.FindStringSubmatch(v); m != nil {
+			return m[len(m)-1], nil
+		}
+	}
+	return "", fmt.Errorf("capture %q: no header %s matches", spec, name)
 }

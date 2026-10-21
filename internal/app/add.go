@@ -54,13 +54,20 @@ type AddService struct {
 	settings SettingsReader
 	opts     options
 	client   *http.Client
+	// anyClient fetches a URL that may turn out to be an NZB, a .torrent or
+	// a redirect to a magnet link: its redirect policy lets a redirect to a
+	// "magnet:" URI end the fetch instead of failing it.
+	anyClient *http.Client
 }
 
 // NewAddService returns an AddService. Downloads are created through ds, so
 // they share its locking and its repositories.
 func NewAddService(ds *DownloadService, sources core.DownloadSourceRepo, settings SettingsReader, opts ...Option) *AddService {
 	o := newOptions(opts)
-	return &AddService{ds: ds, sources: sources, settings: settings, opts: o, client: newFetchClient(o)}
+	c := newFetchClient(o)
+	anyClient := *c
+	anyClient.CheckRedirect = checkRedirectOrMagnet
+	return &AddService{ds: ds, sources: sources, settings: settings, opts: o, client: c, anyClient: &anyClient}
 }
 
 // AddRequest describes the Download to create from a StagedNZB.

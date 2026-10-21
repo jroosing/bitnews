@@ -205,6 +205,19 @@ func (r *DownloadRepo) UpdateProgress(ctx context.Context, id core.ID, doneBytes
 	return mapExec("update download progress", res, err)
 }
 
+// UpdateDisplay stores name (when it is not empty) and total_bytes (when
+// totalBytes is positive) and refreshes updated_at in one statement, leaving
+// every other column as it is.
+func (r *DownloadRepo) UpdateDisplay(ctx context.Context, id core.ID, name string, totalBytes int64) error {
+	res, err := r.db.Writer().ExecContext(ctx,
+		`UPDATE downloads SET updated_at = ?,
+			name = CASE WHEN ? <> '' THEN ? ELSE name END,
+			total_bytes = CASE WHEN ? > 0 THEN ? ELSE total_bytes END
+		WHERE id = ?`,
+		toMillis(time.Now()), name, name, totalBytes, totalBytes, string(id))
+	return mapExec("update download display", res, err)
+}
+
 // Delete removes the Download.
 func (r *DownloadRepo) Delete(ctx context.Context, id core.ID) error {
 	res, err := r.db.Writer().ExecContext(ctx, `DELETE FROM downloads WHERE id = ?`, string(id))

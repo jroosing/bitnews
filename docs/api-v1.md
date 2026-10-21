@@ -39,7 +39,7 @@ While first-run setup is open, every route except `POST /setup` and `GET /health
 | GET | `/api/v1/auth/session` | session | | `200 {"auth_mode":"session\|bypass\|disabled","csrf_token","user":{"id","username"}\|null}` |
 | GET | `/api/v1/version` | read | | `200 {"version","commit","go_version"}` |
 | GET | `/api/v1/downloads` | read | query: `state`, `category_id`, `kind` (`nzb`\|`torrent`), `limit` (1 to 200), `after` | `200 {"items":[Download],"next":"cursor"\|null}` |
-| POST | `/api/v1/downloads` | write | multipart upload or `{"url",...}`, see [Adding a Download](#adding-a-download) | `201 Download`; `400 invalid_nzb`, `unknown_category`, `invalid_priority`, `invalid_url`; `413 nzb_too_large`; `415`; `502 fetch_failed` |
+| POST | `/api/v1/downloads` | write | multipart upload (`nzb` or `torrent`) or `{"url",...}` or `{"magnet",...}`, see [Adding a Download](#adding-a-download) | `201 Download`; `400 invalid_nzb`, `invalid_torrent`, `invalid_magnet`, `unknown_category`, `invalid_priority`, `invalid_url`; `409 duplicate_torrent`; `413 nzb_too_large`, `torrent_too_large`; `415`; `502 fetch_failed`; `503 torrents_unavailable` |
 | GET | `/api/v1/downloads/{id}` | read | | `200 Download` |
 | POST | `/api/v1/downloads/{id}/pause` | write | | `200 Download`; `409 not_pausable` once Fetched |
 | POST | `/api/v1/downloads/{id}/resume` | write | | `200 Download` |
@@ -118,16 +118,20 @@ The password is never returned: `has_password` says whether one is stored. `pass
 ```json
 {"queues":{"usenet":1,"torrent":5},
  "auth":{"disable_auth":false,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":[]},
- "paths":{"usenet":{"incomplete":"…","complete":"…"},"torrent":{"incomplete":"…","complete":"…"}}}
+ "paths":{"usenet":{"incomplete":"…","complete":"…"},"torrent":{"incomplete":"…","complete":"…"}},
+ "network":{"usenet":{"interface":"","address":""},"torrent":{"interface":"","address":""}},
+ "seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0}}
 ```
+
+`network` is described in [network-binding.md](network-binding.md); a change needs a restart. `seeding` holds the global **Share Limit** defaults for torrents: `ratio_limit` (uploaded bytes divided by the torrent size) and `seeding_time_minutes`, where zero or less means no limit (the default: like qBittorrent, bitnews does not stop seeding on its own unless you or a media manager ask it to), and `action`, what happens when either is reached: `pause` (default; the torrent stops uploading and the Download stays Ready, so Sonarr and Radarr remove it), `remove` (delete the Download, keep its files) or `remove_data` (delete both). A Download can have its own limit, which wins. Settings stored without the key load with the defaults.
 
 ### Adding a Download
 
-`POST /api/v1/downloads` creates a Download from an NZB, in state `queued` at the end of the Usenet queue, and answers `201` with the Download. It takes one of two bodies; any other `Content-Type` is `415 unsupported_media_type`.
+`POST /api/v1/downloads` creates a Download from an NZB, in state `queued` at the end of the Usenet queue, or from a torrent (see [Adding a torrent](#adding-a-torrent)), and answers `201` with the Download. It takes one of two bodies; any other `Content-Type` is `415 unsupported_media_type`.
 
-**Upload** (`multipart/form-data`): the file in part `nzb`, plus optional text parts `name`, `category_id`, `priority`, `password` and `paused` (`true`/`false`). The parts may come in any order. An unknown or repeated part, or a text part over 4 KiB, is `400`. The upload is streamed to disk and parsed on the way, never held in memory whole; the NZB may be up to 64 MiB (`413 nzb_too_large`; the whole request is capped a little above that).
+**Upload** (`multipart/form-data`): the file in part `nzb` (or `torrent`, see below), plus optional text parts `name`, `category_id`, `priority`, `password` and `paused` (`true`/`false`). The parts may come in any order. An unknown or repeated part, or a text part over 4 KiB, is `400`. The upload is streamed to disk and parsed on the way, never held in memory whole; the NZB may be up to 64 MiB (`413 nzb_too_large`; the whole request is capped a little above that).
 
-**URL** (`application/json`): `{"url":"…","name":"…","category_id":"…","priority":"…","password":"…","paused":false}`. The daemon fetches the NZB at once, within the request:
+**URL** (`application/json`): `{"url":"…","name":"…","category_id":"…","priority":"…","password":"…","paused":false}`. The daemon fetches the NZB (or torrent, see below) at once, within the request:
 
 - `http` and `https` only, also for redirects; at most 5 redirects; 30 seconds in total, body included; at most 64 MiB. A failure is `502 fetch_failed` (a timeout, a refused connection, too many redirects, a redirect to another scheme, an answer other than `200`), an oversize NZB is `413 nzb_too_large`, content that is not an NZB is `400 invalid_nzb`.
 - The request carries no cookies, no `Authorization` header and no proxy: only credentials written in the URL itself are used. It sends a `bitnews` `User-Agent`.
@@ -143,6 +147,24 @@ How the fields are resolved:
 - The NZB is kept as `<usenet incomplete>/<download id>/<name>.nzb` (mode `0600`; the file name goes through `fsutil.SafeName`). `total_bytes` is the size of all files except PAR2 recovery volumes, which are fetched only when repair needs them.
 - The Download is stored as `added`, then its source, and only then moved to `queued`, so a Usenet runner never sees a `queued` Download without its NZB. `download_added` is published after that, with the `queued` Download. If any step fails the Download and its files are removed.
 - An NZB that does not parse is `400 invalid_nzb`, and nothing is left on disk. The same goes for any failure after the upload started.
+
+### Adding a torrent
+
+The same route creates a torrent Download, at the end of the **torrent** queue (its `queue_position` is independent of the Usenet queue). There are three forms:
+
+- **Upload:** the `.torrent` file in the multipart part `torrent` (at most 10 MiB, else `413 torrent_too_large`), with the same optional text parts as for an NZB (`password` is accepted and ignored). Send either an `nzb` or a `torrent` part, not both (`400 multiple_sources`).
+- **Magnet:** `{"magnet":"magnet:?xt=urn:btih:…","name":"…","category_id":"…","priority":"…","paused":false}`.
+- **URL:** `{"url":"…"}` as for an NZB. The daemon decides from what it receives: a body that starts with `d` (bencode) is a torrent, anything else is parsed as an NZB. If the server answers with a redirect to a `magnet:` URI (what Prowlarr and Jackett do for releases that only have a magnet link) the fetch ends there and the link is added as a magnet; the link is not fetched. All other redirects are as for an NZB (http and https only, at most 5). The 10 MiB cap applies to a torrent, the 64 MiB one to an NZB. Give either `url` or `magnet`, not both (`400 ambiguous_source`).
+
+What the daemon does with it:
+
+- A `.torrent` file is parsed with the same checks the torrent engine applies (size cap, at most 100000 files, at most 4 Mi pieces, a piece length of at most 256 MiB, a size that fits the number of pieces, v1 data) and every file name goes through `fsutil.SafeName` and `SafeJoin`. A file that does not parse, or has names that cannot be made safe or that collide (`..`, empty components, two files with one path, also differing only in case, a file that is also a directory), is `400 invalid_torrent`, and nothing is written to disk.
+- A magnet link needs a `btih` info hash (40 hex or 32 base32 characters; a `btmh` v2 hash may come with it, a v2-only link is refused). `tr` and `dn` are read; `xs` and `as` are ignored. Over 8 KiB, or malformed, is `400 invalid_magnet`. The link is stored **encrypted** (it may carry a tracker passkey) and is never logged or echoed in an error.
+- The `.torrent` file is kept as `<torrent incomplete>/<download id>/<name>.torrent` (mode `0600`). That directory is the Download directory; the torrent's data goes below it. A magnet writes no files until its metadata has arrived.
+- `name`: the request, else the torrent's own name (a magnet's `dn`), else the uploaded file's name without `.torrent`, else `torrent-<id>`. `total_bytes` is the size of all files, and `0` for a magnet until its metadata arrives. `category_id`, `priority` and `paused` are as for an NZB; there is no category taken from the torrent.
+- A `.torrent` Download is stored as `added`, then its source (the info hash, the file path, the sealed magnet), and then moved to `queued`; a magnet moves to `fetching_metadata` instead. `download_added` is published last, with that state. If any step fails the Download and its files are removed.
+- **Duplicates:** a Download that already has the same info hash makes the request `409 duplicate_torrent`, with the existing Download in the error: `{"error":{"code":"duplicate_torrent","message":"…","existing_id":"<id>","existing_name":"…"}}`. Nothing is added and the new files are removed. Trackers are not merged.
+- Without torrent support configured the torrent forms are `503 torrents_unavailable`; NZBs are unaffected.
 
 ### Paging
 
@@ -184,3 +206,7 @@ data: { …Download… }
 - **`Last-Event-ID` is not supported.** Events are not persisted, so nothing is replayed: refetch the state after every (re)connect. The stream sends no `id:` field.
 - The stream ends when the client disconnects or the server shuts down. The server's write timeout does not apply to it; each single write is limited to 30 seconds, so a client that stops reading is dropped.
 - Authentication is the same as for the other `read` routes. A browser `EventSource` sends the session cookie. Scripts send an API key header.
+
+### qBittorrent adapter
+
+`/api/v2/` is the qBittorrent WebUI API v2 emulation; see [adapters-qbit.md](adapters-qbit.md).

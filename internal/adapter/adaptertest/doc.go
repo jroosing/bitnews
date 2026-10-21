@@ -22,7 +22,11 @@
 //	  ]
 //	}
 //
-// {{name}} in a request or in an expected string is replaced by a variable:
+// A capture is a JSON path of the response body, or "header:Name:REGEX": the
+// first capture group of the regular expression over the values of the
+// response header (for example "header:Set-Cookie:SID=([^;]+)").
+//
+// {{name}} in a request, in an expected string or in an expected object key is replaced by a variable:
 // the ones the seeding returns, and the ones earlier steps captured.
 //
 // Matchers, written as expected string values in "json" (and header values):

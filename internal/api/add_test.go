@@ -72,6 +72,8 @@ func newAddEnv(t *testing.T, opts ...envOption) (*env, string) {
 	s := e.settings.Current()
 	s.Paths.Usenet.Incomplete = filepath.Join(root, "incomplete")
 	s.Paths.Usenet.Complete = filepath.Join(root, "complete")
+	s.Paths.Torrent.Incomplete = filepath.Join(root, "torrents-incomplete")
+	s.Paths.Torrent.Complete = filepath.Join(root, "torrents-complete")
 	require.NoError(t, e.settings.Update(context.Background(), s))
 	return e, s.Paths.Usenet.Incomplete
 }

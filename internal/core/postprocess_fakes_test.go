@@ -109,6 +109,23 @@ func (r *ppRepo) UpdateProgress(_ context.Context, id core.ID, done, total int64
 	return nil
 }
 
+func (r *ppRepo) UpdateDisplay(_ context.Context, id core.ID, name string, total int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d, ok := r.m[id]
+	if !ok {
+		return core.ErrNotFound
+	}
+	if name != "" {
+		d.Name = name
+	}
+	if total > 0 {
+		d.TotalBytes = total
+	}
+	r.m[id] = d
+	return nil
+}
+
 func (r *ppRepo) Delete(_ context.Context, id core.ID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

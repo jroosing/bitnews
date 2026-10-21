@@ -103,6 +103,14 @@ type e2e struct {
 	apiKey     string
 	logs       *syncBuf
 	tune       daemon.Tuning
+	// torrents turns the torrent side on (it is off in the Usenet tests).
+	torrents bool
+	// torrentOpts configures the engine Build makes when none is injected.
+	torrentOpts daemon.TorrentOptions
+	// engine is the torrent engine to inject when torrents is on.
+	engine core.TorrentEngine
+	// tincomplete and tcomplete are the torrent roots.
+	tincomplete, tcomplete string
 
 	mu      sync.Mutex
 	servers map[string]*fakeNNTP
@@ -125,9 +133,11 @@ func newE2E(t *testing.T, opts ...e2eOption) *e2e {
 	zero := uint64(0)
 	e := &e2e{
 		t: t, root: root,
-		incomplete: filepath.Join(root, "usenet", "incomplete"),
-		complete:   filepath.Join(root, "usenet", "complete"),
-		logs:       &syncBuf{}, servers: map[string]*fakeNNTP{}, ids: map[string]core.ID{},
+		incomplete:  filepath.Join(root, "usenet", "incomplete"),
+		complete:    filepath.Join(root, "usenet", "complete"),
+		tincomplete: filepath.Join(root, "torrents", "incomplete"),
+		tcomplete:   filepath.Join(root, "torrents", "complete"),
+		logs:        &syncBuf{}, servers: map[string]*fakeNNTP{}, ids: map[string]core.ID{},
 		key: store.GenerateKey(),
 		tune: daemon.Tuning{
 			PollInterval: 20 * time.Millisecond, SaveInterval: 25 * time.Millisecond,
@@ -135,6 +145,8 @@ func newE2E(t *testing.T, opts ...e2eOption) *e2e {
 			Backoff:   func(int) time.Duration { return 0 },
 			FreeSpace: func(string) (uint64, error) { return 1 << 40, nil }, MinFree: &zero,
 			PostProcPollInterval: 30 * time.Millisecond, SessionCleanup: time.Hour,
+			TorrentSampleInterval: 20 * time.Millisecond, TorrentPersistInterval: 30 * time.Millisecond,
+			TorrentLimitInterval: 50 * time.Millisecond,
 		},
 		client: &http.Client{Transport: &http.Transport{DisableKeepAlives: true}, Timeout: 30 * time.Second},
 	}
@@ -154,6 +166,7 @@ func newE2E(t *testing.T, opts ...e2eOption) *e2e {
 
 	settings := core.DefaultSettings()
 	settings.Paths.Usenet = core.Roots{Incomplete: e.incomplete, Complete: e.complete}
+	settings.Paths.Torrent = core.Roots{Incomplete: e.tincomplete, Complete: e.tcomplete}
 	require.NoError(t, store.NewSettingsRepo(e.db).Save(ctx, settings))
 	require.NoError(t, store.NewUserRepo(e.db).Create(ctx, core.User{
 		ID: core.NewID(), Username: "admin", PasswordHash: sharedAdminHash(t), CreatedAt: time.Now(),
@@ -198,7 +211,7 @@ func (e *e2e) build() *daemon.Daemon {
 	logger := slog.New(slog.NewTextHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	d, err := daemon.Build(context.Background(), daemon.Deps{
 		DB: e.db, Key: e.key, Logger: logger, Version: api.Version{Version: "test", Commit: "test"},
-		Factory: e.factory, Prober: okProber{}, Tuning: e.tune,
+		Factory: e.factory, Prober: okProber{}, Tuning: e.tune, DisableTorrent: !e.torrents, TorrentEngine: e.engine, Torrent: e.torrentOpts,
 	})
 	require.NoError(e.t, err)
 	return d

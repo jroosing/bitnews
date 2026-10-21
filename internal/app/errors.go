@@ -18,6 +18,27 @@ var ErrTooLarge = errors.New("too large")
 // called, such as the server an NZB URL points at.
 var ErrUpstream = errors.New("upstream failure")
 
+// ErrUnavailable is the Kind of an Error for a feature this instance is not
+// set up for, such as adding torrents without a torrent source store.
+var ErrUnavailable = errors.New("unavailable")
+
+// ErrDuplicate is returned by AddTorrent when a Download with the same info
+// hash already exists. It matches core.ErrConflict (errors.Is) and is
+// extracted with errors.As(err, &dup) for a dup of type ErrDuplicate.
+type ErrDuplicate struct {
+	// ExistingID is the Download that already has the torrent.
+	ExistingID core.ID
+	// Name is that Download's name, empty if it could not be read.
+	Name string
+}
+
+func (e ErrDuplicate) Error() string {
+	return fmt.Sprintf("app: duplicate_torrent: the torrent is already download %s", e.ExistingID)
+}
+
+// Is makes an ErrDuplicate match core.ErrConflict.
+func (e ErrDuplicate) Is(target error) bool { return target == core.ErrConflict }
+
 // Error is a failure a client can act on. Kind says which class it belongs
 // to and is matched by errors.Is: ErrInvalidInput, core.ErrConflict or
 // core.ErrNotFound. Code is a stable snake_case identifier and Message is
@@ -47,4 +68,8 @@ func tooLarge(code, format string, args ...any) error {
 
 func upstream(code, format string, args ...any) error {
 	return &Error{Kind: ErrUpstream, Code: code, Message: fmt.Sprintf(format, args...)}
+}
+
+func unavailable(code, format string, args ...any) error {
+	return &Error{Kind: ErrUnavailable, Code: code, Message: fmt.Sprintf(format, args...)}
 }

@@ -372,7 +372,7 @@ func TestAddByURLRedactsTheAPIKeyInEveryLog(t *testing.T) {
 	logs := e.log.String()
 	assert.NotContains(t, logs, urlSecret)
 	assert.Contains(t, logs, "nzb fetched")
-	assert.Contains(t, logs, "nzb fetch failed")
+	assert.Contains(t, logs, "fetch failed")
 	assert.Contains(t, logs, "apikey=")
 }
 

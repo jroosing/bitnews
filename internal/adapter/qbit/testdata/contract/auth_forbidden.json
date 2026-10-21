@@ -1,0 +1,53 @@
+{
+  "name": "without a session every call is 403 Forbidden",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/app/version"
+      },
+      "response": {
+        "status": 403,
+        "body": "Forbidden"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info"
+      },
+      "response": {
+        "status": 403,
+        "body": "Forbidden"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/delete",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes=all&deleteFiles=true"
+      },
+      "response": {
+        "status": 403,
+        "body": "Forbidden"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/app/version",
+        "headers": {
+          "Cookie": "SID=0123456789abcdef0123456789abcdef"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": "Forbidden"
+      }
+    }
+  ]
+}

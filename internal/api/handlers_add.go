@@ -19,9 +19,10 @@ const (
 	maxFormParts = 16
 )
 
-// addDownload serves POST /api/v1/downloads: an NZB as a multipart upload
-// (part "nzb", plus the optional fields name, category_id, priority,
-// password and paused) or as a URL in a JSON body. Other content types are
+// addDownload serves POST /api/v1/downloads: an NZB or a torrent as a
+// multipart upload (part "nzb" or "torrent", plus the optional fields name,
+// category_id, priority, password and paused), or a JSON body with a "url"
+// (of an NZB or a torrent) or a "magnet" link. Other content types are
 // refused with 415.
 func (s *Server) addDownload(w http.ResponseWriter, r *http.Request) {
 	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -29,17 +30,18 @@ func (s *Server) addDownload(w http.ResponseWriter, r *http.Request) {
 	case err == nil && mt == "multipart/form-data":
 		s.addFromUpload(w, r)
 	case err == nil && mt == "application/json":
-		s.addFromURL(w, r)
+		s.addFromJSON(w, r)
 	default:
 		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type",
-			"send multipart/form-data with an nzb part, or application/json with a url")
+			"send multipart/form-data with an nzb or torrent part, or application/json with a url or magnet")
 	}
 }
 
-func (s *Server) addFromURL(w http.ResponseWriter, r *http.Request) {
+func (s *Server) addFromJSON(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, smallBodyLimit)
 	var body struct {
 		URL        string                `json:"url"`
+		Magnet     string                `json:"magnet"`
 		Name       string                `json:"name"`
 		CategoryID core.ID               `json:"category_id"`
 		Priority   core.DownloadPriority `json:"priority"`
@@ -49,8 +51,12 @@ func (s *Server) addFromURL(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.URL == "" {
-		writeError(w, http.StatusBadRequest, "missing_url", "give the NZB's url")
+	switch {
+	case body.URL == "" && body.Magnet == "":
+		writeError(w, http.StatusBadRequest, "missing_url", "give the url of an NZB or a torrent, or a magnet link")
+		return
+	case body.URL != "" && body.Magnet != "":
+		writeError(w, http.StatusBadRequest, "ambiguous_source", "give either a url or a magnet, not both")
 		return
 	}
 	req := app.AddRequest{
@@ -62,12 +68,26 @@ func (s *Server) addFromURL(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	st, err := s.Adder.FetchNZB(r.Context(), body.URL)
+	if body.Magnet != "" {
+		tt, err := s.Adder.StageMagnet(r.Context(), body.Magnet)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		s.finishAddTorrent(w, r, tt, req)
+		return
+	}
+	got, err := s.Adder.Fetch(r.Context(), body.URL)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.finishAdd(w, r, st, req)
+	defer got.Discard() // after a successful add this does nothing
+	if got.Torrent != nil {
+		s.finishAddTorrent(w, r, got.Torrent, req)
+		return
+	}
+	s.finishAdd(w, r, got.NZB, req)
 }
 
 func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +99,7 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 	var (
 		req    app.AddRequest
 		st     *app.StagedNZB
+		tt     *app.StagedTorrent
 		seen   = map[string]bool{}
 		fields = map[string]*string{}
 		paused string
@@ -88,7 +109,7 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 	)
 	fields["name"], fields["category_id"], fields["priority"], fields["password"], fields["paused"] =
 		&req.Name, &cat, &prio, &pass, &paused
-	defer func() { st.Discard() }() // after finishAdd this does nothing
+	defer func() { st.Discard(); tt.Discard() }() // after finishAdd this does nothing
 
 	for n := 0; ; n++ {
 		part, err := mr.NextPart()
@@ -109,9 +130,18 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		seen[name] = true
-		if name == "nzb" {
+		if name == "nzb" || name == "torrent" {
+			if st != nil || tt != nil {
+				writeError(w, http.StatusBadRequest, "multiple_sources", "give one nzb or torrent file, not several")
+				return
+			}
 			req.FileName = part.FileName()
-			if st, err = s.Adder.Stage(r.Context(), part); err != nil {
+			if name == "nzb" {
+				st, err = s.Adder.Stage(r.Context(), part)
+			} else {
+				tt, err = s.Adder.StageTorrent(r.Context(), part)
+			}
+			if err != nil {
 				s.fail(w, r, err)
 				return
 			}
@@ -133,8 +163,8 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		*dst = string(raw)
 	}
-	if st == nil {
-		writeError(w, http.StatusBadRequest, "missing_nzb", `the form needs an "nzb" file part`)
+	if st == nil && tt == nil {
+		writeError(w, http.StatusBadRequest, "missing_nzb", `the form needs an "nzb" or "torrent" file part`)
 		return
 	}
 	req.CategoryID, req.Priority, req.Password = core.ID(cat), core.DownloadPriority(prio), core.Secret(pass)
@@ -143,6 +173,10 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_paused", "paused must be true or false")
 			return
 		}
+	}
+	if tt != nil {
+		s.finishAddTorrent(w, r, tt, req)
+		return
 	}
 	s.finishAdd(w, r, st, req)
 }
@@ -159,6 +193,15 @@ func (s *Server) uploadReadFailed(w http.ResponseWriter, r *http.Request, err er
 
 func (s *Server) finishAdd(w http.ResponseWriter, r *http.Request, st *app.StagedNZB, req app.AddRequest) {
 	d, err := s.Adder.Add(r.Context(), st, req)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toDownloadJSON(d))
+}
+
+func (s *Server) finishAddTorrent(w http.ResponseWriter, r *http.Request, st *app.StagedTorrent, req app.AddRequest) {
+	d, err := s.Adder.AddTorrent(r.Context(), st, req)
 	if err != nil {
 		s.fail(w, r, err)
 		return
