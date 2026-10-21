@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -50,6 +51,11 @@ func FuzzEntryName(f *testing.F) {
 	})
 }
 
+// fuzzUnpackAllocBudget is what one Unpack of a small input may allocate in
+// total. The inputs are at most 64 KiB, so anything near it is a declared size
+// the archive controls.
+const fuzzUnpackAllocBudget = 128 << 20
+
 // FuzzUnpack feeds arbitrary bytes to the RAR and 7z readers. Whatever the
 // input, Unpack must not panic, must fail with a classified error, and must
 // leave neither a staging dir nor a destination behind when it fails.
@@ -68,11 +74,22 @@ func FuzzUnpack(f *testing.F) {
 	if b, err := os.ReadFile(filepath.Join("testdata", "rar", "container.rar")); err == nil {
 		f.Add(uint8(0), b)
 	}
+	for _, seed := range hostile7zSeeds() {
+		f.Add(uint8(1), seed)
+	}
 	work := f.TempDir()
 	f.Fuzz(func(t *testing.T, which uint8, data []byte) {
 		if len(data) > 1<<16 {
 			return
 		}
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		defer func() {
+			runtime.ReadMemStats(&after)
+			if grew := after.TotalAlloc - before.TotalAlloc; grew > fuzzUnpackAllocBudget {
+				t.Errorf("an input of %d bytes made Unpack allocate %d MiB", len(data), grew>>20)
+			}
+		}()
 		file := filepath.Join(work, "in.bin")
 		if err := os.WriteFile(file, data, 0o600); err != nil {
 			t.Fatal(err)
