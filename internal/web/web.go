@@ -32,6 +32,17 @@ type Deps struct {
 	Categories *app.CategoryService
 	Servers    *app.ServerService
 	Bus        *core.Bus
+	// Adder adds NZBs and torrents (the "Add download" dialog).
+	Adder *app.AddService
+	// APIKeys and AdapterCredentials back the Security settings.
+	APIKeys            *auth.APIKeyService
+	AdapterCredentials *auth.AdapterCredentialService
+	// Runtime reports what the runners are doing right now (speeds, queue
+	// state, post-processing stage). Torrents reports torrent-only facts.
+	// Both are filled in by the daemon; see sources.go. They may be nil in
+	// tests, and pages must cope with that.
+	Runtime  RuntimeSource
+	Torrents TorrentSource
 }
 
 // Server is the UI: it implements http.Handler.
