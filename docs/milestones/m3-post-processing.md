@@ -95,12 +95,20 @@ By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when
 - Check feasibility first: the number of available recovery slices must be at least the number of damaged ones. If enough exist only in deferred volumes, M3-07 fetches them first. Otherwise the Download is Failed (`repair_insufficient`).
 - Write the reconstructed slices in place, at their offsets in the target files. Missing files are created with their FileDesc length.
 - Run Verify again afterwards. Any remaining damage means Failed.
-- Implementation notes (M3-05): `Repair(ctx, dir, set, verifyResult, opts...)` returns `*InsufficientError{Needed, Available}` (matches `ErrInsufficientRecovery`) before changing anything, so the orchestrator can fetch deferred volumes (M3-07) or fail with `repair_insufficient`. `Available` counts only readable recovery slices. Memory is about `(k+1) x chunk`, with the chunk halved down to 4 KiB under a configurable memory limit (default 256 MiB). Reed-Solomon correctness is so far proven only against our own test encoder, not against `par2cmdline` output (M3-06).
+- Implementation notes (M3-05): `Repair(ctx, dir, set, verifyResult, opts...)` returns `*InsufficientError{Needed, Available}` (matches `ErrInsufficientRecovery`) before changing anything, so the orchestrator can fetch deferred volumes (M3-07) or fail with `repair_insufficient`. `Available` counts only readable recovery slices. Memory is about `(k+1) x chunk`, with the chunk halved down to 4 KiB under a configurable memory limit (default 256 MiB). Reed-Solomon correctness is checked against real `par2cmdline` 1.4.0 output (M3-06): recovery slices are byte-identical and Repair restores all 146 damage scenarios.
+- Conformance results (M3-06), details in `internal/postproc/par2/testdata/CONFORMANCE.md`:
+  - The Main packet orders file IDs as 128-bit little-endian integers (last byte most significant), not by byte comparison. That order is also the input slice order, and `Set.FileIDs` keeps the Main order.
+  - par2cmdline skips empty files, so they are not in the set.
+  - After appending bytes to a file shorter than one slice, par2cmdline counts its only block as lost while Verify reports 0 damaged slices and Repair truncates it. Both end with the correct file.
+  - par2cmdline 1.4.0 rejects `-f` above about 32768, so exponents near 65535 cannot be generated for fixtures.
 - Contract with Verify (M3-03):
   - A file with intact slices but the wrong length (for example trailing bytes) comes back `Damaged` with an empty slice list and needs 0 recovery slices. Repair must truncate it.
   - A missing zero-length file comes back `Missing` with 0 damaged slices. Repair must create it.
   - For `Missing` and `Unverifiable` files the damaged list is not built (`DamagedSlices` is nil and `DamagedCount` equals `TotalSlices`), so Repair iterates `0..TotalSlices`.
   - A wrong file sitting under the right name is reported `Damaged`. Searching for misaligned slices is out of scope for v1.
+
+- Implementation notes (M3-01, `internal/core/postprocess*.go`): the orchestrator publishes a `postprocess_stage` event for each stage that runs. When the working directory is missing it goes straight to `Finisher.Finish`, because a crash between the move and the Ready update must not turn a finished Download into a failed one. `FetchReporter` is a required port; torrent-only setups pass a stub.
+- Implementation notes (M3-10, `internal/postproc/finalize`): the destination is resolved at move time. Cleanup deletes archive volumes, `.par2`, `.nzb` and `_unpack.tmp` before the move, merges the unpacked content into the root of the final directory, and writes a `.bitnews-done` marker holding the Download ID so a retry after a crash finds the moved directory. A deleted Category falls back to the complete root with a warning. Torrent originals are never modified.
 
 ### Deferred recovery volumes
 
@@ -123,6 +131,13 @@ By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when
 - **Passwords:** taken from the Download's encrypted password. A wrong password or missing password → `archive_password`.
 - **Nested archives:** one level is allowed, for example a RAR containing a RAR set. Anything deeper is left as-is.
 - **Output:** written to the staging dir `incomplete/<download>/_unpack.tmp/`. On success it is renamed to the final layout, `<download>/` with the archive contents at its root.
+
+- Implementation notes (M3-08, M3-09, package `internal/postproc/unpack`):
+  - `Unpack(ctx, set, dst, opts...)` stages in `dst + ".tmp"` and renames to `dst`. The orchestrator passes `<download dir>/_unpack` as `dst` for both protocols, and the Usenet finisher merges its content into the final directory.
+  - Pass 1 applies every guard to every entry before any byte is written; pass 2 writes. Symlinks, hardlinks, devices and FIFOs are skipped and counted, archive modes are ignored, and files are created `0666&^umask`.
+  - Every library call is wrapped so that a panic becomes `ErrCorrupt` (the fuzzer found one in `sevenzip`).
+  - A 7z checksum mismatch maps to `ErrPassword` because 7z has no password check, so a corrupt unencrypted 7z can read as a password failure.
+  - Real archives covered by tests: the 7z fixtures of `sevenzip` and one 87-byte stored RAR4. All other RAR cases are built by test helpers with the stored method only. Compressed RAR (LZ, PPM, filters, solid), header-encrypted RAR, real multi-volume releases and 7z BCJ2/ARM/brotli are not exercised and belong to the M3-11 compatibility spike.
 
 ### Unpack guards
 
@@ -341,3 +356,22 @@ These rules apply to every archive entry before anything is written.
 **Acceptance criteria**
 - [ ] `docs/compat/unpack.md` lists each variant with its result and the library version used.
 - [ ] Gaps get follow-up issues, or are explicitly accepted as unsupported (a release that fails shows up as `archive_unsupported` and the media manager picks another).
+
+### M3-12: 7z header memory guard
+- **Labels:** area:postproc, ready-for-agent
+- **Depends on:** M3-08
+
+**Goal:** Prevent a hostile 7z archive from making the daemon allocate gigabytes before any Unpack guard runs.
+
+**Background:** `github.com/bodgit/sevenzip` v1.6.5 allocates from counts declared in the archive header (up to about 4 GiB in its `checkUint64`) before `internal/postproc/unpack` sees a single entry. A 45 s fuzz run found only a nil-pointer panic (already converted to `ErrCorrupt` and stored as a regression seed), but the memory cap is not enforced. An OOM kill would take the whole daemon down, and archives come from uploaders we do not trust.
+
+**Work**
+- Reproduce with a crafted header that declares a huge file or folder count and measure the allocation.
+- Add a cheap guard before calling the library, for example a hard cap on the 7z volume size we are willing to open and a sanity check of the signature header (`NextHeaderOffset` and `NextHeaderSize` against the file size and a small maximum).
+- If the library cannot be guarded from outside, send a fix upstream, or vendor a minimal patched reader with the bounds checks.
+- Add the crafted archives as regression fixtures and a test that opening them fails with `ErrCorrupt` or `ErrTooLarge` within a fixed heap budget.
+
+**Acceptance criteria**
+- [ ] A crafted 7z with an absurd declared count fails fast and the process heap grows by less than 64 MiB (test with `runtime.ReadMemStats`).
+- [ ] `FuzzUnpack` runs 60 s with no out-of-memory and no panic.
+- [ ] The behaviour is documented in `internal/postproc/unpack` and the M3 doc.

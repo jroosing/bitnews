@@ -1,0 +1,525 @@
+{
+  "case": "block_count",
+  "par2cmdline": "1.4.0",
+  "par2_args": "-b64 -r15",
+  "slice_size": 5984,
+  "recovery_blocks": 10,
+  "exponents": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "total_slices": 64,
+  "files": [
+    {
+      "name": "big.dat",
+      "size": 300000,
+      "md5": "8927f429627ecf4506561fae0db4f519",
+      "in_set": true,
+      "slices": 51
+    },
+    {
+      "name": "small.dat",
+      "size": 77777,
+      "md5": "fe7c22044abc80a44a903d38b546e3a1",
+      "in_set": true,
+      "slices": 13
+    }
+  ],
+  "damage": [
+    {
+      "name": "flip_one",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 150000
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "big.dat": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            25
+          ]
+        },
+        "small.dat": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "flip_last_byte",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "small.dat",
+          "offset": 77776
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "big.dat": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "small.dat": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            12
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_three",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "big.dat"
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 125664
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 251328
+        }
+      ],
+      "needed": 3,
+      "repairable": true,
+      "files": {
+        "big.dat": {
+          "state": "damaged",
+          "damaged": 3,
+          "slices": [
+            0,
+            21,
+            42
+          ]
+        },
+        "small.dat": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "flip_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "big.dat"
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 35904
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 71808
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 113696
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 149600
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 191488
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 227392
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 263296
+        },
+        {
+          "op": "flip",
+          "file": "small.dat"
+        },
+        {
+          "op": "flip",
+          "file": "small.dat",
+          "offset": 35904
+        }
+      ],
+      "needed": 10,
+      "repairable": true,
+      "files": {
+        "big.dat": {
+          "state": "damaged",
+          "damaged": 8,
+          "slices": [
+            0,
+            6,
+            12,
+            19,
+            25,
+            32,
+            38,
+            44
+          ]
+        },
+        "small.dat": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            0,
+            6
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_beyond_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "big.dat"
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 29920
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 65824
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 101728
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 137632
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 173536
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 203456
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 239360
+        },
+        {
+          "op": "flip",
+          "file": "big.dat",
+          "offset": 275264
+        },
+        {
+          "op": "flip",
+          "file": "small.dat",
+          "offset": 5984
+        },
+        {
+          "op": "flip",
+          "file": "small.dat",
+          "offset": 41888
+        }
+      ],
+      "needed": 11,
+      "repairable": false,
+      "files": {
+        "big.dat": {
+          "state": "damaged",
+          "damaged": 9,
+          "slices": [
+            0,
+            5,
+            11,
+            17,
+            23,
+            29,
+            34,
+            40,
+            46
+          ]
+        },
+        "small.dat": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            1,
+            7
+          ]
+        }
+      }
+    },
+    {
+      "name": "delete_big.dat",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "big.dat"
+        }
+      ],
+      "needed": 51,
+      "repairable": false,
+      "files": {
+        "big.dat": {
+          "state": "missing",
+          "damaged": 51
+        },
+        "small.dat": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "delete_small.dat",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "small.dat"
+        }
+      ],
+      "needed": 13,
+      "repairable": false,
+      "files": {
+        "big.dat": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "small.dat": {
+          "state": "missing",
+          "damaged": 13
+        }
+      }
+    },
+    {
+      "name": "truncate_half",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "big.dat",
+          "size": 150000
+        }
+      ],
+      "needed": 26,
+      "repairable": false,
+      "files": {
+        "big.dat": {
+          "state": "damaged",
+          "damaged": 26,
+          "slices": [
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50
+          ]
+        },
+        "small.dat": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_zero",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "big.dat"
+        }
+      ],
+      "needed": 51,
+      "repairable": false,
+      "files": {
+        "big.dat": {
+          "state": "damaged",
+          "damaged": 51,
+          "slices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50
+          ]
+        },
+        "small.dat": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_last_byte",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "small.dat",
+          "size": 77776
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "big.dat": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "small.dat": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            12
+          ]
+        }
+      }
+    },
+    {
+      "name": "append_garbage",
+      "ops": [
+        {
+          "op": "append",
+          "file": "small.dat",
+          "size": 1000
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "big.dat": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "small.dat": {
+          "state": "damaged",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "rename_obfuscated",
+      "ops": [
+        {
+          "op": "rename",
+          "file": "big.dat",
+          "to": "x7Kq9zLm3Pw.bin"
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "big.dat": {
+          "state": "ok",
+          "damaged": 0,
+          "renamed_from": "x7Kq9zLm3Pw.bin"
+        },
+        "small.dat": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    }
+  ]
+}

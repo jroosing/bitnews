@@ -1,0 +1,377 @@
+{
+  "case": "unicode_names",
+  "par2cmdline": "1.4.0",
+  "par2_args": "-s4096 -c4",
+  "slice_size": 4096,
+  "recovery_blocks": 4,
+  "exponents": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "total_slices": 15,
+  "files": [
+    {
+      "name": "a  b  c.bin",
+      "size": 8000,
+      "md5": "8ea9020599241d0c14056a36269599de",
+      "in_set": true,
+      "slices": 2
+    },
+    {
+      "name": "my movie ß 日本語 (2024).mkv",
+      "size": 50000,
+      "md5": "836d127aac3f62ac8b15862e806752ce",
+      "in_set": true,
+      "slices": 13
+    }
+  ],
+  "damage": [
+    {
+      "name": "flip_one",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "a  b  c.bin",
+          "offset": 4000
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            0
+          ]
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "flip_last_byte",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 49999
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            12
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_three",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "a  b  c.bin"
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 12288
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 32768
+        }
+      ],
+      "needed": 3,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            0
+          ]
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            3,
+            8
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "a  b  c.bin"
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 4096
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 20480
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 36864
+        }
+      ],
+      "needed": 4,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            0
+          ]
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "damaged",
+          "damaged": 3,
+          "slices": [
+            1,
+            5,
+            9
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_beyond_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "a  b  c.bin"
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 4096
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 16384
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 28672
+        },
+        {
+          "op": "flip",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "offset": 40960
+        }
+      ],
+      "needed": 5,
+      "repairable": false,
+      "files": {
+        "a  b  c.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            0
+          ]
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "damaged",
+          "damaged": 4,
+          "slices": [
+            1,
+            4,
+            7,
+            10
+          ]
+        }
+      }
+    },
+    {
+      "name": "delete_a  b  c.bin",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "a  b  c.bin"
+        }
+      ],
+      "needed": 2,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "missing",
+          "damaged": 2
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "delete_my movie ß 日本語 (2024).mkv",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "my movie ß 日本語 (2024).mkv"
+        }
+      ],
+      "needed": 13,
+      "repairable": false,
+      "files": {
+        "a  b  c.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "missing",
+          "damaged": 13
+        }
+      }
+    },
+    {
+      "name": "truncate_half",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "a  b  c.bin",
+          "size": 4000
+        }
+      ],
+      "needed": 2,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            0,
+            1
+          ]
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_zero",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "a  b  c.bin"
+        }
+      ],
+      "needed": 2,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            0,
+            1
+          ]
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_last_byte",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "size": 49999
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            12
+          ]
+        }
+      }
+    },
+    {
+      "name": "append_garbage",
+      "ops": [
+        {
+          "op": "append",
+          "file": "my movie ß 日本語 (2024).mkv",
+          "size": 1000
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "damaged",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "rename_obfuscated",
+      "ops": [
+        {
+          "op": "rename",
+          "file": "a  b  c.bin",
+          "to": "x7Kq9zLm3Pw.bin"
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "a  b  c.bin": {
+          "state": "ok",
+          "damaged": 0,
+          "renamed_from": "x7Kq9zLm3Pw.bin"
+        },
+        "my movie ß 日本語 (2024).mkv": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    }
+  ]
+}

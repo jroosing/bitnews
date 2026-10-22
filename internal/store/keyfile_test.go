@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -284,4 +285,25 @@ func TestLoadOrCreateKeyIsSafeToCallConcurrentlyOnAMissingFile(t *testing.T) {
 		require.NoError(t, errs[i])
 		assert.Equal(t, keys[0], keys[i], "every caller ends up with the one key that was written")
 	}
+}
+
+func TestLoadOrCreateKeyWorksOnFilesystemsWithoutHardLinks(t *testing.T) {
+	restore := store.SetLinkFile(func(string, string) error {
+		return &os.LinkError{Op: "link", Err: syscall.EPERM}
+	})
+	defer restore()
+	path := filepath.Join(t.TempDir(), "keys", "bitnews.key")
+
+	first, err := store.LoadOrCreateKey(path, nil)
+	require.NoError(t, err)
+	second, err := store.LoadOrCreateKey(path, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, first, second, "the generated key must be persisted")
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	entries, err := os.ReadDir(filepath.Dir(path))
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "no temp files may be left behind")
 }

@@ -1,0 +1,617 @@
+{
+  "case": "limited_volumes",
+  "par2cmdline": "1.4.0",
+  "par2_args": "-s4096 -c20 -l",
+  "slice_size": 4096,
+  "recovery_blocks": 20,
+  "exponents": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "total_slices": 38,
+  "files": [
+    {
+      "name": "l1.bin",
+      "size": 100000,
+      "md5": "c95d4efd4c12e0c12307dd8c1d8e793d",
+      "in_set": true,
+      "slices": 25
+    },
+    {
+      "name": "l2.bin",
+      "size": 50000,
+      "md5": "eae673852070e1a33cef1e81f37afe13",
+      "in_set": true,
+      "slices": 13
+    }
+  ],
+  "damage": [
+    {
+      "name": "flip_one",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 50000
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            12
+          ]
+        },
+        "l2.bin": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "flip_last_byte",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 49999
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "l2.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            12
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_three",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "l1.bin"
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 49152
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin"
+        }
+      ],
+      "needed": 3,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            0,
+            12
+          ]
+        },
+        "l2.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "l1.bin"
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 4096
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 12288
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 20480
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 28672
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 36864
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 45056
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 53248
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 61440
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 69632
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 77824
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 81920
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 90112
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 98304
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 4096
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 12288
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 20480
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 28672
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 36864
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 45056
+        }
+      ],
+      "needed": 20,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "damaged",
+          "damaged": 14,
+          "slices": [
+            0,
+            1,
+            3,
+            5,
+            7,
+            9,
+            11,
+            13,
+            15,
+            17,
+            19,
+            20,
+            22,
+            24
+          ]
+        },
+        "l2.bin": {
+          "state": "damaged",
+          "damaged": 6,
+          "slices": [
+            1,
+            3,
+            5,
+            7,
+            9,
+            11
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_beyond_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "l1.bin"
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 4096
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 12288
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 20480
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 28672
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 36864
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 40960
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 49152
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 57344
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 65536
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 73728
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 77824
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 86016
+        },
+        {
+          "op": "flip",
+          "file": "l1.bin",
+          "offset": 94208
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin"
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 8192
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 12288
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 20480
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 28672
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 36864
+        },
+        {
+          "op": "flip",
+          "file": "l2.bin",
+          "offset": 45056
+        }
+      ],
+      "needed": 21,
+      "repairable": false,
+      "files": {
+        "l1.bin": {
+          "state": "damaged",
+          "damaged": 14,
+          "slices": [
+            0,
+            1,
+            3,
+            5,
+            7,
+            9,
+            10,
+            12,
+            14,
+            16,
+            18,
+            19,
+            21,
+            23
+          ]
+        },
+        "l2.bin": {
+          "state": "damaged",
+          "damaged": 7,
+          "slices": [
+            0,
+            2,
+            3,
+            5,
+            7,
+            9,
+            11
+          ]
+        }
+      }
+    },
+    {
+      "name": "delete_l1.bin",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "l1.bin"
+        }
+      ],
+      "needed": 25,
+      "repairable": false,
+      "files": {
+        "l1.bin": {
+          "state": "missing",
+          "damaged": 25
+        },
+        "l2.bin": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "delete_l2.bin",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "l2.bin"
+        }
+      ],
+      "needed": 13,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "l2.bin": {
+          "state": "missing",
+          "damaged": 13
+        }
+      }
+    },
+    {
+      "name": "truncate_half",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "l1.bin",
+          "size": 50000
+        }
+      ],
+      "needed": 13,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "damaged",
+          "damaged": 13,
+          "slices": [
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24
+          ]
+        },
+        "l2.bin": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_zero",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "l1.bin"
+        }
+      ],
+      "needed": 25,
+      "repairable": false,
+      "files": {
+        "l1.bin": {
+          "state": "damaged",
+          "damaged": 25,
+          "slices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24
+          ]
+        },
+        "l2.bin": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_last_byte",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "l2.bin",
+          "size": 49999
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "l2.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            12
+          ]
+        }
+      }
+    },
+    {
+      "name": "append_garbage",
+      "ops": [
+        {
+          "op": "append",
+          "file": "l2.bin",
+          "size": 1000
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "l2.bin": {
+          "state": "damaged",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "rename_obfuscated",
+      "ops": [
+        {
+          "op": "rename",
+          "file": "l1.bin",
+          "to": "x7Kq9zLm3Pw.bin"
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "l1.bin": {
+          "state": "ok",
+          "damaged": 0,
+          "renamed_from": "x7Kq9zLm3Pw.bin"
+        },
+        "l2.bin": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    }
+  ]
+}

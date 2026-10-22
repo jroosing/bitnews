@@ -1,0 +1,242 @@
+{
+  "case": "single_small",
+  "par2cmdline": "1.4.0",
+  "par2_args": "-s4096 -r50",
+  "slice_size": 4096,
+  "recovery_blocks": 2,
+  "exponents": [
+    0,
+    1
+  ],
+  "total_slices": 3,
+  "files": [
+    {
+      "name": "single.bin",
+      "size": 10000,
+      "md5": "6b8be648a61b7e39641ad9b02822fff9",
+      "in_set": true,
+      "slices": 3
+    }
+  ],
+  "damage": [
+    {
+      "name": "flip_one",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "single.bin",
+          "offset": 5000
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_last_byte",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "single.bin",
+          "offset": 9999
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "single.bin"
+        },
+        {
+          "op": "flip",
+          "file": "single.bin",
+          "offset": 4096
+        }
+      ],
+      "needed": 2,
+      "repairable": true,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            0,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_beyond_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "single.bin"
+        },
+        {
+          "op": "flip",
+          "file": "single.bin",
+          "offset": 4096
+        },
+        {
+          "op": "flip",
+          "file": "single.bin",
+          "offset": 8192
+        }
+      ],
+      "needed": 3,
+      "repairable": false,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 3,
+          "slices": [
+            0,
+            1,
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "delete_single.bin",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "single.bin"
+        }
+      ],
+      "needed": 3,
+      "repairable": false,
+      "files": {
+        "single.bin": {
+          "state": "missing",
+          "damaged": 3
+        }
+      }
+    },
+    {
+      "name": "truncate_half",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "single.bin",
+          "size": 5000
+        }
+      ],
+      "needed": 2,
+      "repairable": true,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 2,
+          "slices": [
+            1,
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "truncate_zero",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "single.bin"
+        }
+      ],
+      "needed": 3,
+      "repairable": false,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 3,
+          "slices": [
+            0,
+            1,
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "truncate_last_byte",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "single.bin",
+          "size": 9999
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            2
+          ]
+        }
+      }
+    },
+    {
+      "name": "append_garbage",
+      "ops": [
+        {
+          "op": "append",
+          "file": "single.bin",
+          "size": 1000
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "single.bin": {
+          "state": "damaged",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "rename_obfuscated",
+      "ops": [
+        {
+          "op": "rename",
+          "file": "single.bin",
+          "to": "x7Kq9zLm3Pw.bin"
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "single.bin": {
+          "state": "ok",
+          "damaged": 0,
+          "renamed_from": "x7Kq9zLm3Pw.bin"
+        }
+      }
+    }
+  ]
+}

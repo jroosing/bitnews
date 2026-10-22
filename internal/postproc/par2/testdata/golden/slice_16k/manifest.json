@@ -1,0 +1,511 @@
+{
+  "case": "slice_16k",
+  "par2cmdline": "1.4.0",
+  "par2_args": "-s16384 -r40 -n3",
+  "slice_size": 16384,
+  "recovery_blocks": 7,
+  "exponents": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "total_slices": 18,
+  "files": [
+    {
+      "name": "movie.mkv",
+      "size": 200000,
+      "md5": "d5e4d206d3fc2776736d125ab8ee571e",
+      "in_set": true,
+      "slices": 13
+    },
+    {
+      "name": "one.byte",
+      "size": 1,
+      "md5": "1932a6849c6f575ca360266cc3f9a466",
+      "in_set": true,
+      "slices": 1
+    },
+    {
+      "name": "sub.srt",
+      "size": 50001,
+      "md5": "20959958e8d1b87bd13427c5b6f4067c",
+      "in_set": true,
+      "slices": 4
+    }
+  ],
+  "damage": [
+    {
+      "name": "flip_one",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 100000
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            6
+          ]
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "flip_last_byte",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "sub.srt",
+          "offset": 50000
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            3
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_three",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "movie.mkv"
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 98304
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 196608
+        }
+      ],
+      "needed": 3,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "damaged",
+          "damaged": 3,
+          "slices": [
+            0,
+            6,
+            12
+          ]
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "flip_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "movie.mkv"
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 32768
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 81920
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 114688
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 163840
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 196608
+        },
+        {
+          "op": "flip",
+          "file": "sub.srt",
+          "offset": 16384
+        }
+      ],
+      "needed": 7,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "damaged",
+          "damaged": 6,
+          "slices": [
+            0,
+            2,
+            5,
+            7,
+            10,
+            12
+          ]
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "flip_beyond_capacity",
+      "ops": [
+        {
+          "op": "flip",
+          "file": "movie.mkv"
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 32768
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 65536
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 98304
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 147456
+        },
+        {
+          "op": "flip",
+          "file": "movie.mkv",
+          "offset": 180224
+        },
+        {
+          "op": "flip",
+          "file": "one.byte"
+        },
+        {
+          "op": "flip",
+          "file": "sub.srt",
+          "offset": 16384
+        }
+      ],
+      "needed": 8,
+      "repairable": false,
+      "files": {
+        "movie.mkv": {
+          "state": "damaged",
+          "damaged": 6,
+          "slices": [
+            0,
+            2,
+            4,
+            6,
+            9,
+            11
+          ]
+        },
+        "one.byte": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            0
+          ]
+        },
+        "sub.srt": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "name": "delete_movie.mkv",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "movie.mkv"
+        }
+      ],
+      "needed": 13,
+      "repairable": false,
+      "files": {
+        "movie.mkv": {
+          "state": "missing",
+          "damaged": 13
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "delete_one.byte",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "one.byte"
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "one.byte": {
+          "state": "missing",
+          "damaged": 1
+        },
+        "sub.srt": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "delete_sub.srt",
+      "ops": [
+        {
+          "op": "delete",
+          "file": "sub.srt"
+        }
+      ],
+      "needed": 4,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "missing",
+          "damaged": 4
+        }
+      }
+    },
+    {
+      "name": "truncate_half",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "movie.mkv",
+          "size": 100000
+        }
+      ],
+      "needed": 7,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "damaged",
+          "damaged": 7,
+          "slices": [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ]
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_zero",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "movie.mkv"
+        }
+      ],
+      "needed": 13,
+      "repairable": false,
+      "files": {
+        "movie.mkv": {
+          "state": "damaged",
+          "damaged": 13,
+          "slices": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ]
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "truncate_last_byte",
+      "ops": [
+        {
+          "op": "truncate",
+          "file": "sub.srt",
+          "size": 50000
+        }
+      ],
+      "needed": 1,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "damaged",
+          "damaged": 1,
+          "slices": [
+            3
+          ]
+        }
+      }
+    },
+    {
+      "name": "append_garbage",
+      "ops": [
+        {
+          "op": "append",
+          "file": "sub.srt",
+          "size": 1000
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "damaged",
+          "damaged": 0
+        }
+      }
+    },
+    {
+      "name": "rename_obfuscated",
+      "ops": [
+        {
+          "op": "rename",
+          "file": "movie.mkv",
+          "to": "x7Kq9zLm3Pw.bin"
+        }
+      ],
+      "needed": 0,
+      "repairable": true,
+      "files": {
+        "movie.mkv": {
+          "state": "ok",
+          "damaged": 0,
+          "renamed_from": "x7Kq9zLm3Pw.bin"
+        },
+        "one.byte": {
+          "state": "ok",
+          "damaged": 0
+        },
+        "sub.srt": {
+          "state": "ok",
+          "damaged": 0
+        }
+      }
+    }
+  ]
+}
