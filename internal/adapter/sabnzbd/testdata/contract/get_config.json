@@ -1,0 +1,79 @@
+{
+  "name": "get_config reports complete_dir, sorting off and category dirs",
+  "provenance": "hand-written from the SABnzbd API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M4-01 recordings",
+  "description": "Category dirs are relative to complete_dir; a Category whose dir is outside it keeps its absolute dir.",
+  "seed": [
+    {
+      "op": "category",
+      "name": "tv"
+    },
+    {
+      "op": "category",
+      "name": "music",
+      "dir_override": "/mnt/music"
+    }
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "target": "/sabnzbd/api?mode=get_config&output=json&apikey={{apikey}}",
+        "headers": {
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "config": {
+            "misc": {
+              "complete_dir": "{{complete_dir}}",
+              "download_dir": "{{incomplete_dir}}",
+              "enable_tv_sorting": false,
+              "enable_movie_sorting": false,
+              "enable_date_sorting": false,
+              "pre_check": false,
+              "tv_categories": [],
+              "movie_categories": [],
+              "date_categories": [],
+              "history_retention": "$type:string",
+              "history_retention_option": "all"
+            },
+            "categories": [
+              {
+                "name": "*",
+                "order": 0,
+                "pp": "3",
+                "script": "None",
+                "dir": "",
+                "newzbin": "",
+                "priority": -100
+              },
+              {
+                "name": "music",
+                "order": 1,
+                "pp": "3",
+                "script": "Default",
+                "dir": "/mnt/music",
+                "newzbin": "",
+                "priority": -100
+              },
+              {
+                "name": "tv",
+                "order": 2,
+                "pp": "3",
+                "script": "Default",
+                "dir": "tv",
+                "newzbin": "",
+                "priority": -100
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

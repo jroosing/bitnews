@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1
+
+# bitnews container image: a static Go binary on distroless.
+#
+#   docker build -t bitnews --build-arg VERSION="$(git describe --tags --always --dirty)" \
+#                           --build-arg COMMIT="$(git rev-parse --short HEAD)" .
+#
+# See docs/deploy.md for running it, and deploy/docker-compose.example.yml.
+
+# Build stage. It always runs on the build host's own platform and
+# cross-compiles, so a multi-arch build needs no QEMU emulation.
+# Pin the tag to a digest (golang:1.27.2@sha256:...) for reproducible builds;
+# docs/deploy.md describes how.
+FROM --platform=$BUILDPLATFORM golang:1.27.2 AS build
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+ARG COMMIT=unknown
+
+# The toolchain in the image is the one go.mod asks for; never download another.
+ENV GOTOOLCHAIN=local
+
+WORKDIR /src
+
+# Dependencies first, so this layer is reused until go.mod or go.sum change.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . .
+
+# CGO_ENABLED=0 gives a fully static binary, which is what distroless/static
+# needs (it has no libc). -buildvcs=false because .git is not in the context.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -buildvcs=false \
+        -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT" \
+        -o /out/bitnews ./cmd/bitnews
+
+# Final stage. This is deliberately NOT the :nonroot variant. The container
+# must start as root so that PUID/PGID work: bitnews calls setgroups, setgid
+# and setuid itself before it opens any file, socket or input (see
+# docs/deploy.md). Without PUID/PGID it keeps root and logs a warning.
+# Pin to a digest here too for reproducible builds.
+FROM gcr.io/distroless/static-debian12
+
+ARG VERSION=dev
+ARG COMMIT=unknown
+LABEL org.opencontainers.image.title="bitnews" \
+      org.opencontainers.image.description="Self-hosted Usenet and BitTorrent download daemon" \
+      org.opencontainers.image.source="https://gitlab.com/kyura4k/bitnews" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.revision="$COMMIT"
+
+COPY --from=build /out/bitnews /bitnews
+
+# Bootstrap settings. The key defaults to a Docker secret, so mount a file
+# there or set BITNEWS_KEY_FILE to another absolute path outside /config.
+# UMASK 002 follows the linuxserver convention (group-writable files).
+ENV BITNEWS_CONFIG_DIR=/config \
+    BITNEWS_KEY_FILE=/run/secrets/bitnews_key \
+    BITNEWS_LISTEN=0.0.0.0:9494 \
+    UMASK=002
+
+EXPOSE 9494
+VOLUME /config
+
+# Distroless has no shell, so the exec form is the only form that works.
+# "bitnews healthcheck" exits 0 when GET http://127.0.0.1:<port>/api/v1/health
+# answers 200 within 3 s (port from BITNEWS_LISTEN), otherwise 1. The 5 s
+# timeout leaves room above that 3 s.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["/bitnews", "healthcheck"]
+
+ENTRYPOINT ["/bitnews"]

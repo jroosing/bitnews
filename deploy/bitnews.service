@@ -1,0 +1,104 @@
+# bitnews systemd unit. Full guide: docs/deploy.md
+#
+# Install:
+#   install -m 0644 deploy/bitnews.service /etc/systemd/system/bitnews.service
+#   systemctl daemon-reload && systemctl enable --now bitnews
+#
+# Before the first start the master key must exist at /etc/bitnews/bitnews.key
+# (see docs/deploy.md). Needs systemd 250 or newer for LoadCredential= and %d.
+#
+# Check the hardening on the target machine with:
+#   systemd-analyze verify /etc/systemd/system/bitnews.service
+#   systemd-analyze security bitnews.service
+
+[Unit]
+Description=bitnews Usenet and BitTorrent download daemon
+Documentation=https://gitlab.com/kyura4k/bitnews
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/bitnews
+
+# The service runs directly as an unprivileged user, so there is no privilege
+# drop: do NOT set PUID/PGID here (bitnews refuses them when not started as
+# root). To share files with Sonarr/Radarr, give this service their group:
+#   Group=media            (or keep Group=bitnews and add the next line)
+#   SupplementaryGroups=media
+User=bitnews
+Group=bitnews
+UMask=0002
+
+# Bootstrap settings. /etc/bitnews/bitnews.env may override any of them (and
+# add BITNEWS_LISTEN, BITNEWS_LOG_LEVEL, ...); a missing file is fine.
+Environment=BITNEWS_CONFIG_DIR=/var/lib/bitnews
+# The master key is handed to the service as a credential: systemd reads
+# /etc/bitnews/bitnews.key as root and exposes a copy only to this service, in
+# a private in-memory directory. %d expands to that directory, the same path
+# as $CREDENTIALS_DIRECTORY (/run/credentials/bitnews.service). The key
+# therefore never lives in the config dir or its backups, and the bitnews user
+# needs no access to /etc/bitnews. The credential directory is read-only, so
+# bitnews cannot generate the key itself under systemd: create it first.
+LoadCredential=bitnews.key:/etc/bitnews/bitnews.key
+Environment=BITNEWS_KEY_FILE=%d/bitnews.key
+EnvironmentFile=-/etc/bitnews/bitnews.env
+# Optional: bootstrap the admin password non-interactively.
+#LoadCredential=admin_password:/etc/bitnews/admin_password
+#Environment=BITNEWS_ADMIN_PASSWORD_FILE=%d/admin_password
+
+# Creates /var/lib/bitnews owned by User= with mode 0700 and keeps it writable
+# under ProtectSystem=strict. The database lives here.
+StateDirectory=bitnews
+StateDirectoryMode=0700
+# Download and library tree (TRaSH layout). Must exist, because a missing path
+# stops the unit from starting; write "-/data" to make it optional. The
+# bitnews user (or the Group=/SupplementaryGroups= above) needs write access.
+ReadWritePaths=/data
+
+# SIGTERM triggers a graceful shutdown (10 s grace for requests in flight).
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+# --- Hardening ---------------------------------------------------------------
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+# Add AF_NETLINK once torrent peer traffic is bound to an interface (M5),
+# because listing network interfaces uses netlink.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# Safe for a static Go binary: it does not generate code at run time.
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+KeyringMode=private
+SystemCallArchitectures=native
+# Allow-list of ordinary service syscalls, minus the privileged and
+# resource-management groups. bitnews runs as a plain user and never needs
+# them. A blocked call returns EPERM instead of killing the process. This
+# filter has not been exercised under a real systemd yet: if the service
+# misbehaves, look for EPERM in `journalctl -u bitnews` and relax the
+# second line first.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

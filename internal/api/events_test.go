@@ -18,6 +18,7 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/api"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 )
 
 // None of the event stream tests run in parallel: the goroutine-leak checks
@@ -195,6 +196,7 @@ func TestEventStreamDeliversEventsPublishedAfterConnecting(t *testing.T) {
 		core.Failed{ID: "dl1", Reason: core.FailureMissingArticles, Detail: "12 articles"},
 		core.Removed{ID: "dl1"},
 		core.SettingsChanged{},
+		core.ServersChanged{},
 	}
 
 	for _, ev := range published {
@@ -212,7 +214,7 @@ func TestEventStreamDeliversEventsPublishedAfterConnecting(t *testing.T) {
 		names = append(names, ev.Name)
 	}
 	assert.Equal(t, []string{
-		"download_added", "download_updated", "download_progress", "fetched", "ready", "failed", "removed", "settings_changed",
+		"download_added", "download_updated", "download_progress", "fetched", "ready", "failed", "removed", "settings_changed", "servers_changed",
 	}, names)
 	for _, i := range []int{0, 1} {
 		snap := got[i].json(t)
@@ -227,6 +229,29 @@ func TestEventStreamDeliversEventsPublishedAfterConnecting(t *testing.T) {
 	assert.Equal(t, map[string]any{"id": "dl1", "reason": "missing_articles", "detail": "12 articles"}, got[5].json(t))
 	assert.Equal(t, map[string]any{"id": "dl1"}, got[6].json(t))
 	assert.Equal(t, map[string]any{}, got[7].json(t), "settings_changed carries no payload but must still have a data line")
+	assert.Equal(t, map[string]any{}, got[8].json(t), "servers_changed carries no payload (passwords stay out of the stream)")
+}
+
+func TestEventStreamDeliversPostProcessingAndQueueEvents(t *testing.T) {
+	e := newEnv(t)
+	base, _ := start(t, e)
+	c := connectSSE(t, base, withBearer(e.newKey(core.APIKeyScopeRead)))
+	hello, _ := c.next(t)
+	require.Equal(t, "hello", hello.Name)
+
+	e.bus.Publish(core.PostProcessStage{ID: "dl1", Stage: core.StageRepairing})
+	e.bus.Publish(runner.QueuePaused{Reason: runner.ReasonDiskFull, Detail: "10 bytes free, 20 needed"})
+	e.bus.Publish(runner.QueueResumed{})
+
+	stage, _ := c.next(t)
+	paused, _ := c.next(t)
+	resumed, _ := c.next(t)
+	assert.Equal(t, "postprocess_stage", stage.Name)
+	assert.Equal(t, map[string]any{"id": "dl1", "stage": "repairing"}, stage.json(t))
+	assert.Equal(t, "usenet_queue_paused", paused.Name)
+	assert.Equal(t, map[string]any{"reason": "disk_full", "detail": "10 bytes free, 20 needed"}, paused.json(t))
+	assert.Equal(t, "usenet_queue_resumed", resumed.Name)
+	assert.Equal(t, map[string]any{"reason": "", "detail": ""}, resumed.json(t))
 }
 
 func TestEventStreamDoesNotReplayEventsFromBeforeConnectingOrHonourLastEventID(t *testing.T) {

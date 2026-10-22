@@ -1,0 +1,151 @@
+# bitnews: example Docker Compose file. Full guide: docs/deploy.md
+#
+# Before the first `docker compose up -d`:
+#
+#   1. Create the master key (outside ./config, never inside it):
+#        mkdir -p secrets config
+#        head -c 32 /dev/urandom | base64 > secrets/bitnews_key
+#        chmod 600 secrets/bitnews_key
+#
+#   2. Make the files readable and writable for PUID:PGID below. bitnews runs
+#      as that user after startup and cannot chown anything itself:
+#        sudo chown 1000:1000 secrets/bitnews_key config
+#
+#   3. Decide where /data lives on the host (see the layout below) and make
+#      sure PUID:PGID may write to it.
+#
+# Back up secrets/bitnews_key. Without it the Server passwords stored in the
+# database cannot be decrypted (nothing else is lost).
+#
+# Open http://<host>:9494 for the setup screen. The one-time setup token is
+# printed in the log: `docker compose logs bitnews`.
+
+services:
+  bitnews:
+    # Use a published image ...
+    image: registry.gitlab.com/kyura4k/bitnews:latest
+    # ... or build it from a checkout of the repository instead:
+    # build:
+    #   context: ..
+    #   dockerfile: Dockerfile
+    #   args:
+    #     VERSION: dev
+    #     COMMIT: unknown
+    container_name: bitnews
+    restart: unless-stopped
+
+    ports:
+      - "9494:9494"
+
+    environment:
+      # The container starts as root and bitnews drops to PUID:PGID before it
+      # touches any file, socket or input. Use the ids of the user that owns
+      # your media library (`id <user>`); use the same group as Sonarr/Radarr.
+      # Without PUID/PGID bitnews stays root and logs a warning.
+      PUID: "1000"
+      PGID: "1000"
+      # 002 = files 664, dirs 775 (group-writable, so the *arr containers
+      # sharing the group can read and manage what bitnews writes).
+      UMASK: "002"
+      TZ: Etc/UTC
+      # Optional (all have defaults, see docs/deploy.md):
+      # BITNEWS_LOG_LEVEL: info        # debug | info | warn | error
+      # BITNEWS_LOG_FORMAT: text       # text | json
+
+    volumes:
+      # Database. Must be writable by PUID:PGID. Do not put the key in here.
+      - ./config:/config
+      # ONE mount for everything, at the same path in every container
+      # (TRaSH layout). Downloads and the media library must be on the same
+      # filesystem so that Sonarr/Radarr can hardlink instead of copying:
+      #   /data/usenet/incomplete   bitnews works here
+      #   /data/usenet/complete     finished Downloads, one dir per Category
+      #   /data/torrents            torrent Downloads (M5)
+      #   /data/media               the Sonarr/Radarr library
+      - /data:/data
+
+    secrets:
+      - bitnews_key   # appears at /run/secrets/bitnews_key (the image default)
+
+    # Hardening. The healthcheck is inherited from the image.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      # The only capabilities the privilege drop needs: setgroups() and
+      # setgid() need SETGID, setuid() needs SETUID. The kernel clears all
+      # capabilities when the process changes from uid 0 to PUID, so the
+      # running daemon holds none. CHOWN, DAC_OVERRIDE etc. are not needed
+      # because root touches no file before the drop.
+      - SETUID
+      - SETGID
+    security_opt:
+      # Blocks gaining privileges through execve (setuid binaries, file
+      # capabilities). It does not affect the setuid() call that drops root
+      # to a lower uid, and bitnews executes no other program.
+      - no-new-privileges:true
+    # Alternative to PUID/PGID: let Docker start the process as that user
+    # directly. Then drop cap_add (nothing to drop) and unset PUID/PGID:
+    # user: "1000:1000"
+
+  # --- Sonarr sharing the same /data, same path ---------------------------
+  # Both containers see /data/usenet/complete/... under the SAME path, so
+  # when Sonarr is told "the download is at /data/usenet/complete/tv/X" the
+  # path exists for it. No Remote Path Mapping is needed, and Sonarr can
+  # hardlink into /data/media/tv. If the paths differ between containers,
+  # you need remote path mappings and hardlinks may stop working.
+  #
+  # sonarr:
+  #   image: lscr.io/linuxserver/sonarr:latest
+  #   container_name: sonarr
+  #   restart: unless-stopped
+  #   environment:
+  #     PUID: "1000"
+  #     PGID: "1000"      # same group as bitnews
+  #     UMASK: "002"
+  #     TZ: Etc/UTC
+  #   volumes:
+  #     - ./sonarr:/config
+  #     - /data:/data     # same mount as bitnews
+  #   ports:
+  #     - "8989:8989"
+  # In Sonarr: Settings > Download Clients > add SABnzbd (M4) pointing at
+  # http://bitnews:9494 (the compose service name works as the host).
+
+  # --- Variant: bitnews behind a VPN container (gluetun) -------------------
+  # Setting up and testing the VPN is your job: provider, credentials, kill
+  # switch and DNS are all gluetun's configuration, not bitnews's. This only
+  # shows the wiring. The service shares gluetun's network namespace, so all
+  # of bitnews's traffic leaves through the VPN, and the API port must be
+  # published on the gluetun service, not on bitnews:
+  #
+  # gluetun:
+  #   image: qmcgaw/gluetun:latest
+  #   container_name: gluetun
+  #   restart: unless-stopped
+  #   cap_add:
+  #     - NET_ADMIN
+  #   devices:
+  #     - /dev/net/tun:/dev/net/tun
+  #   environment:
+  #     VPN_SERVICE_PROVIDER: your-provider   # plus credentials etc.: see the gluetun wiki
+  #   ports:
+  #     - "9494:9494"     # bitnews API/UI
+  #
+  # and in the bitnews service above: remove `ports:` and add
+  #
+  #   network_mode: "service:gluetun"
+  #   depends_on:
+  #     - gluetun
+  #
+  # Sonarr then reaches bitnews at http://gluetun:9494 (if it is on gluetun's
+  # compose network), not http://bitnews:9494. The bitnews healthcheck keeps
+  # working: it queries 127.0.0.1, which is the shared namespace.
+
+secrets:
+  bitnews_key:
+    # Host file. With plain `docker compose` (not Swarm) this is a bind
+    # mount, so the host file's owner and mode apply inside the container.
+    file: ./secrets/bitnews_key

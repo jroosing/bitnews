@@ -1,0 +1,109 @@
+{
+  "name": "history: Completed only for Ready, Failed with a message, post-processing as its stage",
+  "provenance": "hand-written from the SABnzbd API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M4-01 recordings",
+  "description": "Newest first. Storage is the Ready Download's output path; the others have none.",
+  "seed": [
+    {
+      "op": "category",
+      "name": "tv"
+    },
+    {
+      "op": "download",
+      "ref": "pp",
+      "name": "Show.S01E03",
+      "state": "post_processing",
+      "category": "tv",
+      "stage": "repairing",
+      "added_min": 5,
+      "download_s": 60
+    },
+    {
+      "op": "download",
+      "ref": "failed",
+      "name": "Show.S01E02",
+      "state": "failed",
+      "category": "tv",
+      "failure_reason": "repair_insufficient",
+      "failure_detail": "short by 12 blocks",
+      "added_min": 20,
+      "download_s": 30,
+      "postproc_s": 10
+    },
+    {
+      "op": "download",
+      "ref": "ready",
+      "name": "Show.S01E01",
+      "state": "ready",
+      "category": "tv",
+      "total": 1073741824,
+      "done": 1073741824,
+      "output_path": "/data/usenet/complete/tv/Show.S01E01",
+      "added_min": 30,
+      "download_s": 120,
+      "postproc_s": 60
+    }
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "target": "/sabnzbd/api?mode=history&start=0&limit=30&category=tv&output=json&apikey={{apikey}}",
+        "headers": {
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "history": {
+            "noofslots": 3,
+            "ppslots": 1,
+            "last_history_update": "$type:number",
+            "slots": [
+              {
+                "nzo_id": "{{nzo.ready}}",
+                "name": "Show.S01E01",
+                "nzb_name": "Show.S01E01.nzb",
+                "category": "tv",
+                "status": "Completed",
+                "fail_message": "",
+                "storage": "/data/usenet/complete/tv/Show.S01E01",
+                "path": "/data/usenet/complete/tv/Show.S01E01",
+                "bytes": 1073741824,
+                "size": "1.0 GB",
+                "completed": 1772368380,
+                "download_time": 120,
+                "postproc_time": 60,
+                "action_line": "",
+                "password": ""
+              },
+              {
+                "nzo_id": "{{nzo.failed}}",
+                "name": "Show.S01E02",
+                "category": "tv",
+                "status": "Failed",
+                "fail_message": "$re:^Repair failed, not enough repair blocks",
+                "storage": "",
+                "bytes": 0,
+                "completed": 1772367640,
+                "download_time": 30
+              },
+              {
+                "nzo_id": "{{nzo.pp}}",
+                "name": "Show.S01E03",
+                "category": "tv",
+                "status": "Repairing",
+                "action_line": "Repairing",
+                "storage": "",
+                "fail_message": ""
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

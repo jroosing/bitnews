@@ -1,0 +1,30 @@
+# Keep the build context to what `go build ./cmd/bitnews` needs.
+# Denylist rather than allowlist, so new source directories (for example the
+# embedded web/ assets in M6) are picked up without editing this file.
+
+# Version control and local state
+.git
+.gitignore
+.claude
+.go
+.cache
+
+# Build output
+bin
+dist
+*.test
+*.out
+coverage.*
+
+# Not needed for the build. Fixtures can be large; Go ignores testdata
+# directories in builds anyway.
+**/testdata
+**/*_test.go
+docs
+scripts
+deploy
+*.md
+Dockerfile
+.dockerignore
+.gitlab-ci.yml
+Makefile

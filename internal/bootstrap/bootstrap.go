@@ -87,7 +87,8 @@ var options = []option{optConfigDir, optKeyFile, optListen, optLogLevel, optLogF
 // Usage writes the help text for every bootstrap option to w.
 func Usage(w io.Writer) {
 	var b strings.Builder
-	b.WriteString("Usage: bitnews [options]\n\n")
+	b.WriteString("Usage: bitnews [options]\n       bitnews healthcheck\n\n")
+	b.WriteString("healthcheck asks the running daemon on 127.0.0.1 (port from BITNEWS_LISTEN) for /api/v1/health\nand exits 0 on a 200 within 3 seconds, otherwise 1. It is meant for container health checks.\n\n")
 	b.WriteString("Options (a flag wins over its environment variable; empty variables are ignored):\n")
 	for _, o := range options {
 		if o.flag != "" {

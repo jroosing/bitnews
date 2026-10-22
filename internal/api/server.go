@@ -22,19 +22,31 @@ type Version struct {
 	GoVersion string
 }
 
-// Config holds everything a Server needs. All fields except the last four
-// are required.
+// Config holds everything a Server needs. All fields are required except
+// AdapterCredentials, SABnzbd and the last four.
 type Config struct {
 	Logger     *slog.Logger
 	Version    Version
 	Downloads  *app.DownloadService
+	Adder      *app.AddService
 	Categories *app.CategoryService
+	Servers    *app.ServerService
 	Settings   *app.SettingsService
 	Setup      *auth.Setup
 	Sessions   *auth.SessionService
 	UIAuth     *auth.UIAuth
 	APIKeys    *auth.APIKeyService
 	Bus        *core.Bus
+
+	// AdapterCredentials manages the media-manager credentials behind
+	// /api/v1/adapter-credentials. Without it those routes do not exist.
+	AdapterCredentials *auth.AdapterCredentialService
+	// SABnzbd serves the SABnzbd API emulation at /sabnzbd/api for every
+	// method. It authenticates its own requests with adapter credentials,
+	// so it sits outside the UI authentication and CSRF, and inside the
+	// setup gate and the request ID, panic recovery and security header
+	// middleware. Without it the path is a 404.
+	SABnzbd http.Handler
 
 	// InstanceID identifies this process in the SSE hello event, so a
 	// client can tell that the daemon restarted. It defaults to a random ID.
@@ -64,7 +76,7 @@ type Server struct {
 
 // New builds the Server and its routes.
 func New(cfg Config) (*Server, error) {
-	if cfg.Downloads == nil || cfg.Categories == nil || cfg.Settings == nil || cfg.Setup == nil ||
+	if cfg.Downloads == nil || cfg.Adder == nil || cfg.Categories == nil || cfg.Servers == nil || cfg.Settings == nil || cfg.Setup == nil ||
 		cfg.Sessions == nil || cfg.UIAuth == nil || cfg.APIKeys == nil || cfg.Bus == nil {
 		return nil, errors.New("api: Config is missing a service")
 	}

@@ -589,3 +589,82 @@ func TestDownloadRepoUpdateKeepsAddedAtSoPagingStaysStable(t *testing.T) {
 	assert.Equal(t, ids(all), append(ids(first), ids(second)...))
 	assert.Empty(t, next)
 }
+
+func TestDownloadRepoUpdateProgressStoresBytesAndTouchesUpdatedAt(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("p", 0)
+	d.TotalBytes = 100
+	createAll(t, repo, d)
+	before := time.Now().UTC().Add(-time.Second)
+
+	require.NoError(t, repo.UpdateProgress(ctx, d.ID, 40, 120))
+
+	got, err := repo.Get(ctx, d.ID)
+	require.NoError(t, err)
+	assert.EqualValues(t, 40, got.DoneBytes)
+	assert.EqualValues(t, 120, got.TotalBytes)
+	assert.True(t, got.UpdatedAt.After(before), "updated_at is refreshed")
+}
+
+func TestDownloadRepoUpdateProgressWithoutATotalKeepsTheStoredTotal(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("p", 0)
+	d.TotalBytes = 100
+	createAll(t, repo, d)
+
+	require.NoError(t, repo.UpdateProgress(ctx, d.ID, 10, 0))
+	require.NoError(t, repo.UpdateProgress(ctx, d.ID, 20, -5))
+
+	got, err := repo.Get(ctx, d.ID)
+	require.NoError(t, err)
+	assert.EqualValues(t, 20, got.DoneBytes)
+	assert.EqualValues(t, 100, got.TotalBytes)
+}
+
+func TestDownloadRepoUpdateProgressUnknownIDIsNotFound(t *testing.T) {
+	repo, _ := newDownloadRepo(t)
+
+	err := repo.UpdateProgress(context.Background(), core.NewID(), 1, 1)
+
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
+func TestDownloadRepoUpdateProgressRejectsNegativeDoneBytes(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("p", 0)
+	createAll(t, repo, d)
+
+	assert.Error(t, repo.UpdateProgress(ctx, d.ID, -1, 0))
+}
+
+// A progress write must not clobber an edit made after the writer last read
+// the row: it touches done_bytes, total_bytes and updated_at only.
+func TestDownloadRepoUpdateProgressDoesNotClobberAConcurrentEdit(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("p", 0)
+	createAll(t, repo, d)
+	// The runner reads the row ...
+	stale, err := repo.Get(ctx, d.ID)
+	require.NoError(t, err)
+	// ... the API edits it meanwhile ...
+	edited := stale
+	edited.Priority, edited.Paused, edited.QueuePosition = core.DownloadPriorityForce, true, 7
+	require.NoError(t, repo.Update(ctx, edited))
+	_, err = repo.UpdateState(ctx, d.ID, core.StateChange{To: core.StateQueued, At: epoch.Add(time.Minute)})
+	require.NoError(t, err)
+
+	// ... and the runner writes progress.
+	require.NoError(t, repo.UpdateProgress(ctx, d.ID, 55, 99))
+
+	got, err := repo.Get(ctx, d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, core.DownloadPriorityForce, got.Priority)
+	assert.True(t, got.Paused)
+	assert.Equal(t, 7, got.QueuePosition)
+	assert.Equal(t, core.StateQueued, got.State)
+	assert.EqualValues(t, 55, got.DoneBytes)
+}

@@ -1,0 +1,247 @@
+# Deploying bitnews
+
+bitnews is one static binary that listens on one port (default `9494`) for the UI, its own API and the Sonarr/Radarr adapters. It speaks plain HTTP; put a reverse proxy in front of it for TLS. Two supported ways to run it:
+
+- [Docker](#docker) (distroless image, `deploy/docker-compose.example.yml`)
+- [systemd / bare metal / LXC](#systemd-and-bare-metal) (`deploy/bitnews.service`)
+
+Then read the [hardening checklist](#hardening-checklist).
+
+## Bootstrap settings
+
+Only these settings live outside the database. A flag wins over its environment variable, and an empty variable counts as unset. Everything else is configured in the UI or API.
+
+| Flag | Env | Default | Notes |
+|---|---|---|---|
+| `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` | Holds `bitnews.db`. Image: `/config`. systemd: `/var/lib/bitnews`. Absolute path. |
+| `--key-file` | `BITNEWS_KEY_FILE` | `$XDG_CONFIG_HOME/bitnews/bitnews.key` | Master key for secret encryption. Absolute path, and bitnews refuses to start if it is inside the config dir. Image: `/run/secrets/bitnews_key`. systemd: a credential, see below. |
+| `--listen` | `BITNEWS_LISTEN` | `0.0.0.0:9494` | `host:port`. |
+| `--log-level` | `BITNEWS_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. |
+| `--log-format` | `BITNEWS_LOG_FORMAT` | `text` | `text` or `json`. |
+| – | `PUID`, `PGID` | unset | Set both or neither. When started as root, drop to these ids. Setting them while not root is an error. |
+| – | `UMASK` | `002` | Octal, applied process-wide at startup. |
+| – | `BITNEWS_ADMIN_PASSWORD_FILE` | unset | Absolute path of a file holding the initial admin password; skips the setup screen. |
+
+`bitnews --help` prints the same list and `bitnews --version` prints the version and commit.
+
+On first start (no admin yet), bitnews prints a one-time **setup token** in its log. The setup screen asks for it, so nobody else on the LAN can claim a fresh instance. Read it with `docker compose logs bitnews` or `journalctl -u bitnews`.
+
+## Docker
+
+### Build the image
+
+```sh
+docker build -t bitnews \
+  --build-arg VERSION="$(git describe --tags --always --dirty)" \
+  --build-arg COMMIT="$(git rev-parse --short HEAD)" .
+```
+
+The build stage compiles with `CGO_ENABLED=0` on the build host's own platform and cross-compiles, so `docker buildx build --platform linux/amd64,linux/arm64 ...` needs no emulation. The final stage is `gcr.io/distroless/static-debian12`: no shell, no package manager, just the binary, CA certificates and tzdata (so `TZ` works).
+
+Pinning is a hardening step. Tags are mutable; pin both base images to a digest for reproducible builds:
+
+```sh
+docker buildx imagetools inspect golang:1.27.2                  # note "Digest: sha256:..."
+docker buildx imagetools inspect gcr.io/distroless/static-debian12
+```
+
+Then write `FROM golang:1.27.2@sha256:<digest>` and `FROM gcr.io/distroless/static-debian12@sha256:<digest>` in the `Dockerfile`. Distroless images are signed with cosign, and you can verify the one you pin (see the distroless README for the exact command). Renovate or Dependabot can keep the digests current.
+
+### Create the key
+
+The master key encrypts the Server passwords stored in the database. It must live **outside** the config directory, so a copy of `/config` never contains the key that decrypts it. The image expects it at `/run/secrets/bitnews_key`, where Docker puts a secret:
+
+```sh
+mkdir -p secrets config
+head -c 32 /dev/urandom | base64 > secrets/bitnews_key
+chmod 600 secrets/bitnews_key
+sudo chown 1000:1000 secrets/bitnews_key config      # your PUID:PGID
+```
+
+The file holds 32 random bytes, base64-encoded, plus a newline.
+
+**Back this file up, separately from the database backup.** If the key is lost, the stored Server passwords cannot be decrypted and must be entered again; nothing else is lost. Never replace the key of an existing installation with a new one.
+
+How the file is read, because it surprises people:
+
+- bitnews drops root **before** it opens any file. It reads the key as `PUID:PGID`, not as root. Under plain `docker compose` (no Swarm) a `file:` secret is a bind mount of the host file, so the host file's owner and mode apply inside the container (the `uid`/`gid`/`mode` options of the long secret syntax are not applied there). Make the file readable by `PUID:PGID`: own it as shown above, or use mode `0440` with group `PGID`. A root-owned `0600` file fails with "permission denied". In Docker Swarm secrets are root-owned `0444`, which is readable by everyone.
+- A key file that is readable by other users (such as `0444`) only produces a warning ("accessible by other users; consider chmod 600"). Reading still works, so that warning is expected for Swarm secrets and is harmless.
+
+Without Docker secrets, mount a file at the default path or point `BITNEWS_KEY_FILE` somewhere else:
+
+```sh
+# a) bind-mount a file onto the default path
+-v "$PWD/secrets/bitnews_key:/run/secrets/bitnews_key:ro"
+
+# b) use another absolute path outside /config; if the file is missing and its
+#    directory is writable for PUID, bitnews generates it (mode 0600) on first
+#    start and logs a warning to back it up
+-e BITNEWS_KEY_FILE=/keys/bitnews.key -v "$PWD/keys:/keys"
+```
+
+If the file is missing and `/run/secrets` is not writable (the normal case), startup fails with instructions rather than silently using a different key.
+
+### Compose
+
+Copy `deploy/docker-compose.example.yml` next to your other stacks, adjust `PUID`, `PGID`, `TZ` and the `/data` path, then:
+
+```sh
+docker compose up -d
+docker compose logs bitnews        # setup token
+```
+
+Open `http://<host>:9494`. The healthcheck is inherited from the image.
+
+### PUID, PGID and UMASK
+
+The image starts as **root** on purpose (it is not the `:nonroot` distroless variant), so `PUID`/`PGID` work the way they do in linuxserver.io images. The binary then does the dropping itself, first thing at startup, before it opens a file or socket or parses any input:
+
+1. It applies `UMASK` (default `002`: files `664`, directories `775`).
+2. When root and `PUID`/`PGID` are set: `setgroups([PGID])`, `setgid(PGID)`, `setuid(PUID)`, then it verifies that `setuid(0)` fails and aborts if it succeeds. After this the daemon holds no capabilities.
+3. When root and `PUID`/`PGID` are **not** set, bitnews keeps running as root and logs once: `running as root: a parser bug would run with root privileges`. That works, but a bug in a parser of hostile input (NZB, NNTP, archives) would then run with root privileges. Set `PUID`/`PGID`.
+4. `PUID`/`PGID` with a process that is not root is an error, unless they equal the current ids.
+
+Alternative: let Docker start the process as that user with `user: "1000:1000"` in compose (or `--user`) and leave `PUID`/`PGID` unset. This also works and needs no capabilities at all.
+
+Because nothing runs as root after the drop, bitnews cannot `chown` anything. The host directories you mount must already be usable by `PUID:PGID`:
+
+- `/config` writable by `PUID:PGID` (`chown -R 1000:1000 config`). A fresh **named volume** is created root-owned, so either `chown` it once or prefer a bind mount.
+- `/data` writable by `PUID:PGID` or by its group.
+- The key file readable by `PUID:PGID` (above).
+
+The hardened compose example uses `cap_drop: [ALL]` and adds back only `SETUID` and `SETGID`, which `setuid`/`setgid`/`setgroups` need. Root touches no file before the drop, so `CHOWN` and `DAC_OVERRIDE` are not needed. `no-new-privileges` blocks gaining privilege through `execve`; it does not stop a process from lowering its own uid, and bitnews executes no other program. Do not run with `cap_drop: [ALL]` and no `PUID`: root without `DAC_OVERRIDE` can only touch files it owns.
+
+### The shared `/data` layout
+
+Mount **one** `/data` into bitnews, Sonarr, Radarr and anything else that handles the files, at the same path in every container, following the [TRaSH guides](https://trash-guides.info/):
+
+```
+/data
+├── usenet
+│   ├── incomplete/<download>/              bitnews works here
+│   └── complete/<category>/<download>/     finished Downloads (Ready)
+├── torrents/<category>/<download>/         torrent Downloads (M5)
+└── media
+    ├── tv/                                  Sonarr library
+    └── movies/                              Radarr library
+```
+
+Why it matters:
+
+- **Hardlinks.** A hardlink only works inside one filesystem, and Docker treats each mount as separate. If `/data/usenet` and `/data/media` are separate mounts (or separate host filesystems), Sonarr must copy instead of hardlink: twice the disk use, slower imports, and torrents stop seeding from the same file. One mount, one filesystem, solves it.
+- **Atomic moves.** bitnews moves a finished Download from `incomplete` to `complete` with a `rename`, which is instant on one filesystem. The UI warns if the configured roots are on different filesystems.
+- **No remote path mapping.** Sonarr is told "the download is at `/data/usenet/complete/tv/X`", and that path exists for Sonarr too. If container paths differed you would need Remote Path Mappings, and they are an easy source of "import failed" errors.
+
+Files are never modified after Ready, because hardlinks share the data with the library.
+
+Ownership tips:
+
+- Use the **same group** (`PGID`) for bitnews and the *arr containers, ideally the same `PUID` too, and keep `UMASK=002` everywhere so group members can read and write each other's files.
+- Make the tree group-writable and let new directories inherit the group:
+  `sudo chgrp -R 1000 /data && sudo chmod -R g+rwX /data && sudo find /data -type d -exec chmod g+s {} +`
+- Do not mix `UMASK=022` containers with `002` ones on the same tree.
+
+### Reverse proxy and TLS
+
+bitnews serves HTTP only. Terminate TLS in a reverse proxy and do not publish port 9494 to the internet. If the proxy runs on the same host, publish on loopback only (`"127.0.0.1:9494:9494"`); if it shares a Docker network with bitnews, drop `ports:` and reach it as `bitnews:9494`.
+
+Caddy:
+
+```caddyfile
+bitnews.example.com {
+    reverse_proxy bitnews:9494
+}
+```
+
+Traefik (labels on the `bitnews` service; adjust entrypoint and resolver names):
+
+```yaml
+labels:
+  - traefik.enable=true
+  - traefik.http.routers.bitnews.rule=Host(`bitnews.example.com`)
+  - traefik.http.routers.bitnews.entrypoints=websecure
+  - traefik.http.routers.bitnews.tls.certresolver=letsencrypt
+  - traefik.http.services.bitnews.loadbalancer.server.port=9494
+```
+
+nginx needs the original `Host` header passed on (`proxy_set_header Host $host;`) plus `X-Forwarded-For` and `X-Forwarded-Proto`, and a long `proxy_read_timeout` with `proxy_buffering off` for the SSE stream.
+
+What bitnews checks behind a proxy:
+
+- Cookie-authenticated, state-changing requests (such as login) must carry an `Origin` header that matches the request's `Host` or an entry of `allowed_hosts`. If the proxy rewrites `Host` to an internal name, login fails with `403 csrf_origin_invalid`. Pass the original `Host` through (Caddy and Traefik do by default), or list the public name in **Settings → Security → allowed_hosts**.
+- The session cookie is `Secure` when the request arrived over HTTPS, either directly or through a **trusted proxy** that sets `X-Forwarded-Proto`. `X-Forwarded-For` is honoured only when the direct peer is in **`trusted_proxies`**. Add the proxy's address or Docker network CIDR there, and nothing else.
+- `allowed_hosts` is mandatory before you can enable *disable auth* or *LAN bypass*; a request with any other `Host` then gets `421`. Both options are off by default and show a permanent warning in the UI. Prefer neither. These settings live in the database and are edited through the UI or by a logged-in session over the API (`PUT /api/v1/settings`; an API key may not change the `auth` section), not through environment variables.
+
+### VPN
+
+bitnews does not set up a VPN. If you want its Usenet or torrent traffic to leave through one, run it in the network namespace of a VPN container such as gluetun: the commented variant in the compose example uses `network_mode: "service:gluetun"` and publishes the API port on the `gluetun` service. Provider, credentials, DNS and kill switch are the VPN container's configuration, and testing that they work is yours. Torrent peer traffic can additionally be bound to one interface (M5), which acts as a kill switch.
+
+### The `bitnews healthcheck` subcommand
+
+The image's `HEALTHCHECK` runs `["/bitnews", "healthcheck"]` (exec form, because distroless has no shell). Contract of the subcommand:
+
+- It sends `GET http://127.0.0.1:<port>/api/v1/health`, with `<port>` taken from `BITNEWS_LISTEN` (default `9494`).
+- It exits `0` when the answer is `200` within **3 seconds**, and `1` for anything else (connection refused, timeout, other status).
+- The endpoint needs no credentials and answers even while first-run setup is open.
+
+The `HEALTHCHECK` uses `--interval=30s --timeout=5s --start-period=20s --retries=3`. Inspect it with `docker inspect --format '{{.State.Health.Status}}' bitnews`. It always queries the loopback address, so keep `BITNEWS_LISTEN` on `0.0.0.0` or `127.0.0.1` inside the container.
+
+## systemd and bare metal
+
+Needs systemd 250 or newer (for `LoadCredential=` and the `%d` specifier). The same steps work in an LXC container.
+
+```sh
+# 1. Binary (build with `make build-all`, or download a release)
+sudo install -m 0755 dist/bitnews-linux-amd64 /usr/local/bin/bitnews     # or -arm64
+
+# 2. Service user. For sharing files with Sonarr/Radarr use their group
+#    as Group= in the unit instead (see the comments in bitnews.service).
+sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin bitnews
+
+# 3. Master key, owned by root: systemd hands a private copy to the service
+sudo install -d -m 0755 /etc/bitnews
+head -c 32 /dev/urandom | base64 | sudo tee /etc/bitnews/bitnews.key >/dev/null
+sudo chown root:root /etc/bitnews/bitnews.key && sudo chmod 600 /etc/bitnews/bitnews.key
+
+# 4. Data tree, writable for the service (TRaSH layout, same filesystem as the library)
+sudo install -d -m 2775 -o bitnews -g bitnews /data/usenet /data/usenet/incomplete /data/usenet/complete
+
+# 5. Optional settings, then the unit
+sudo install -m 0640 deploy/bitnews.env.example /etc/bitnews/bitnews.env     # edit, uncomment what you need
+sudo install -m 0644 deploy/bitnews.service /etc/systemd/system/bitnews.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now bitnews
+journalctl -u bitnews -f           # setup token
+```
+
+How the unit is built:
+
+- **User and ids.** It runs as `bitnews` directly. `PUID`/`PGID` are not used (and are rejected when not root). `UMask=0002` matches the Docker default.
+- **State.** `StateDirectory=bitnews` creates `/var/lib/bitnews` (the config dir, mode `0700`) and keeps it writable despite `ProtectSystem=strict`. `ReadWritePaths=/data` opens the download and library tree; the unit does not start if that path is missing, so create it first or write `-/data`.
+- **Key.** `LoadCredential=bitnews.key:/etc/bitnews/bitnews.key` makes systemd read the file as root and expose a copy only to this service, in a private in-memory directory. `%d` in `Environment=BITNEWS_KEY_FILE=%d/bitnews.key` is that directory, the same path as `$CREDENTIALS_DIRECTORY` (`/run/credentials/bitnews.service`). The key therefore stays out of the config dir and its backups, and the service user needs no access to `/etc/bitnews`. The credentials directory is read-only, so under systemd the key is never auto-generated: create it as shown in step 3, and the unit refuses to start without it.
+- **Settings.** `EnvironmentFile=-/etc/bitnews/bitnews.env` is optional and overrides the `Environment=` lines. `%d` is not expanded inside the env file. For `BITNEWS_ADMIN_PASSWORD_FILE` use the commented `LoadCredential=` lines in the unit.
+- **Restart and stop.** `Restart=on-failure`, and `TimeoutStopSec=30` leaves room for the 10 second graceful shutdown (stop accepting requests, flush state, close the DB).
+- **Hardening.** See the list in the unit. `MemoryDenyWriteExecute=true` is fine for a static Go binary. `RestrictAddressFamilies` omits `AF_NETLINK`; add it when the torrent interface binding (M5) is used. The `SystemCallFilter` lines return `EPERM` for blocked calls instead of killing the process.
+
+Check it on the machine that runs it:
+
+```sh
+systemd-analyze verify /etc/systemd/system/bitnews.service
+systemd-analyze security bitnews.service        # target: overall exposure below 3.0
+```
+
+Proxy, `allowed_hosts` and `trusted_proxies` work exactly as in the Docker section; set `BITNEWS_LISTEN=127.0.0.1:9494` in the env file when the proxy is on the same host. The `healthcheck` subcommand also works outside Docker (`bitnews healthcheck`, same contract) for a monitoring script.
+
+## Hardening checklist
+
+- [ ] The container (or service) runs as `PUID:PGID` / `User=bitnews`, not root. The log has no "running as root" warning.
+- [ ] The key is outside the config dir, backed up separately, and readable only by the service (a Docker secret or `LoadCredential=`).
+- [ ] TLS is terminated by a reverse proxy; port 9494 is not reachable from the internet (loopback or internal Docker network only).
+- [ ] `allowed_hosts` lists the public hostname, `trusted_proxies` lists only the proxy, and *disable auth* and *LAN bypass* are off.
+- [ ] Compose: `read_only: true`, `tmpfs: /tmp`, `cap_drop: [ALL]` with only `SETUID`/`SETGID` added back, `no-new-privileges:true`.
+- [ ] systemd: `systemd-analyze security bitnews.service` is below 3.0 on your system.
+- [ ] Base images are pinned to digests and rebuilt regularly, and `govulncheck` (CI) is clean for the release you run.
+- [ ] One `/data` mount shared with the *arr containers, same path everywhere, same group, `UMASK=002`.
+- [ ] A VPN, if wanted, is configured and tested in its own container (bitnews does not manage it).
+- [ ] An API key per client (Sonarr, Radarr, scripts) with the narrowest scope that works, and no admin password in the environment or shell history (`BITNEWS_ADMIN_PASSWORD_FILE` points at a file only the service can read).
+- [ ] The database (`/config`, `/var/lib/bitnews`) is backed up; the key is not stored with it.

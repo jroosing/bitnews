@@ -254,19 +254,15 @@ func (s *DownloadService) Update(ctx context.Context, id core.ID, p Patch) (core
 // Fetched.
 var queueStates = []core.State{core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching}
 
-// reposition computes the new QueuePositions after moving d with move. It
-// returns them with the Downloads of d's Queue (the same Source kind, not yet
-// Fetched). A Download that is not in its Queue is a conflict.
-func (s *DownloadService) reposition(ctx context.Context, d core.Download, move func([]core.Download, core.ID) (map[core.ID]int, error)) (map[core.ID]int, []core.Download, error) {
-	if !slices.Contains(queueStates, d.State) {
-		return nil, nil, conflict("not_queued", "a download in state %q is not in a queue", d.State)
-	}
+// queueOf returns the Downloads of the Queue of one Source kind: those not
+// yet Fetched.
+func (s *DownloadService) queueOf(ctx context.Context, kind core.SourceKind) ([]core.Download, error) {
 	var queue []core.Download
 	for _, st := range queueStates {
 		for after := ""; ; {
-			page, next, err := s.downloads.List(ctx, core.DownloadQuery{State: st, SourceKind: d.SourceKind, After: after, Limit: store.MaxListLimit})
+			page, next, err := s.downloads.List(ctx, core.DownloadQuery{State: st, SourceKind: kind, After: after, Limit: store.MaxListLimit})
 			if err != nil {
-				return nil, nil, fmt.Errorf("app: list queue: %w", err)
+				return nil, fmt.Errorf("app: list queue: %w", err)
 			}
 			queue = append(queue, page...)
 			if next == "" {
@@ -274,6 +270,20 @@ func (s *DownloadService) reposition(ctx context.Context, d core.Download, move 
 			}
 			after = next
 		}
+	}
+	return queue, nil
+}
+
+// reposition computes the new QueuePositions after moving d with move. It
+// returns them with the Downloads of d's Queue (the same Source kind, not yet
+// Fetched). A Download that is not in its Queue is a conflict.
+func (s *DownloadService) reposition(ctx context.Context, d core.Download, move func([]core.Download, core.ID) (map[core.ID]int, error)) (map[core.ID]int, []core.Download, error) {
+	if !slices.Contains(queueStates, d.State) {
+		return nil, nil, conflict("not_queued", "a download in state %q is not in a queue", d.State)
+	}
+	queue, err := s.queueOf(ctx, d.SourceKind)
+	if err != nil {
+		return nil, nil, err
 	}
 	positions, err := move(queue, d.ID)
 	if err != nil {
