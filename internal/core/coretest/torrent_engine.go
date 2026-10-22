@@ -24,9 +24,10 @@ type TorrentCall struct {
 }
 
 type fakeTorrent struct {
-	spec  core.TorrentSpec
-	dir   string
-	stats core.TorrentStats
+	spec     core.TorrentSpec
+	metainfo []byte
+	dir      string
+	stats    core.TorrentStats
 	// stateBeforePause is restored by Resume.
 	stateBeforePause core.TorrentState
 }
@@ -39,6 +40,7 @@ type FakeTorrentEngine struct {
 	torrents map[core.InfoHash]*fakeTorrent
 	failNext map[string]error
 	events   chan core.TorrentEvent
+	gates    map[string]chan struct{}
 }
 
 var _ core.TorrentEngine = (*FakeTorrentEngine)(nil)
@@ -49,6 +51,7 @@ func NewFakeTorrentEngine() *FakeTorrentEngine {
 		torrents: make(map[core.InfoHash]*fakeTorrent),
 		failNext: make(map[string]error),
 		events:   make(chan core.TorrentEvent, 1024),
+		gates:    make(map[string]chan struct{}),
 	}
 }
 
@@ -66,12 +69,41 @@ func (f *FakeTorrentEngine) FailNext(method string, err error) {
 	f.failNext[method] = err
 }
 
+// SetBlock makes Relocate wait, after it was recorded, until Unblock is
+// called, so a test can look at the world while a move is under way.
+// Only "Relocate" supports it.
+func (f *FakeTorrentEngine) SetBlock(method string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gates[method] = make(chan struct{})
+}
+
+// Unblock releases the calls waiting after SetBlock.
+func (f *FakeTorrentEngine) Unblock(method string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if g, ok := f.gates[method]; ok {
+		close(g)
+		delete(f.gates, method)
+	}
+}
+
 // SetStats replaces the stats of a torrent the fake already knows.
 func (f *FakeTorrentEngine) SetStats(h core.InfoHash, st core.TorrentStats) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if t, ok := f.torrents[h]; ok {
 		t.stats = st
+	}
+}
+
+// SetMetainfo sets the bytes Metainfo returns for a torrent the fake already
+// knows, as if its metadata had arrived.
+func (f *FakeTorrentEngine) SetMetainfo(h core.InfoHash, b []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t, ok := f.torrents[h]; ok {
+		t.metainfo = b
 	}
 }
 
@@ -206,12 +238,20 @@ func (f *FakeTorrentEngine) Resume(h core.InfoHash) error {
 // Relocate records the new directory.
 func (f *FakeTorrentEngine) Relocate(_ context.Context, h core.InfoHash, newDir string) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	t, err := f.lookup(TorrentCall{Method: "Relocate", Hash: h, Dir: newDir})
+	_, err := f.lookup(TorrentCall{Method: "Relocate", Hash: h, Dir: newDir})
+	gate := f.gates["Relocate"]
+	f.mu.Unlock()
 	if err != nil {
 		return err
 	}
-	t.dir = newDir
+	if gate != nil {
+		<-gate
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t, ok := f.torrents[h]; ok {
+		t.dir = newDir
+	}
 	return nil
 }
 
@@ -228,6 +268,25 @@ func (f *FakeTorrentEngine) SetRateLimits(down, up int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.record(TorrentCall{Method: "SetRateLimits", Down: down, Up: up})
+}
+
+// Metainfo returns the metainfo the torrent was added with, or the bytes of
+// SetMetainfo. A magnet without them has no metadata yet and fails. It is not
+// recorded as a call.
+func (f *FakeTorrentEngine) Metainfo(h core.InfoHash) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.torrents[h]
+	if !ok {
+		return nil, fmt.Errorf("fake torrent engine: metainfo %s: %w", h, core.ErrNotFound)
+	}
+	switch {
+	case t.metainfo != nil:
+		return t.metainfo, nil
+	case len(t.spec.Metainfo) > 0:
+		return t.spec.Metainfo, nil
+	}
+	return nil, fmt.Errorf("fake torrent engine: metainfo %s: metadata not received", h)
 }
 
 // Stats returns the stats a test set. It is not recorded as a call, because

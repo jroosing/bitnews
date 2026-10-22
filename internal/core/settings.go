@@ -14,6 +14,10 @@ type Settings struct {
 	Queues QueueLimits `json:"queues"`
 	Auth   Auth        `json:"auth"`
 	Paths  Paths       `json:"paths"`
+	// Network binds outbound Usenet and torrent sockets (off by default).
+	Network NetworkSettings `json:"network"`
+	// Seeding holds the global Share Limit defaults.
+	Seeding SeedingSettings `json:"seeding"`
 }
 
 // QueueLimits is the concurrency limit of each Queue: how many non-force
@@ -62,6 +66,7 @@ func DefaultSettings() Settings {
 			Usenet:  Roots{Incomplete: "/data/usenet/incomplete", Complete: "/data/usenet/complete"},
 			Torrent: Roots{Incomplete: "/data/torrents", Complete: "/data/torrents"},
 		},
+		Seeding: DefaultSeedingSettings(),
 	}
 }
 
@@ -107,6 +112,8 @@ func (s Settings) Validate() error {
 			problems = append(problems, fmt.Errorf("%s root %q is not an absolute path", root.name, root.path))
 		}
 	}
+	problems = append(problems, s.Network.validate()...)
+	problems = append(problems, s.Seeding.validate()...)
 	if len(problems) > 0 {
 		return fmt.Errorf("core: %w: %w", ErrInvalidSettings, errors.Join(problems...))
 	}

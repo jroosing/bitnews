@@ -66,6 +66,18 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+// checkRedirectOrMagnet is checkRedirect, except that a redirect to a
+// "magnet:" URI ends the fetch without error: the client then returns the
+// redirect response itself, whose Location header holds the link. Indexer
+// proxies such as Prowlarr and Jackett answer a torrent download that way
+// when the release only has a magnet link.
+func checkRedirectOrMagnet(req *http.Request, via []*http.Request) error {
+	if strings.EqualFold(req.URL.Scheme, "magnet") {
+		return http.ErrUseLastResponse
+	}
+	return checkRedirect(req, via)
+}
+
 // FetchNZB downloads the NZB at rawURL and stages it, within the fetch
 // timeout and the NZB size cap. The URL is never stored, and only its
 // redacted form is logged or returned in an error. Failures to reach the
@@ -133,6 +145,11 @@ var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"']+`)
 // fetchFailed turns a transport error into the API error. The error text of
 // net/http quotes URLs, so every URL in it is redacted.
 func (s *AddService) fetchFailed(ctx context.Context, log *slog.Logger, err error) error {
+	return s.fetchFailedOf(ctx, log, "NZB", err)
+}
+
+// fetchFailedOf is fetchFailed for a fetch of what ("NZB", "NZB or torrent").
+func (s *AddService) fetchFailedOf(ctx context.Context, log *slog.Logger, what string, err error) error {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return err // the caller went away: not an upstream problem
 	}
@@ -147,6 +164,6 @@ func (s *AddService) fetchFailed(ctx context.Context, log *slog.Logger, err erro
 		reason = urlInText.ReplaceAllStringFunc(err.Error(), redact.URL)
 		reason = strings.TrimSpace(reason)
 	}
-	log.Warn("nzb fetch failed", "reason", reason)
-	return upstream("fetch_failed", "could not fetch the NZB: %s", reason)
+	log.Warn(strings.ToLower(what)+" fetch failed", "reason", reason)
+	return upstream("fetch_failed", "could not fetch the %s: %s", what, reason)
 }

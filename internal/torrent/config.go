@@ -14,6 +14,8 @@ import (
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
 	"golang.org/x/time/rate"
+
+	"gitlab.com/kyura4k/gitnews/internal/netbind"
 )
 
 // ErrInvalidConfig is returned by New for settings that cannot work.
@@ -38,6 +40,13 @@ type Config struct {
 	// BindAddr, when set, is the one local IP address the engine listens on
 	// and dials from. Empty listens on all interfaces. Host names are refused.
 	BindAddr string
+	// Binding binds every socket of the engine (peer TCP and uTP, DHT,
+	// trackers) to an interface and/or a local address, as a kill switch.
+	// It takes effect when New starts the engine; the daemon restarts the
+	// engine to change it. New fails with ErrBindUnavailable when the
+	// binding cannot carry traffic, and never starts unbound. Binding.Address
+	// and BindAddr are the same setting: set at most one, or the same value.
+	Binding netbind.Binding
 
 	// DisableUTP turns off uTP and leaves TCP only. Peers dial both at once
 	// and, in anacrolix/torrent v1.61.0, a transfer occasionally stalls when
@@ -100,6 +109,12 @@ func (c Config) validate() error {
 	if c.BindAddr != "" && net.ParseIP(c.BindAddr) == nil {
 		return fmt.Errorf("%w: bind address %q is not an IP address", ErrInvalidConfig, c.BindAddr)
 	}
+	if err := c.Binding.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidConfig, err)
+	}
+	if c.BindAddr != "" && c.Binding.Address != "" && c.BindAddr != c.Binding.Address {
+		return fmt.Errorf("%w: bind address %q conflicts with binding address %q", ErrInvalidConfig, c.BindAddr, c.Binding.Address)
+	}
 	if c.PieceStore == nil {
 		return fmt.Errorf("%w: piece store required", ErrInvalidConfig)
 	}
@@ -141,16 +156,22 @@ func (e *Engine) clientConfig(cfg Config) (*anacrolix.ClientConfig, error) {
 		cc.HeaderObfuscationPolicy = anacrolix.HeaderObfuscationPolicy{Preferred: true}
 	}
 
-	if cfg.BindAddr != "" {
-		ip := net.ParseIP(cfg.BindAddr)
-		cc.ListenHost = func(string) string { return cfg.BindAddr }
-		cc.DisableIPv4 = ip.To4() == nil
-		cc.DisableIPv6 = ip.To4() != nil
-		d := &net.Dialer{LocalAddr: &net.TCPAddr{IP: ip}}
+	if b := cfg.binding(); b.Enabled() {
+		if b.Address != "" {
+			ip := net.ParseIP(b.Address)
+			cc.ListenHost = func(string) string { return b.Address }
+			cc.DisableIPv4 = ip.To4() == nil
+			cc.DisableIPv6 = ip.To4() != nil
+		}
+		// anacrolix's own sockets cannot be bound to an interface: turn them
+		// all off and let attachBound add bound ones (see bind.go).
+		cc.DisableTCP, cc.DisableUTP, cc.NoDHT = true, true, true
+		d := b.Dialer(&net.Dialer{})
 		cc.HTTPDialContext = d.DialContext
 		cc.TrackerDialContext = d.DialContext
+		lc := b.ListenConfig()
 		cc.TrackerListenPacket = func(network, _ string) (net.PacketConn, error) {
-			return net.ListenPacket(network, net.JoinHostPort(cfg.BindAddr, "0"))
+			return lc.ListenPacket(context.Background(), network, b.ListenAddr(0))
 		}
 	}
 

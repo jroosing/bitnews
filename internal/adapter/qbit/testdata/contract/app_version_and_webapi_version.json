@@ -1,0 +1,59 @@
+{
+  "name": "client test: version and web API version",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "description": "Sonarr/Radarr 'Test': app/webapiVersion (and app/version) must be bare strings and the version must be recent enough.",
+  "steps": [
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Sonarr/4.0.0.0"
+        },
+        "body": "username={{user}}&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^text/plain"
+        },
+        "body": "Ok."
+      },
+      "capture": {
+        "sid": "header:Set-Cookie:SID=([^;]+)"
+      }
+    },
+    {
+      "name": "version",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/app/version",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "$re:^v\\d+\\.\\d+\\.\\d+$"
+      }
+    },
+    {
+      "name": "webapiVersion",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/app/webapiVersion",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "$re:^2\\.\\d+(\\.\\d+)?$"
+      }
+    }
+  ]
+}

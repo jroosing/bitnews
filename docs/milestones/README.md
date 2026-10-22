@@ -92,16 +92,16 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/5) · [wiki]
 |---|---|---|---|---|
 | M5-01 | [#46](https://gitlab.com/kyura4k/bitnews/-/issues/46) | TorrentEngine port and anacrolix adapter skeleton | area:torrent, ready-for-agent | done |
 | M5-02 | [#47](https://gitlab.com/kyura4k/bitnews/-/issues/47) | Piece completion in SQLite | area:torrent, area:store, ready-for-agent | done |
-| M5-03 | [#48](https://gitlab.com/kyura4k/bitnews/-/issues/48) | Add Download from Torrent (.torrent, magnet, URL) | area:torrent, area:api, ready-for-agent | open |
-| M5-04 | [#49](https://gitlab.com/kyura4k/bitnews/-/issues/49) | Torrent Queue runner | area:torrent, area:core, ready-for-agent | open |
-| M5-05 | [#50](https://gitlab.com/kyura4k/bitnews/-/issues/50) | Move torrent to complete without rehash | area:torrent, ready-for-agent | open |
-| M5-06 | [#51](https://gitlab.com/kyura4k/bitnews/-/issues/51) | Seeding and Share Limits | area:torrent, ready-for-agent | open |
-| M5-07 | [#52](https://gitlab.com/kyura4k/bitnews/-/issues/52) | Interface and address binding for both protocols | area:torrent, area:usenet, ready-for-agent | open |
-| M5-08 | [#53](https://gitlab.com/kyura4k/bitnews/-/issues/53) | Torrent Unpack into `_unpack/` | area:torrent, area:postproc, ready-for-agent | open |
-| M5-09 | [#54](https://gitlab.com/kyura4k/bitnews/-/issues/54) | Record media manager ↔ qBittorrent traffic fixtures | area:adapter, ready-for-human | open |
-| M5-10 | [#55](https://gitlab.com/kyura4k/bitnews/-/issues/55) | qBit adapter — auth and app endpoints | area:adapter, ready-for-agent | open |
-| M5-11 | [#56](https://gitlab.com/kyura4k/bitnews/-/issues/56) | qBit adapter — torrents endpoints and state mapping | area:adapter, ready-for-agent | open |
-| M5-12 | [#57](https://gitlab.com/kyura4k/bitnews/-/issues/57) | qBit contract tests and local swarm end-to-end | area:adapter, area:torrent, area:ci, ready-for-agent | open |
+| M5-03 | [#48](https://gitlab.com/kyura4k/bitnews/-/issues/48) | Add Download from Torrent (.torrent, magnet, URL) | area:torrent, area:api, ready-for-agent | done |
+| M5-04 | [#49](https://gitlab.com/kyura4k/bitnews/-/issues/49) | Torrent Queue runner | area:torrent, area:core, ready-for-agent | done |
+| M5-05 | [#50](https://gitlab.com/kyura4k/bitnews/-/issues/50) | Move torrent to complete without rehash | area:torrent, ready-for-agent | done |
+| M5-06 | [#51](https://gitlab.com/kyura4k/bitnews/-/issues/51) | Seeding and Share Limits | area:torrent, ready-for-agent | done |
+| M5-07 | [#52](https://gitlab.com/kyura4k/bitnews/-/issues/52) | Interface and address binding for both protocols | area:torrent, area:usenet, ready-for-agent | done |
+| M5-08 | [#53](https://gitlab.com/kyura4k/bitnews/-/issues/53) | Torrent Unpack into `_unpack/` | area:torrent, area:postproc, ready-for-agent | done |
+| M5-09 | [#54](https://gitlab.com/kyura4k/bitnews/-/issues/54) | Record media manager ↔ qBittorrent traffic fixtures | area:adapter, ready-for-human | open (human: record real traffic) |
+| M5-10 | [#55](https://gitlab.com/kyura4k/bitnews/-/issues/55) | qBit adapter — auth and app endpoints | area:adapter, ready-for-agent | done |
+| M5-11 | [#56](https://gitlab.com/kyura4k/bitnews/-/issues/56) | qBit adapter — torrents endpoints and state mapping | area:adapter, ready-for-agent | done |
+| M5-12 | [#57](https://gitlab.com/kyura4k/bitnews/-/issues/57) | qBit contract tests and local swarm end-to-end | area:adapter, area:torrent, area:ci, ready-for-agent | done (hand-written fixtures; the daemon end-to-end test is in; the real Sonarr/Radarr checklist is open) |
 
 ### [M6 — Web UI](m6-ui.md)
 

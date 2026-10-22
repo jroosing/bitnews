@@ -27,26 +27,43 @@ type dataRemover struct {
 	holder     fetchHolder
 	dirFor     func(core.Download) string
 	log        *slog.Logger
+
+	// torrentHolder and torrentDir serve torrent Downloads. A nil holder
+	// (the torrent engine is off) means there is nothing to hold. torrentDir
+	// returns the Download's directory: the storage directory of its torrent,
+	// which holds the originals, the .torrent file and _unpack/.
+	torrentHolder fetchHolder
+	torrentDir    func(core.Download) string
 }
 
-// RemoveData deletes the working directory and the output of d. Only NZB
-// Downloads have data to remove yet; torrents come with M5. The running
-// fetch is stopped and held first, so it cannot write into a directory that
-// is being deleted. When the removal fails the hold is released again: the
-// Download stays and goes on.
+// RemoveData deletes the working directory and the output of d. The running
+// fetch (or, for a torrent, the engine's hold on the files) is stopped and
+// held first, so nothing writes into a directory that is being deleted. When
+// the removal fails the hold is released again: the Download stays and goes
+// on.
+//
+// A torrent's working directory is its Download directory, which holds the
+// originals and _unpack/ together, so both go. The roots a torrent may be
+// deleted from are the torrent roots, never the Usenet ones.
 func (r *dataRemover) RemoveData(ctx context.Context, d core.Download) error {
-	if d.SourceKind != core.SourceNZB {
-		return nil
+	holder, dirFor := r.holder, r.dirFor
+	if d.SourceKind == core.SourceTorrent {
+		holder, dirFor = r.torrentHolder, r.torrentDir
 	}
-	if err := r.holder.Hold(ctx, d.ID); err != nil {
-		return err
+	if holder != nil {
+		if err := holder.Hold(ctx, d.ID); err != nil {
+			return err
+		}
 	}
-	roots, err := r.roots(ctx)
+	roots, err := r.roots(ctx, d.SourceKind)
 	// The working directory is trusted when it is <parent>/<id>: it was made
 	// for this Download at add time, even if the incomplete root has been
 	// changed since.
-	work := r.dirFor(d)
-	if err == nil && filepath.Base(work) == string(d.ID) {
+	var work string
+	if dirFor != nil {
+		work = dirFor(d)
+	}
+	if err == nil && work != "" && filepath.Base(work) == string(d.ID) {
 		roots = append(roots, filepath.Dir(work))
 	}
 	if err == nil {
@@ -55,19 +72,21 @@ func (r *dataRemover) RemoveData(ctx context.Context, d core.Download) error {
 			r.removeInside(roots, d.OutputPath, d.ID),
 		)
 	}
-	if err != nil {
-		r.holder.Release(d.ID)
-		return err
+	if err != nil && holder != nil {
+		holder.Release(d.ID)
 	}
-	return nil
+	return err
 }
 
-// roots returns the directories data may be deleted inside: the Usenet
-// incomplete and complete roots, and the directory override of every
-// Category (Ready output of such a Category lands there).
-func (r *dataRemover) roots(ctx context.Context) ([]string, error) {
+// roots returns the directories data of kind may be deleted inside: that
+// protocol's incomplete and complete roots, and the directory override of
+// every Category (Ready output of such a Category lands there).
+func (r *dataRemover) roots(ctx context.Context, kind core.SourceKind) ([]string, error) {
 	s := r.settings()
 	roots := []string{s.Paths.Usenet.Incomplete, s.Paths.Usenet.Complete}
+	if kind == core.SourceTorrent {
+		roots = []string{s.Paths.Torrent.Incomplete, s.Paths.Torrent.Complete}
+	}
 	cats, err := r.categories.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("daemon: list categories: %w", err)

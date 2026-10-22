@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,4 +123,53 @@ func TestFakeFailNextMakesAMethodFailOnce(t *testing.T) {
 
 	_, err = f.Add(context.Background(), core.TorrentSpec{Magnet: magnet, StorageDir: "/a"})
 	assert.NoError(t, err)
+}
+
+func TestFakeMetainfoReturnsWhatTheTorrentWasAddedWith(t *testing.T) {
+	f := coretest.NewFakeTorrentEngine()
+	h, err := f.Add(context.Background(), core.TorrentSpec{Metainfo: []byte("meta"), StorageDir: "/d"})
+	require.NoError(t, err)
+
+	got, err := f.Metainfo(h)
+
+	require.NoError(t, err)
+	assert.Equal(t, []byte("meta"), got)
+}
+
+func TestFakeMetainfoOfAMagnetNeedsTheMetadataFirst(t *testing.T) {
+	f := coretest.NewFakeTorrentEngine()
+	h, err := f.Add(context.Background(), core.TorrentSpec{Magnet: magnet, StorageDir: "/d"})
+	require.NoError(t, err)
+
+	_, err = f.Metainfo(h)
+	require.Error(t, err)
+
+	f.SetMetainfo(h, []byte("from the swarm"))
+	got, err := f.Metainfo(h)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("from the swarm"), got)
+}
+
+func TestFakeMetainfoOfAnUnknownTorrentIsNotFound(t *testing.T) {
+	f := coretest.NewFakeTorrentEngine()
+
+	_, err := f.Metainfo(core.InfoHash{})
+
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
+func TestFakeRelocateWaitsWhileBlocked(t *testing.T) {
+	f := coretest.NewFakeTorrentEngine()
+	h, err := f.Add(context.Background(), core.TorrentSpec{Metainfo: []byte("m"), StorageDir: "/old"})
+	require.NoError(t, err)
+	f.SetBlock("Relocate")
+	done := make(chan error, 1)
+
+	go func() { done <- f.Relocate(context.Background(), h, "/new") }()
+	require.Eventually(t, func() bool { return len(f.Calls()) == 2 }, time.Second, time.Millisecond)
+
+	assert.Equal(t, "/old", f.StorageDir(h), "still moving")
+	f.Unblock("Relocate")
+	require.NoError(t, <-done)
+	assert.Equal(t, "/new", f.StorageDir(h))
 }

@@ -1,0 +1,35 @@
+{
+  "name": "wrong credentials answer Fails. with HTTP 200 and set no cookie",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "description": "qBittorrent answers 'Fails.' with status 200 for a wrong user or password.",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "username={{user}}&password=wrong"
+      },
+      "response": {
+        "status": 200,
+        "body": "Fails."
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "username=nobody&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "body": "Fails."
+      }
+    }
+  ]
+}

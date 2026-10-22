@@ -9,9 +9,9 @@
 
 # Build stage. It always runs on the build host's own platform and
 # cross-compiles, so a multi-arch build needs no QEMU emulation.
-# Pin the tag to a digest (golang:1.27.2@sha256:...) for reproducible builds;
+# Pin the tag to a digest (golang:1.27.3@sha256:...) for reproducible builds;
 # docs/deploy.md describes how.
-FROM --platform=$BUILDPLATFORM golang:1.27.2 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3 AS build
 
 ARG TARGETOS
 ARG TARGETARCH

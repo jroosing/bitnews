@@ -1,0 +1,139 @@
+{
+  "name": "removal with and without files",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "seed": [
+    {
+      "op": "download",
+      "ref": "a",
+      "name": "Keep.Me",
+      "state": "ready",
+      "total": 10,
+      "done": 10,
+      "output_path": "{{torrent_dir}}/Keep.Me"
+    },
+    {
+      "op": "download",
+      "ref": "b",
+      "name": "Delete.Me",
+      "state": "ready",
+      "total": 10,
+      "done": 10,
+      "output_path": "{{torrent_dir}}/Delete.Me"
+    }
+  ],
+  "steps": [
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Sonarr/4.0.0.0"
+        },
+        "body": "username={{user}}&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^text/plain"
+        },
+        "body": "Ok."
+      },
+      "capture": {
+        "sid": "header:Set-Cookie:SID=([^;]+)"
+      }
+    },
+    {
+      "name": "delete with files",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/delete",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes={{hash.b}}&deleteFiles=true"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "delete unknown and bad hashes",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/delete",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes=0000000000000000000000000000000000000000|junk&deleteFiles=false"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "one left",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "hash": "{{hash.a}}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "delete without files",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/delete",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes={{hash.a}}&deleteFiles=false"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "none left",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": []
+      }
+    }
+  ]
+}

@@ -91,6 +91,7 @@ type env struct {
 	cats      *store.CategoryRepo
 	servers   *store.ServerRepo
 	sources   *store.DownloadSourceRepo
+	torrents  *store.TorrentSourceRepo
 	key       store.Key
 	prober    *fakeProber
 	settings  *app.SettingsService
@@ -165,7 +166,8 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	}
 	downloadSvc := app.NewDownloadService(e.downloads, e.cats, e.bus, appOpts...)
 	e.sources = store.NewDownloadSourceRepo(db, e.key)
-	addOpts := append([]app.Option{app.WithLogger(logger)}, appOpts...)
+	e.torrents = store.NewTorrentSourceRepo(db, e.key)
+	addOpts := append([]app.Option{app.WithLogger(logger), app.WithTorrentSources(e.torrents)}, appOpts...)
 	e.cfg = api.Config{
 		Logger:             logger,
 		Version:            api.Version{Version: "1.2.3", Commit: "abc1234", GoVersion: "go9.99"},

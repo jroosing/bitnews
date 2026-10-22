@@ -36,7 +36,13 @@ type Config struct {
 	// AdminPasswordFile optionally bootstraps the admin password. It is
 	// empty when unset.
 	AdminPasswordFile string
+	// TorrentPort is the TCP and uTP port the torrent engine listens on.
+	// Peers need it forwarded to reach bitnews: there is no UPnP.
+	TorrentPort int
 }
+
+// DefaultTorrentPort is the torrent listen port when none is configured.
+const DefaultTorrentPort = 51413
 
 // Identity is a numeric user and group id.
 type Identity struct {
@@ -71,18 +77,19 @@ type option struct {
 }
 
 var (
-	optConfigDir = option{"config-dir", "BITNEWS_CONFIG_DIR", "dir", "directory holding bitnews.db", "$XDG_DATA_HOME/bitnews, or ~/.local/share/bitnews"}
-	optKeyFile   = option{"key-file", "BITNEWS_KEY_FILE", "path", "master key that encrypts stored Server and archive passwords; created on first start", "bitnews.key inside the config dir"}
-	optListen    = option{"listen", "BITNEWS_LISTEN", "host:port", "address for the API, adapters and UI", "0.0.0.0:9494"}
-	optLogLevel  = option{"log-level", "BITNEWS_LOG_LEVEL", "level", "debug, info, warn or error", "info"}
-	optLogFormat = option{"log-format", "BITNEWS_LOG_FORMAT", "format", "text or json", "text"}
-	optPUID      = option{"", "PUID", "uid", "user id to drop to when started as root; requires PGID", "unset"}
-	optPGID      = option{"", "PGID", "gid", "group id to drop to when started as root; requires PUID", "unset"}
-	optUmask     = option{"", "UMASK", "octal", "file mode creation mask applied at startup", "002"}
-	optAdminPass = option{"", "BITNEWS_ADMIN_PASSWORD_FILE", "path", "absolute path of a file holding the initial admin password", "unset"}
+	optConfigDir   = option{"config-dir", "BITNEWS_CONFIG_DIR", "dir", "directory holding bitnews.db", "$XDG_DATA_HOME/bitnews, or ~/.local/share/bitnews"}
+	optKeyFile     = option{"key-file", "BITNEWS_KEY_FILE", "path", "master key that encrypts stored Server and archive passwords; created on first start", "bitnews.key inside the config dir"}
+	optListen      = option{"listen", "BITNEWS_LISTEN", "host:port", "address for the API, adapters and UI", "0.0.0.0:9494"}
+	optLogLevel    = option{"log-level", "BITNEWS_LOG_LEVEL", "level", "debug, info, warn or error", "info"}
+	optLogFormat   = option{"log-format", "BITNEWS_LOG_FORMAT", "format", "text or json", "text"}
+	optPUID        = option{"", "PUID", "uid", "user id to drop to when started as root; requires PGID", "unset"}
+	optPGID        = option{"", "PGID", "gid", "group id to drop to when started as root; requires PUID", "unset"}
+	optUmask       = option{"", "UMASK", "octal", "file mode creation mask applied at startup", "002"}
+	optTorrentPort = option{"", "BITNEWS_TORRENT_PORT", "port", "TCP and uTP port the torrent engine listens on; forward it for incoming peers (no UPnP)", "51413"}
+	optAdminPass   = option{"", "BITNEWS_ADMIN_PASSWORD_FILE", "path", "absolute path of a file holding the initial admin password", "unset"}
 )
 
-var options = []option{optConfigDir, optKeyFile, optListen, optLogLevel, optLogFormat, optPUID, optPGID, optUmask, optAdminPass}
+var options = []option{optConfigDir, optKeyFile, optListen, optLogLevel, optLogFormat, optPUID, optPGID, optUmask, optAdminPass, optTorrentPort}
 
 // Usage writes the help text for every bootstrap option to w.
 func Usage(w io.Writer) {
@@ -240,6 +247,13 @@ func Load(args []string, getenv func(string) (string, bool)) (Config, error) {
 		}
 		cfg.AdminPasswordFile = filepath.Clean(adminPass.value)
 	}
+
+	port := lookup(optTorrentPort, strconv.Itoa(DefaultTorrentPort))
+	n, err := strconv.ParseUint(port.value, 10, 16)
+	if err != nil || n == 0 {
+		return Config{}, port.errorf("must be a port number from 1 to 65535")
+	}
+	cfg.TorrentPort = int(n)
 	return cfg, nil
 }
 

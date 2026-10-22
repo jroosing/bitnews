@@ -35,6 +35,11 @@ type TorrentEngine interface {
 	// second. A value of zero or less means unlimited.
 	SetRateLimits(down, up int64) error
 	Stats(h InfoHash) (TorrentStats, error)
+	// Metainfo returns the bytes of the torrent's .torrent file. For a
+	// magnet link it fails until the metadata has arrived (the
+	// TorrentMetadataReceived event); the bytes then let the caller store a
+	// .torrent file and add the torrent from it after a restart.
+	Metainfo(h InfoHash) ([]byte, error)
 	// Events returns the engine's event channel. It is buffered; the engine
 	// drops events rather than block when the consumer falls behind.
 	Events() <-chan TorrentEvent

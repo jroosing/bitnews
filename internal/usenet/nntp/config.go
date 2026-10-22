@@ -15,7 +15,7 @@ const (
 )
 
 // Dialer opens the raw TCP connection. *net.Dialer satisfies it, and
-// interface binding can supply its own.
+// netbind.Binding.Dialer supplies the interface and address binding.
 type Dialer interface {
 	DialContext(ctx context.Context, network, addr string) (net.Conn, error)
 }
@@ -38,7 +38,9 @@ type Config struct {
 	// Server that needs no authentication. They are never logged or
 	// included in errors.
 	User, Pass string
-	// Dialer opens the TCP connection. Defaults to a net.Dialer.
+	// Dialer opens the TCP connection. Defaults to a net.Dialer. Interface and
+	// address binding passes netbind.Binding.Dialer(...) here; the dial then
+	// fails rather than going out unbound.
 	Dialer Dialer
 	// ConnectTimeout bounds the TCP dial plus TLS handshake. Defaults to
 	// DefaultConnectTimeout.

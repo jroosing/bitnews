@@ -6,7 +6,7 @@
 
 ## Development workflow
 
-- **Go:** 1.27.2. The Go module is `gitlab.com/kyura4k/gitnews`; the GitLab project is `kyura4k/bitnews`.
+- **Go:** 1.27.3. The Go module is `gitlab.com/kyura4k/gitnews`; the GitLab project is `kyura4k/bitnews`.
 - **Specs:** `docs/milestones/` holds the design doc and issue specs per milestone, and is the source of truth. GitLab issues and wiki mirror it. When a spec changes, update the repo file, the GitLab issue and the wiki page. Issue IDs (`M1-01`, …) never change.
 - **Branches:** never commit to `main`. Work on a branch, push it, and open a merge request. List each issue on its own line in the MR description (`Closes #8`, `Closes #9`), because GitLab does not reliably auto-close a comma-separated list.
 - **Before pushing:** run `make fmt fix`, then `make check` (`fmt-check`, `fix-check`, `lint`, `test`, `vuln`). Run `make fuzz-smoke` when touching a parser. CI has three jobs (`lint` with vet, staticcheck and govulncheck; `test` with `-race` tests and fuzz smoke; `build`) and deliberately no format job.

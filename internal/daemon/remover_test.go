@@ -197,3 +197,77 @@ func TestRemoveDataIgnoresTorrentsForNow(t *testing.T) {
 	assert.FileExists(t, filepath.Join(out, "a"))
 	assert.Empty(t, e.holder.held)
 }
+
+type torrentRemoverEnv struct {
+	*removerEnv
+	incomplete, complete string
+	holder               *fakeHolder
+}
+
+func newTorrentRemoverEnv(t *testing.T, cats ...core.Category) *torrentRemoverEnv {
+	t.Helper()
+	e := &torrentRemoverEnv{removerEnv: newRemoverEnv(t, cats...), holder: &fakeHolder{}}
+	base := t.TempDir()
+	e.incomplete, e.complete = filepath.Join(base, "tincomplete"), filepath.Join(base, "tcomplete")
+	require.NoError(t, os.MkdirAll(e.incomplete, 0o777))
+	require.NoError(t, os.MkdirAll(e.complete, 0o777))
+	s := core.DefaultSettings()
+	s.Paths.Usenet = core.Roots{Incomplete: e.removerEnv.incomplete, Complete: e.removerEnv.complete}
+	s.Paths.Torrent = core.Roots{Incomplete: e.incomplete, Complete: e.complete}
+	e.remover.settings = func() core.Settings { return s }
+	e.remover.torrentHolder = e.holder
+	e.remover.torrentDir = func(d core.Download) string { return filepath.Join(e.complete, "tv", "Release") }
+	return e
+}
+
+func torrentDownload(output string) core.Download {
+	return core.Download{ID: core.NewID(), SourceKind: core.SourceTorrent, OutputPath: output}
+}
+
+func TestRemoveDataOfATorrentDeletesItsWholeDirectoryIncludingUnpackAndHoldsTheTorrentRunner(t *testing.T) {
+	e := newTorrentRemoverEnv(t)
+	dir := filepath.Join(e.complete, "tv", "Release")
+	writeFile(t, filepath.Join(dir, "Release", "a.mkv"))
+	writeFile(t, filepath.Join(dir, "Release", "_unpack", "film.mkv"))
+	writeFile(t, filepath.Join(dir, "Release.torrent"))
+	writeFile(t, filepath.Join(e.complete, "tv", "Other", "keep.mkv"))
+	d := torrentDownload(filepath.Join(dir, "Release"))
+
+	require.NoError(t, e.remover.RemoveData(context.Background(), d))
+
+	assert.NoDirExists(t, dir)
+	assert.FileExists(t, filepath.Join(e.complete, "tv", "Other", "keep.mkv"))
+	assert.Equal(t, []core.ID{d.ID}, e.holder.held)
+	assert.Empty(t, e.removerEnv.holder.held, "the Usenet runner has nothing to do with it")
+}
+
+func TestRemoveDataOfATorrentWorksWithoutATorrentRunner(t *testing.T) {
+	e := newTorrentRemoverEnv(t)
+	e.remover.torrentHolder = nil
+	dir := filepath.Join(e.complete, "tv", "Release")
+	writeFile(t, filepath.Join(dir, "a.mkv"))
+
+	require.NoError(t, e.remover.RemoveData(context.Background(), torrentDownload(dir)))
+
+	assert.NoDirExists(t, dir)
+}
+
+func TestRemoveDataOfATorrentOnlyDeletesInsideTheTorrentRoots(t *testing.T) {
+	e := newTorrentRemoverEnv(t)
+	outside := filepath.Join(e.removerEnv.complete, "usenet-stuff")
+	writeFile(t, filepath.Join(outside, "precious"))
+	e.remover.torrentDir = func(core.Download) string { return outside }
+
+	require.NoError(t, e.remover.RemoveData(context.Background(), torrentDownload(outside)))
+
+	assert.FileExists(t, filepath.Join(outside, "precious"), "a Usenet root is not a torrent root")
+}
+
+func TestRemoveDataOfATorrentReleasesTheHoldWhenDeletionFails(t *testing.T) {
+	e := newTorrentRemoverEnv(t)
+	e.holder.holdErr = errors.New("busy")
+
+	err := e.remover.RemoveData(context.Background(), torrentDownload(""))
+
+	require.Error(t, err)
+}

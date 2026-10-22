@@ -158,6 +158,18 @@ func (f *Finisher) Finish(ctx context.Context, d core.Download, dir, unpackedDir
 	return dst, nil
 }
 
+// Destination returns the directory Finish would move d to, before a name
+// clash is resolved with fsutil.Unique: the Category DirOverride, else
+// <complete root>/<category>, else <complete root>, then the sanitized
+// Download name. The torrent runner uses it to relocate a torrent to the same
+// place without a rehash.
+func (f *Finisher) Destination(ctx context.Context, d core.Download) (string, error) {
+	if f.deps.Settings == nil || f.deps.Categories == nil {
+		return "", errors.New("finalize: Settings and Categories are required")
+	}
+	return f.destination(ctx, d)
+}
+
 // destination returns the wanted final dir, before Unique: the Category
 // DirOverride, else <complete root>/<category>, else <complete root>, then
 // the sanitized Download name. The result is always inside the chosen root.

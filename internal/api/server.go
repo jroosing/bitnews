@@ -23,7 +23,7 @@ type Version struct {
 }
 
 // Config holds everything a Server needs. All fields are required except
-// AdapterCredentials, SABnzbd and the last four.
+// AdapterCredentials, SABnzbd, QBit and the last four.
 type Config struct {
 	Logger     *slog.Logger
 	Version    Version
@@ -47,6 +47,12 @@ type Config struct {
 	// setup gate and the request ID, panic recovery and security header
 	// middleware. Without it the path is a 404.
 	SABnzbd http.Handler
+	// QBit serves the qBittorrent WebUI API v2 emulation at /api/v2/ for
+	// every method. It has its own SID sessions and adapter credentials, so
+	// like SABnzbd it sits outside the UI authentication and CSRF, and
+	// inside the setup gate and the request ID, panic recovery and security
+	// header middleware. Without it the path is a 404.
+	QBit http.Handler
 
 	// InstanceID identifies this process in the SSE hello event, so a
 	// client can tell that the daemon restarted. It defaults to a random ID.

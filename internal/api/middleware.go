@@ -162,8 +162,13 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 // The SABnzbd adapter is the exception: its query holds the adapter key and,
 // for mode=addurl, a second URL of an indexer with its own key in an encoded
 // parameter value, which redact.URL does not look into. Only the path and
-// the mode are logged for it.
+// the mode are logged for it. The qBittorrent adapter (/api/v2/) logs the
+// path only: its queries hold hashes and its form bodies, never logged,
+// hold the magnet links and URLs with passkeys.
 func loggedURL(r *http.Request) string {
+	if strings.HasPrefix(r.URL.Path, "/api/v2/") {
+		return r.URL.EscapedPath()
+	}
 	if r.URL.Path != "/sabnzbd/api" && !strings.HasPrefix(r.URL.Path, "/sabnzbd/api/") {
 		return redact.URL(r.URL.RequestURI())
 	}

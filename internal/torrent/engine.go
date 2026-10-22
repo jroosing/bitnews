@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/anacrolix/dht/v2"
 	anacrolix "github.com/anacrolix/torrent"
+	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 	pp "github.com/anacrolix/torrent/peer_protocol"
 	"golang.org/x/time/rate"
@@ -51,6 +53,7 @@ type Engine struct {
 	now    func() time.Time
 
 	cl     *anacrolix.Client
+	bound  []io.Closer // bound sockets (see bind.go), closed after cl
 	pieces *SQLitePieceCompletion
 	down   *rate.Limiter
 	up     *rate.Limiter
@@ -131,6 +134,9 @@ func New(cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkBinding(cfg); err != nil {
+		return nil, err
+	}
 	e.logger = cc.Slogger
 	e.now = cfg.Now
 	if e.now == nil {
@@ -154,6 +160,15 @@ func New(cfg Config) (*Engine, error) {
 		return nil, fmt.Errorf("torrent: start client: %w", err)
 	}
 	e.cl = cl
+	if cfg.binding().Enabled() {
+		bound, err := attachBound(cl, cfg, e.logger)
+		if err != nil {
+			_ = cl.Close()
+			_ = e.pieces.Close()
+			return nil, err
+		}
+		e.bound = bound
+	}
 	if cfg.LSD {
 		e.logger.Warn("torrent: local service discovery is not supported by anacrolix/torrent v1.61.0")
 	}
@@ -214,6 +229,9 @@ func (e *Engine) Close() error {
 
 	var errs []error
 	errs = append(errs, e.cl.Close()...)
+	for _, c := range e.bound {
+		_ = c.Close() // already closed sockets report errors that mean nothing here
+	}
 	errs = append(errs, e.pieces.Close())
 
 	e.evMu.Lock()
@@ -575,6 +593,73 @@ func (e *Engine) resume(ent *entry) error {
 		t.AllowDataDownload()
 	}
 	e.startDHT(ent)
+	return nil
+}
+
+// Metainfo implements core.TorrentEngine. The bytes are a .torrent file built
+// from the metadata the engine holds, so they are available for a magnet link
+// once TorrentMetadataReceived was emitted.
+func (e *Engine) Metainfo(h core.InfoHash) ([]byte, error) {
+	ent, err := e.lookup(h)
+	if err != nil {
+		return nil, err
+	}
+	ent.mu.Lock()
+	t := ent.t
+	ent.mu.Unlock()
+	if t == nil || t.Info() == nil {
+		return nil, fmt.Errorf("torrent: metainfo %s: %w", h, ErrNoMetadata)
+	}
+	mi := t.Metainfo()
+	raw, err := bencode.Marshal(mi)
+	if err != nil {
+		return nil, fmt.Errorf("torrent: metainfo %s: %w", h, err)
+	}
+	return raw, nil
+}
+
+// BytesHashed is how many bytes the current incarnation of torrent h has
+// hashed: the pieces it received plus the pieces it checked on disk. After a
+// restart of a finished torrent it is zero, which shows that piece
+// completion spared the rehash. It is -1 for an unknown torrent.
+func (e *Engine) BytesHashed(h core.InfoHash) int64 {
+	ent, err := e.lookup(h)
+	if err != nil {
+		return -1
+	}
+	ent.mu.Lock()
+	t := ent.t
+	ent.mu.Unlock()
+	st := t.Stats()
+	return st.BytesHashed.Int64()
+}
+
+// Port is the TCP (and uTP) port the engine listens on.
+func (e *Engine) Port() int { return e.cl.LocalPort() }
+
+// AddPeers offers peer addresses ("host:port") to torrent h, as a tracker
+// answer or a magnet link's x.pe parameter would. The addresses are only
+// candidates: the engine dials them and speaks the protocol with whoever
+// answers. A malformed address is an error and none of the addresses is used.
+func (e *Engine) AddPeers(h core.InfoHash, addrs ...string) error {
+	ent, err := e.lookup(h)
+	if err != nil {
+		return err
+	}
+	peers := make([]anacrolix.PeerInfo, 0, len(addrs))
+	for _, a := range addrs {
+		if _, err := netip.ParseAddrPort(a); err != nil {
+			return fmt.Errorf("torrent: peer address %q: %w", truncate(a, 64), err)
+		}
+		peers = append(peers, anacrolix.PeerInfo{Addr: anacrolix.StringAddr(a)})
+	}
+	ent.mu.Lock()
+	t := ent.t
+	ent.mu.Unlock()
+	if t == nil {
+		return fmt.Errorf("torrent: add peers %s: %w", h, ErrNoMetadata)
+	}
+	t.AddPeers(peers)
 	return nil
 }
 

@@ -50,6 +50,12 @@ type DownloadRepo interface {
 	// Priority, Category or Paused flag the way a Get followed by Update
 	// would. An unknown ID is ErrNotFound.
 	UpdateProgress(ctx context.Context, id ID, doneBytes, totalBytes int64) error
+	// UpdateDisplay stores the name (when it is not empty) and TotalBytes
+	// (when totalBytes is positive) and refreshes UpdatedAt. A magnet
+	// Download learns both when its metadata arrives. Like UpdateProgress it
+	// writes nothing else, so it cannot overwrite a concurrent edit. An
+	// unknown ID is ErrNotFound.
+	UpdateDisplay(ctx context.Context, id ID, name string, totalBytes int64) error
 	Delete(ctx context.Context, id ID) error
 }
 

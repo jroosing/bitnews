@@ -5,9 +5,11 @@ import (
 	"context"
 	"log/slog"
 	"math/rand/v2"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -324,4 +326,54 @@ func TestUnknownTorrentIsNotFound(t *testing.T) {
 	assert.ErrorIs(t, e.SetShareLimits(h, core.UnlimitedShareLimit()), core.ErrNotFound)
 	_, err := e.Stats(h)
 	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
+func TestMetainfoOfAMagnetTorrentIsAvailableOnceTheMetadataArrived(t *testing.T) {
+	t.Parallel()
+	c := makeContent(t, "Meta.Show", map[string]int{"ep1.mkv": 20_000})
+	seeder := seed(t, c)
+	leech := newEngine(t)
+	h, err := leech.Add(context.Background(), core.TorrentSpec{Magnet: magnetFor(c.hash), StorageDir: t.TempDir(), Paused: false})
+	require.NoError(t, err)
+
+	_, err = leech.Metainfo(h)
+	require.Error(t, err, "no metadata yet")
+
+	require.NoError(t, leech.AddPeer(h, seeder.ListenAddr()))
+	waitEvent(t, leech, core.TorrentMetadataReceived, h)
+	raw, err := leech.Metainfo(h)
+
+	require.NoError(t, err)
+	mi, err := metainfo.Load(bytes.NewReader(raw))
+	require.NoError(t, err)
+	assert.Equal(t, c.hash, core.InfoHash(mi.HashInfoBytes()), "the bytes are a .torrent file of the same torrent")
+	// The stored file can be added again.
+	again := newEngine(t)
+	h2, err := again.Add(context.Background(), core.TorrentSpec{Metainfo: raw, StorageDir: t.TempDir(), Paused: true})
+	require.NoError(t, err)
+	assert.Equal(t, h, h2)
+}
+
+func TestMetainfoOfAnUnknownTorrentIsNotFound(t *testing.T) {
+	t.Parallel()
+	e := newEngine(t)
+
+	_, err := e.Metainfo(core.InfoHash{1})
+
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
+func TestAddPeersOffersPeersToATorrent(t *testing.T) {
+	t.Parallel()
+	c := makeContent(t, "Peers", map[string]int{"f.bin": 20_000})
+	seeder := seed(t, c)
+	leech := newEngine(t)
+	h, err := leech.Add(context.Background(), core.TorrentSpec{Metainfo: c.torrent, StorageDir: t.TempDir()})
+	require.NoError(t, err)
+
+	require.NoError(t, leech.AddPeers(h, net.JoinHostPort("127.0.0.1", strconv.Itoa(seeder.Port()))))
+
+	waitEvent(t, leech, core.TorrentFetched, h)
+	assert.Error(t, leech.AddPeers(core.InfoHash{2}, "127.0.0.1:1"), "unknown torrent")
+	assert.Error(t, leech.AddPeers(h, "not an address"))
 }

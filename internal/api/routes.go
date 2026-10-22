@@ -18,7 +18,8 @@ type middleware = func(http.Handler) http.Handler
 //   - API key management: a logged-in session only;
 //   - adapter credential management: a UI principal (session, LAN bypass or
 //     disable-auth) but never an API key;
-//   - /sabnzbd/api: the adapter's own credential check, nothing else.
+//   - /sabnzbd/api and /api/v2/: the adapter's own credential check (the
+//     apikey, or the SID session of a qBittorrent login), nothing else.
 func (s *Server) routes() {
 	csrf := auth.CSRF(s.Settings.Current)
 	ui := func(h http.Handler) http.Handler { return s.UIAuth.Middleware(csrf(h)) }
@@ -90,5 +91,11 @@ func (s *Server) routes() {
 		// lowers it for every other mode.
 		s.mux.Handle("/sabnzbd/api", maxBody(addBodyLimit, s.SABnzbd))
 		s.mux.Handle("/sabnzbd/api/", maxBody(addBodyLimit, s.SABnzbd))
+	}
+
+	if s.QBit != nil {
+		// torrents/add uploads .torrent files, so the cap is the NZB limit
+		// here too. The handler applies its own, lower limits.
+		s.mux.Handle("/api/v2/", maxBody(addBodyLimit, s.QBit))
 	}
 }

@@ -37,6 +37,9 @@ type options struct {
 	httpClient   *http.Client
 	fetchTimeout time.Duration
 	maxNZBBytes  int64
+
+	// torrentSources enables adding torrent Downloads.
+	torrentSources core.TorrentSourceRepo
 }
 
 // Option configures a service constructor.
@@ -77,6 +80,14 @@ func WithFetchTimeout(d time.Duration) Option {
 // default is 64 MiB.
 func WithMaxNZBBytes(n int64) Option {
 	return func(o *options) { o.maxNZBBytes = n }
+}
+
+// WithTorrentSources enables torrent Downloads in the AddService: it stores
+// their sources (the info hash, the .torrent path and the sealed magnet link)
+// in repo. Without it StageTorrent, StageMagnet and AddTorrent fail with an
+// error of kind ErrUnavailable.
+func WithTorrentSources(repo core.TorrentSourceRepo) Option {
+	return func(o *options) { o.torrentSources = repo }
 }
 
 func newOptions(opts []Option) options {

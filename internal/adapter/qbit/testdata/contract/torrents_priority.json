@@ -1,0 +1,221 @@
+{
+  "name": "topPrio, bottomPrio and setForceStart",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "seed": [
+    {
+      "op": "download",
+      "ref": "a",
+      "name": "A",
+      "state": "queued"
+    },
+    {
+      "op": "download",
+      "ref": "b",
+      "name": "B",
+      "state": "queued"
+    },
+    {
+      "op": "download",
+      "ref": "c",
+      "name": "C",
+      "state": "queued"
+    }
+  ],
+  "steps": [
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Sonarr/4.0.0.0"
+        },
+        "body": "username={{user}}&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^text/plain"
+        },
+        "body": "Ok."
+      },
+      "capture": {
+        "sid": "header:Set-Cookie:SID=([^;]+)"
+      }
+    },
+    {
+      "name": "topPrio",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/topPrio",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes={{hash.c}}"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "c first",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?sort=priority",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "name": "C",
+            "priority": 1
+          },
+          {
+            "name": "A",
+            "priority": 2
+          },
+          {
+            "name": "B",
+            "priority": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "bottomPrio",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/bottomPrio",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes={{hash.c}}"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "c last",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?sort=priority",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "name": "A"
+          },
+          {
+            "name": "B"
+          },
+          {
+            "name": "C"
+          }
+        ]
+      }
+    },
+    {
+      "name": "force start",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/setForceStart",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes={{hash.b}}&value=true"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "forced",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?hashes={{hash.b}}",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "state": "forcedDL",
+            "force_start": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "unforce",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/torrents/setForceStart",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "hashes={{hash.b}}&value=false"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "normal",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/torrents/info?hashes={{hash.b}}",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": [
+          {
+            "state": "queuedDL",
+            "force_start": false
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "name": "preferences are a read-only view of the settings",
+  "provenance": "hand-written from the qBittorrent WebUI API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M5-09 recordings",
+  "description": "The test environment's global Share Limit is ratio 2, 1440 minutes, pause.",
+  "steps": [
+    {
+      "name": "login",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/auth/login",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "Sonarr/4.0.0.0"
+        },
+        "body": "username={{user}}&password={{pass}}"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^text/plain"
+        },
+        "body": "Ok."
+      },
+      "capture": {
+        "sid": "header:Set-Cookie:SID=([^;]+)"
+      }
+    },
+    {
+      "name": "preferences",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/app/preferences",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "save_path": "{{torrent_dir}}",
+          "queueing_enabled": true,
+          "max_active_downloads": 5,
+          "max_ratio_enabled": true,
+          "max_ratio": 2,
+          "max_seeding_time_enabled": true,
+          "max_seeding_time": 1440,
+          "max_ratio_act": 0,
+          "dht": true,
+          "temp_path": "{{incomplete_dir}}"
+        }
+      }
+    },
+    {
+      "name": "setPreferences is accepted and ignored",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/app/setPreferences",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0",
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": "json=%7B%22save_path%22%3A%22%2Fevil%22%7D"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "name": "unchanged",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/app/preferences",
+        "headers": {
+          "Cookie": "SID={{sid}}",
+          "User-Agent": "Sonarr/4.0.0.0"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "$re:^application/json"
+        },
+        "json": {
+          "save_path": "{{torrent_dir}}",
+          "max_active_downloads": 5
+        }
+      }
+    }
+  ]
+}

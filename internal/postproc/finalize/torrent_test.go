@@ -80,3 +80,14 @@ func TestTorrentInSameRootButWrongCategoryDirIsMoved(t *testing.T) {
 	require.Equal(t, filepath.Join(e.settings.Paths.Torrent.Complete, "tv", "Release"), out)
 	require.NoDirExists(t, dir)
 }
+
+func TestDestinationIsWhereFinishWouldMoveATorrent(t *testing.T) {
+	e := newEnv(t)
+	d := torrentDownload("Release")
+	d.CategoryID = e.addCategory("tv", "")
+
+	got, err := e.finisher().Destination(context.Background(), d)
+
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(e.settings.Paths.Torrent.Complete, "tv", "Release"), got)
+}
