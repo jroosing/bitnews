@@ -117,3 +117,15 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/6) · [wiki]
 | M6-06 | [#63](https://gitlab.com/kyura4k/bitnews/-/issues/63) | Settings — Usenet Servers | area:ui, area:usenet, ready-for-agent | open |
 | M6-07 | [#64](https://gitlab.com/kyura4k/bitnews/-/issues/64) | Settings — torrent network, speed, queue and Share Limits | area:ui, area:torrent, ready-for-agent | open |
 | M6-08 | [#65](https://gitlab.com/kyura4k/bitnews/-/issues/65) | Settings — security, API keys and media-manager credentials | area:ui, area:auth, ready-for-agent | open |
+
+### [M7 — Simplification](m7-simplification.md)
+
+GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/7) · [wiki](https://gitlab.com/kyura4k/bitnews/-/wikis/milestones/m7-simplification)
+
+| ID | Issue | Title | Labels | Status |
+|---|---|---|---|---|
+| M7-01 | [#67](https://gitlab.com/kyura4k/bitnews/-/issues/67) | Paths are the user's responsibility | area:ui, area:core, ready-for-agent | open |
+| M7-02 | [#68](https://gitlab.com/kyura4k/bitnews/-/issues/68) | One free-space helper | area:core, ready-for-agent | open |
+| M7-03 | [#69](https://gitlab.com/kyura4k/bitnews/-/issues/69) | Remove the privilege drop | area:deploy, ready-for-agent | open |
+| M7-04 | [#70](https://gitlab.com/kyura4k/bitnews/-/issues/70) | A single API key | area:auth, area:adapter, ready-for-agent | open |
+| M7-05 | [#71](https://gitlab.com/kyura4k/bitnews/-/issues/71) | Security page key card | area:ui, area:auth, ready-for-agent | open |
