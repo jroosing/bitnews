@@ -14,7 +14,7 @@ By the end of M4, Sonarr, Radarr and Prowlarr use bitnews as a **SABnzbd** downl
 
 ### Principle: the fixtures are the spec
 
-The SAB API is only loosely documented, and media managers depend on specific fields and status strings. M4-01 records real traffic between current Sonarr, Radarr and Prowlarr releases and a real SABnzbd. The request/response pairs from that recording are the authoritative specification. The lists below are the expected starting point, and **the fixtures override them**.
+The SAB API is only loosely documented, and media managers depend on specific fields and status strings. M4-01 was meant to record real traffic between current Sonarr, Radarr and Prowlarr releases and a real SABnzbd. The request/response pairs from that recording are the authoritative specification. The lists below are the expected starting point, and **the fixtures override them**.
 
 ### Routing and auth
 
@@ -91,7 +91,7 @@ A deferred-volume fetch (M3-07) moves the Download back to Fetching. It then app
 
 ## Implementation notes (M4-02 to M4-06)
 
-**Read this first: nothing here was checked against recorded traffic.** M4-01 (the recordings) is not done. The adapter was written from the SABnzbd API documentation and from what Sonarr and Radarr are known to parse, and the fixtures in `internal/adapter/sabnzbd/testdata/contract/` are **hand-written, not recorded**. Each says so in its `provenance` field, and a test insists on it, so nobody mistakes them for the spec. When M4-01 delivers, replace them with the recordings, change their provenance, and fix whatever differs: the recordings override this section.
+**Read this first: nothing here was checked against recorded traffic.** M4-01 (the recordings) was dropped. The adapter was written from the SABnzbd API documentation and from what Sonarr and Radarr are known to parse, and the fixtures in `internal/adapter/sabnzbd/testdata/contract/` are **hand-written, not recorded**. Each says so in its `provenance` field, and a test insists on it, so nobody mistakes them for the spec. When real use shows a difference, fix the adapter and, where useful, replace the fixture with a recording (change its provenance): what real Sonarr and Radarr do overrides this section.
 
 What was decided, and is therefore a guess until then:
 
@@ -115,6 +115,7 @@ What was decided, and is therefore a guess until then:
 ## Issues
 
 ### M4-01: Record media manager ↔ SABnzbd traffic fixtures
+- **Status: dropped.** The owner tests against real Sonarr/Radarr and reports what to fix; no recording is planned.
 - **Labels:** area:adapter, ready-for-human
 - **Depends on:** —
 
@@ -171,7 +172,7 @@ What was decided, and is therefore a guess until then:
 - Return status/fullstatus only if the fixtures show them in use.
 
 **Acceptance criteria**
-- [ ] Contract tests for these modes pass against the M4-01 fixtures.
+- [ ] Contract tests for these modes pass against the contract fixtures (hand-written; M4-01 was dropped).
 - [ ] Each media manager's "Test" button succeeds in the M4-07 environment.
 
 ### M4-04: SAB adapter — addfile and addurl

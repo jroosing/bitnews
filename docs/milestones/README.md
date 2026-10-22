@@ -76,12 +76,12 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/4) · [wiki]
 
 | ID | Issue | Title | Labels | Status |
 |---|---|---|---|---|
-| M4-01 | [#39](https://gitlab.com/kyura4k/bitnews/-/issues/39) | Record media manager ↔ SABnzbd traffic fixtures | area:adapter, ready-for-human | open |
+| M4-01 | [#39](https://gitlab.com/kyura4k/bitnews/-/issues/39) | Record media manager ↔ SABnzbd traffic fixtures | area:adapter, ready-for-human | dropped (real use reports what to fix) |
 | M4-02 | [#40](https://gitlab.com/kyura4k/bitnews/-/issues/40) | Adapter credentials per media manager | area:auth, area:adapter, ready-for-agent | done |
 | M4-03 | [#41](https://gitlab.com/kyura4k/bitnews/-/issues/41) | SAB adapter — routing, auth, version and config modes | area:adapter, ready-for-agent | done |
 | M4-04 | [#42](https://gitlab.com/kyura4k/bitnews/-/issues/42) | SAB adapter — addfile and addurl | area:adapter, ready-for-agent | done |
 | M4-05 | [#43](https://gitlab.com/kyura4k/bitnews/-/issues/43) | SAB adapter — queue, history, delete and the status mapping | area:adapter, ready-for-agent | done |
-| M4-06 | [#44](https://gitlab.com/kyura4k/bitnews/-/issues/44) | SAB adapter contract test suite | area:adapter, area:ci, ready-for-agent | done (hand-written fixtures, not recorded; M4-01 still open) |
+| M4-06 | [#44](https://gitlab.com/kyura4k/bitnews/-/issues/44) | SAB adapter contract test suite | area:adapter, area:ci, ready-for-agent | done (hand-written fixtures, not recorded; M4-01 dropped) |
 | M4-07 | [#45](https://gitlab.com/kyura4k/bitnews/-/issues/45) | End-to-end check with Sonarr and Radarr | area:adapter, area:deploy, ready-for-human | open |
 
 ### [M5 — Torrents](m5-torrents.md)
@@ -98,7 +98,7 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/5) · [wiki]
 | M5-06 | [#51](https://gitlab.com/kyura4k/bitnews/-/issues/51) | Seeding and Share Limits | area:torrent, ready-for-agent | done |
 | M5-07 | [#52](https://gitlab.com/kyura4k/bitnews/-/issues/52) | Interface and address binding for both protocols | area:torrent, area:usenet, ready-for-agent | done |
 | M5-08 | [#53](https://gitlab.com/kyura4k/bitnews/-/issues/53) | Torrent Unpack into `_unpack/` | area:torrent, area:postproc, ready-for-agent | done |
-| M5-09 | [#54](https://gitlab.com/kyura4k/bitnews/-/issues/54) | Record media manager ↔ qBittorrent traffic fixtures | area:adapter, ready-for-human | open (human: record real traffic) |
+| M5-09 | [#54](https://gitlab.com/kyura4k/bitnews/-/issues/54) | Record media manager ↔ qBittorrent traffic fixtures | area:adapter, ready-for-human | dropped (real use reports what to fix) |
 | M5-10 | [#55](https://gitlab.com/kyura4k/bitnews/-/issues/55) | qBit adapter — auth and app endpoints | area:adapter, ready-for-agent | done |
 | M5-11 | [#56](https://gitlab.com/kyura4k/bitnews/-/issues/56) | qBit adapter — torrents endpoints and state mapping | area:adapter, ready-for-agent | done |
 | M5-12 | [#57](https://gitlab.com/kyura4k/bitnews/-/issues/57) | qBit contract tests and local swarm end-to-end | area:adapter, area:torrent, area:ci, ready-for-agent | done (hand-written fixtures; the daemon end-to-end test is in; the real Sonarr/Radarr checklist is open) |

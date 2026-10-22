@@ -21,9 +21,9 @@ import (
 
 // contractDir holds the replay fixtures. THEY ARE HAND-WRITTEN FROM THE
 // QBITTORRENT WEBUI API DOCUMENTATION AND FROM WHAT SONARR AND RADARR ARE
-// KNOWN TO PARSE; THEY ARE NOT RECORDED TRAFFIC. M5-09 replaces them with
-// recordings of real media managers talking to a real qBittorrent. See
-// testdata/README.md.
+// KNOWN TO PARSE; THEY ARE NOT RECORDED TRAFFIC. The recording issue (M5-09)
+// was dropped: differences found in real use are fixed and, where useful,
+// added as fixtures. See testdata/README.md.
 const contractDir = "testdata/contract"
 
 // seedOp is one entry of a fixture's "seed" list.

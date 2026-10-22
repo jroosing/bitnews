@@ -18,8 +18,8 @@ import (
 // an integer, double a float). Go's decoder refuses a string where a number
 // is expected and a fraction where an integer is, as Newtonsoft.Json does, so
 // decoding the adapter's answers into them is a check of the types. They were
-// written from memory of those classes; M5-09 recordings replace the
-// assumption.
+// written from memory of those classes; the recording issue (M5-09) was
+// dropped, so real use is what checks them.
 
 type sonarrTorrent struct {
 	Hash             string  `json:"hash"`

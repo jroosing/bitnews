@@ -11,5 +11,5 @@
 //
 // The response shapes were written from the SABnzbd API documentation and
 // from what Sonarr and Radarr are known to parse. They have NOT been checked
-// against recorded traffic yet (M4-01); see testdata/contract.
+// against recorded traffic (M4-01 was dropped); see testdata/contract.
 package sabnzbd

@@ -9,8 +9,8 @@ Radarr are known to parse. They are NOT recorded traffic.** Every file says so i
 `provenance` field ("NOT recorded"); a test insists that a fixture says either that or
 "recorded from <versions>".
 
-M4-01 (record real Sonarr/Radarr/Prowlarr <-> SABnzbd traffic) replaces them. When a fixture is
-replaced by a recording:
+M4-01 (record real Sonarr/Radarr/Prowlarr <-> SABnzbd traffic) was dropped. When real use
+shows a difference, fix the adapter and, where useful, replace the fixture with a recording:
 
 1. scrub API keys, host names and paths into `{{apikey}}`, `{{complete_dir}}` and similar;
 2. change its `provenance` to the recorded versions (and note them here);

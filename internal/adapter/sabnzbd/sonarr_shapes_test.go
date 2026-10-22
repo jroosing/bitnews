@@ -15,7 +15,7 @@ import (
 // The structs below mirror the classes Sonarr and Radarr deserialize SAB's
 // answers into (SabnzbdQueue, SabnzbdHistory, SabnzbdConfig, ...), as far as
 // the author remembers them: NOT copied from their source, which is to be
-// checked against the recordings of M4-01. Newtonsoft.Json converts numeric
+// verified against real Sonarr traffic (the recording issue M4-01 was dropped). Newtonsoft.Json converts numeric
 // strings to numbers on its own; Go's ",string" option does the same for
 // these tests, so a field our adapter sends as a non-numeric string fails to
 // decode here just as it would fail in Sonarr.

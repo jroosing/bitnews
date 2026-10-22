@@ -9,8 +9,8 @@ Sonarr and Radarr are known to parse. They are NOT recorded traffic.** Every fil
 `provenance` field ("NOT recorded"); a test insists that a fixture says either that or
 "recorded from <versions>".
 
-M5-09 (record real Sonarr/Radarr/Prowlarr <-> qBittorrent traffic) replaces them. When a fixture is
-replaced by a recording:
+M5-09 (record real Sonarr/Radarr/Prowlarr <-> qBittorrent traffic) was dropped. When real use
+shows a difference, fix the adapter and, where useful, replace the fixture with a recording:
 
 1. scrub passwords, SIDs, hashes, host names and paths into `{{pass}}`, `{{sid}}`, `{{hash.x}}`,
    `{{torrent_dir}}` and similar;
@@ -18,7 +18,7 @@ replaced by a recording:
 3. mark the matchers of volatile values (times, speeds, ids) with `$type:`, `$re:` or `$any`;
 4. fix the adapter where the recording differs. The recording is the specification.
 
-## The import hold-off question (M5-09, still open)
+## The import hold-off question (still open, checked by real use)
 
 Which `state`/`progress` pairs make Sonarr and Radarr wait for an import is **not answered by any
 recording yet**. The adapter assumes (from Sonarr's source as remembered) that `checkingUP` is
