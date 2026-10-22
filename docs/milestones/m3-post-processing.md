@@ -2,13 +2,13 @@
 
 ## Goal
 
-By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when needed) → Unpack → cleanup → move, and becomes **Ready** in `complete/<category>/<download>/`. If that can't be done, it becomes **Failed** with a precise reason. Recovery volumes are fetched only when Verify says they are needed. Everything is pure Go and nothing runs as a subprocess ([ADR-0002](../adr/0002-pure-go-post-processing.md)).
+By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when needed) → Unpack → cleanup → move, and becomes **Ready** in `complete/<category>/<download>/`. If that can't be done, it becomes **Failed** with a precise reason. Recovery volumes are fetched only when Verify says they are needed. PAR2 and archives are handled by the external programs `par2` and `7zz` ([ADR-0007](../adr/0007-external-postproc-tools.md), which supersedes the pure-Go [ADR-0002](../adr/0002-pure-go-post-processing.md)).
 
 ## Scope
 
 **In:**
 - the pipeline orchestrator
-- PAR2 packet parsing, Verify (including renaming obfuscated files), GF(2^16) Reed-Solomon, Repair, golden fixtures and benchmarks
+- PAR2 Verify (including renaming obfuscated files) and Repair by running `par2` (ADR-0007; the pure-Go parser, GF(2^16) code and golden fixtures of the first version are gone), and the hostile-name check before it runs
 - deferred recovery volumes
 - archive detection and Unpack (RAR/7z, multi-volume, passwords), Unpack guards
 - cleanup and the move to complete
@@ -36,76 +36,27 @@ By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when
 - **No PAR2 set:** if a Download has none, Verify falls back to the yEnc CRC results from M2. Any damaged or Missing Article then means Failed (`missing_articles`). If there is no damage, Verify passes.
 - **Restart:** Post-processing state is not persisted mid-stage. After a restart a `PostProcessing` Download starts again from `verifying`. Every stage must be idempotent; for example, Unpack clears its staging dir first.
 
-### PAR2 packets (`internal/postproc/par2`)
+### PAR2 with par2cmdline-turbo (`internal/postproc/par2`)
 
-- **Header (64 bytes):**
+> Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md). The pure-Go packet parser, Verify, GF(2^16) arithmetic and Reed-Solomon Repair of M3-02 to M3-06 were replaced by running `par2` (par2cmdline-turbo 1.5.0). There is no fallback. The ports (`core.Verifier`, `core.Repairer`) and their outcome fields did not change, so the orchestrator did not either. The package doc (`internal/postproc/par2/doc.go`) is the reference for the details below.
 
-  | Field | Size |
-  |---|---|
-  | magic `PAR2\0PKT` | 8 |
-  | length (u64 LE, multiple of 4, includes the header) | 8 |
-  | packet MD5 (over set ID..end) | 16 |
-  | recovery set ID | 16 |
-  | type | 16 |
+- **What runs:** `par2 v|r -B<dir> -t<threads> -m<MB> [-O] -- <main.par2> @`, started only through `internal/postproc/tool` (no shell, scrubbed environment, `LC_ALL=C`, the context kills the process group). `-B` is the absolute Download directory (par2 ignores files outside it). `-t` is GOMAXPROCS, at most 16. `-m` is 512 MB by default, because par2's own default is half of the physical RAM and a container limit is invisible to it (it works down to `-m1`). Never used: `-p` (purges the `.par2` files), `-N`/`-S`, `-q`.
+- **Files given to par2:** the smallest `.par2` file is the main file. Every other `.par2` file and every regular top-level file that is not already a target name go in as "extra files" through stdin (`@`), so the argument list cannot overflow. par2 itself only loads sibling volumes that share the main file's prefix; extras are how volumes with other names are found. Symlinks and directories are never given to it.
+- **Verify** (`par2 v`):
+  - exit 0: `Clean`. Exit 1: `NeedsRepair`, `Repairable`. Exit 2: `NeedsRepair`, not `Repairable`. Exit 4 ("Main packet not found"): no usable set, `HasPAR2` false. No `.par2` file at all: `HasPAR2` false without starting par2. Anything else is an error carrying the tail of the output.
+  - `DamagedSlices` = Y - X from "You have X out of Y data blocks available." (what a repair consumes). `RecoveryOnDisk` = Z from "You have Z recovery blocks available." (the line is absent when there are none; a clean verify does not print it, so the "Loaded N new packets including M recovery blocks" lines are summed then). The adapter ORs in the deferred blocks (`Repairable` also when `DamagedSlices <= RecoveryOnDisk + deferred`).
+  - **Renamed (obfuscated) files:** par2 finds a file under another name by hash, but only if the file is given as an extra file. `par2 v` only reports `File: "x" - is a match for "a.bin".` and never renames; `par2 r` renames, and `par2 r -O` (rename-only) does only that. So Verify, on seeing a match line, runs `r -O`, removes the backups it made and verifies again: a clean-but-renamed set ends `Clean` with the set's names, and a second Verify finds nothing left. A file that is renamed and also damaged is not a perfect match, so `-O` skips it: it counts as a data source (its good blocks are available) and Repair renames and repairs it.
+  - A file with intact blocks but trailing bytes is `NeedsRepair` with 0 damaged slices (par2 exit 1, "Repair is possible"); Repair truncates it.
+- **Repair** (`par2 r`): par2 verifies again first, so the Verify outcome is not needed (its `Opaque` payload is only diagnostic). Exit 0 is success (`RepairedSlices` = "N recovery blocks will be used to repair."; 0 when nothing was left to do). Exit 2 is `*core.RecoveryShortfall{Needed: Y-X, Available: Z}` and par2 changes nothing. Exit 5 is `core.ErrRepairFailed`. Exit 6, 7 and 8 (file I/O, logic, memory) are internal errors with the output tail. A cancelled context kills par2 and returns the context error.
+- **Backups:** when par2 replaces a damaged target it renames the old file to `name.1` (`name.2`, ...), in `r -O` as well as in a repair. Cleanup only deletes `.par2`, `.nzb` and archives, so these would be moved into the library. Verify (after a rename pass, and whenever the set is clean) and Repair (after success) delete the regular files `<target>.<digits>` next to a target unless that name is a target itself. After a successful Repair the damaged copies par2 reported as `File: "x" - found 9 of 10 data blocks from "a.bin".` are deleted too, but only when `x` is exactly a file we gave it as an extra. An interrupted repair leaves its `name.N` on purpose: the next Verify sees it as an extra file and uses it as a data source, so Repair can run again (tested by recreating that state).
+- **Other layouts:** a missing or damaged main `.par2` is fine as long as the volumes carry the critical packets (they do). A truncated volume counts the recovery blocks that survive. Extra files (nfo, sample) are scanned but left alone. Targets in subdirectories (`sub/c.bin`) work, and a missing subdirectory is recreated by Repair (not by `r -O`).
+- **Hostile input:** file names in a PAR2 set are attacker controlled and par2 writes files under them. par2cmdline-turbo 1.5.0 neutralises some of them itself, found by experiment: a `..` component and a leading `/` are percent-encoded (`%2E%2E`, `%2F`), `\` becomes `/`, a name stops at a NUL, a line break becomes `%0A`. A drive letter (`C:evil.bin`), a quote and a colon pass through. Other versions may differ, so we do not rely on it: before par2 starts, `par2.ReadNames` reads the File Description packets of every `.par2` file and `par2.CheckNames` refuses the whole set with `par2.ErrUnsafeSet` (mapped to `core.ErrPathViolation`, failure reason `path_violation`) when a name is empty, absolute, has a drive letter, a backslash, NUL or any control character (also so that no name can fake a line of the report we parse), has a `..`, `.` or empty component, is longer than 1024 bytes (255 per component), ends in `.par2`, resolves outside the Download directory (`fsutil.SafeJoin`, which also catches a symlinked parent), or when a target already exists as a symlink or anything but a regular file. `ReadNames` is deliberately more permissive than par2: it looks for the packet magic at every byte offset (inside recovery data too), takes every File Description whose MD5 verifies, and bounds its memory and its work on damaged candidates (a candidate it cannot bound refuses the file). `FuzzReadNames` covers it. Tests run a hostile set through the real par2 and check that nothing is created or moved outside the Download directory.
+- **Known gap:** par2 writes the name the set gives, so a name with `:`, `?`, `*`, `"`, `<`, `>` or `|` ends up on disk as written, while the fetch side saves downloaded files through `fsutil.SafeName` (those become `_`). A set naming such a file renames the downloaded copy to the set's name. Fine on Linux; not SMB friendly. Not handled in v1.
+- **Tests:** the package tests make real sets with `par2 c` (1000 byte blocks, a few KB of data, so the package runs in about 2 s under `-race`) and damage, delete, truncate and rename files, drop volumes, and compare repaired files byte for byte. They need the pinned binaries (`make tools`, then `bin/tools` first on `PATH`; `make test` does it).
 
-- **Packet types:**
-  - Main (`PAR 2.0\0Main\0\0\0\0`): slice size, file count, file IDs.
-  - FileDesc: file ID, MD5 of the full file, MD5 of the first 16 KiB, length, name.
-  - IFSC: file ID plus MD5 and CRC32 for each slice.
-  - RecvSlic: exponent plus slice data.
-  - Creator.
-  - Unknown types are ignored.
-- **Validation:**
-  - Check each packet's MD5. Drop duplicates.
-  - Keep only packets of the main recovery set ID, which is the MD5 of the Main packet body.
-  - Bounds-check every length before allocating.
-  - Caps: packet length ≤ 1 GiB, file count ≤ 100 000.
-- **Scanning:** read packets from every `.par2` file in the Download dir. Damaged par2 files are fine, because the scanner resyncs on the magic.
+### Repair and the orchestrator
 
-### Verify
-
-- **Matching files to FileDesc entries:**
-  - First by name.
-  - Failing that, by MD5 of the first 16 KiB plus length. This catches obfuscated or renamed posts. A file matched this way is renamed to its FileDesc name (through `SafeName`).
-- **Checking each matched file:**
-  - If the length is right and the full-file MD5 matches, the file is OK.
-  - Otherwise compare each aligned slice's CRC32 and MD5 against IFSC. The last slice is zero-padded up to the slice size.
-- **Result:**
-  - The damaged or missing slice indices.
-  - The count of available recovery slices, split into those already on disk and those deferred (M3-07).
-  - The files that will be OK once repaired.
-
-### GF(2^16) and Reed-Solomon
-
-- **The field:** GF(2^16) with generator polynomial `0x1100B` (x^16 + x^12 + x^3 + x + 1). Log and antilog tables have 65 536 entries.
-- **Input constants:** input slice *i* has constant `c_i = 2^(n_i)`. Here `n_i` is the *i*-th integer *n* ≥ 0 with `n % 3 != 0`, `n % 5 != 0`, `n % 17 != 0` and `n % 257 != 0`, as in the PAR2 spec.
-- **Recovery slices:** the recovery slice with exponent *e* is `Σ_i c_i^e · input_i`, word-wise. Words are 16-bit little-endian.
-- **Repair:**
-  - Pick *k* recovery slices for the *k* missing inputs.
-  - Build the *k×k* matrix of `c_missing^e` and invert it with Gaussian elimination. Fail if it is singular, then retry with a different recovery-slice choice when spares are available.
-  - Compute `missing = M⁻¹ · (recovery − Σ_known c_j^e · input_j)`.
-- **Performance:**
-  - Process slices in chunks of 64 KiB to 1 MiB so memory stays bounded.
-  - Precompute split multiply tables (low and high byte, 2×256 entries per coefficient).
-  - Run multiply-accumulate across goroutines, one per chunk range.
-  - Assembly is out of scope for v1, but there must be a benchmark.
-
-### Repair
-
-- Check feasibility first: the number of available recovery slices must be at least the number of damaged ones. If enough exist only in deferred volumes, M3-07 fetches them first. Otherwise the Download is Failed (`repair_insufficient`).
-- Write the reconstructed slices in place, at their offsets in the target files. Missing files are created with their FileDesc length.
-- Run Verify again afterwards. Any remaining damage means Failed.
-- Implementation notes (M3-05): `Repair(ctx, dir, set, verifyResult, opts...)` returns `*InsufficientError{Needed, Available}` (matches `ErrInsufficientRecovery`) before changing anything, so the orchestrator can fetch deferred volumes (M3-07) or fail with `repair_insufficient`. `Available` counts only readable recovery slices. Memory is about `(k+1) x chunk`, with the chunk halved down to 4 KiB under a configurable memory limit (default 256 MiB). Reed-Solomon correctness is checked against real `par2cmdline` 1.4.0 output (M3-06): recovery slices are byte-identical and Repair restores all 146 damage scenarios.
-- Conformance results (M3-06), details in `internal/postproc/par2/testdata/CONFORMANCE.md`:
-  - The Main packet orders file IDs as 128-bit little-endian integers (last byte most significant), not by byte comparison. That order is also the input slice order, and `Set.FileIDs` keeps the Main order.
-  - par2cmdline skips empty files, so they are not in the set.
-  - After appending bytes to a file shorter than one slice, par2cmdline counts its only block as lost while Verify reports 0 damaged slices and Repair truncates it. Both end with the correct file.
-  - par2cmdline 1.4.0 rejects `-f` above about 32768, so exponents near 65535 cannot be generated for fixtures.
-- Contract with Verify (M3-03):
-  - A file with intact slices but the wrong length (for example trailing bytes) comes back `Damaged` with an empty slice list and needs 0 recovery slices. Repair must truncate it.
-  - A missing zero-length file comes back `Missing` with 0 damaged slices. Repair must create it.
-  - For `Missing` and `Unverifiable` files the damaged list is not built (`DamagedSlices` is nil and `DamagedCount` equals `TotalSlices`), so Repair iterates `0..TotalSlices`.
-  - A wrong file sitting under the right name is reported `Damaged`. Searching for misaligned slices is out of scope for v1.
+- The orchestrator checks feasibility first: if `Repairable` is false it asks the fetch side for deferred volumes (M3-07) or fails with `repair_insufficient`. Repair runs only on a directory Verify found repairable. Any remaining damage after a repair is `repair_insufficient` (par2 exit 5).
 
 - Implementation notes (M3-01, `internal/core/postprocess*.go`): the orchestrator publishes a `postprocess_stage` event for each stage that runs. When the working directory is missing it goes straight to `Finisher.Finish`, because a crash between the move and the Ready update must not turn a finished Download into a failed one. `FetchReporter` is a required port; torrent-only setups pass a stub.
 - Implementation notes (M3-10, `internal/postproc/finalize`): the destination is resolved at move time. Cleanup deletes archive volumes, `.par2`, `.nzb` and `_unpack.tmp` before the move, merges the unpacked content into the root of the final directory, and writes a `.bitnews-done` marker holding the Download ID so a retry after a crash finds the moved directory. A deleted Category falls back to the complete root with a warning. Torrent originals are never modified.
@@ -131,30 +82,30 @@ By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when
   - Old-style: `name.rar` with `.r00`, `.r01`, ….
   - 7z: `name.7z`, or `name.7z.001` and onwards.
   - Detection is by magic bytes, not by extension alone.
-- **Libraries:**
-  - `github.com/nwaples/rardecode/v2` for RAR, including multi-volume and passwords. Check its exact API and options when implementing.
-  - `github.com/bodgit/sevenzip` for 7z.
+- **Tool:** `7zz` (7-Zip), run through `internal/postproc/tool` (ADR-0007). It reads RAR4, RAR5, 7z and zip, multi-volume sets and passwords. *Superseded: the first version used `nwaples/rardecode/v2` and `bodgit/sevenzip` in pure Go (ADR-0002); they are gone, and there is no fallback.*
 - **Passwords:** taken from the Download's encrypted password. A wrong password or missing password → `archive_password`.
 - **Nested archives:** one level is allowed, for example a RAR containing a RAR set. Anything deeper is left as-is.
 - **Output:** written to the staging dir `incomplete/<download>/_unpack.tmp/`. On success it is renamed to the final layout, `<download>/` with the archive contents at its root.
 
-- Implementation notes (M3-08, M3-09, package `internal/postproc/unpack`):
-  - `Unpack(ctx, set, dst, opts...)` stages in `dst + ".tmp"` and renames to `dst`. The orchestrator passes `<download dir>/_unpack` as `dst` for both protocols, and the Usenet finisher merges its content into the final directory.
-  - Pass 1 applies every guard to every entry before any byte is written; pass 2 writes. Symlinks, hardlinks, devices and FIFOs are skipped and counted, archive modes are ignored, and files are created `0666&^umask`.
-  - Every library call is wrapped so that a panic becomes `ErrCorrupt` (the fuzzer found one in `sevenzip`).
-  - **7z header memory (M3-12):** `sevenzip` allocates from counts the archive header declares before it reads the bytes behind them, so a 100-byte archive could make it request 240 GiB (OOM kill, which Go cannot recover from). The library now only sees an archive that passed `preflight7z` (`sevenz_preflight.go`, `sevenz_header.go`): the signature header and the header are validated and replaced by in-memory copies, a compressed header is decoded by us under a 64 MiB cap, and the library gets the plain header. Guaranteed: every declared count (files, folders, pack/sub streams, coders, coder properties, CRC and name tables) is checked against the bytes present and against `WithMaxEntries`; the memory the library will need for the header is estimated and capped (`WithMaxHeaderMemory`, default 256 MiB, about 400,000 files); LZMA/LZMA2 dictionaries are clamped to what the stream needs and capped by `WithMaxDictionary`; unknown coders, PPMd memory over the cap and expensive AES key derivation fail early; multi-volume sets are checked as one archive. Not guaranteed: the decoders still allocate up to `WithMaxDictionary` (default 1 GiB) for one folder (PPMd model memory, a really needed LZMA/LZMA2 dictionary), and the zstd, brotli and lz4 coders of 7-Zip forks size their buffers themselves. The check is exact, not a watchdog: nothing samples the heap.
-  - A 7z checksum mismatch maps to `ErrPassword` because 7z has no password check, so a corrupt unencrypted 7z can read as a password failure.
-  - Real archives covered by tests: the 7z fixtures of `sevenzip` and one 87-byte stored RAR4. All other RAR cases are built by test helpers with the stored method only. Compressed RAR (LZ, PPM, filters, solid), header-encrypted RAR, real multi-volume releases and 7z BCJ2/ARM/brotli are not exercised and belong to the M3-11 compatibility spike.
+- Implementation notes (M3-08, M3-09, package `internal/postproc/unpack`; rewritten for ADR-0007):
+  - `Unpack(ctx, set, dst, opts...)` stages in `dst + ".tmp"` and renames to `dst`. The orchestrator passes `<download dir>/_unpack` as `dst` for both protocols, and the Usenet finisher merges its content into the final directory. `Detect` (magic bytes, volume order, missing volumes) and the nested-archive step did not change; only the extraction did.
+  - Pass 1: `7zz l -slt -ba` lists the archive (first volume only; 7zz finds the rest) and the listing is parsed strictly (`listing.go`): a repeated field, a line that is not `Key = Value` or a second `Path` line inside one entry fails with `ErrCorrupt`, because a name or comment with a line break could otherwise forge the size or the encrypted flag. The guards then run on the whole listing before a byte is written (entry count, names, entry kinds, total declared size, ratio, free disk space).
+  - Pass 2: `7zz x -y -bd -aos -o<staging> -- <first volume>` with the staging directory as working directory. Then the staging tree is walked: a symlink, hardlink, device, FIFO or socket, a name that `SafeName` would change (renamed in place; two names that collide once case is ignored fail) or more files or bytes than the listing declared fail the Unpack. Files are set to `0644` and directories to `0755`, so an archive cannot plant setuid or executable files or directories the daemon cannot delete.
+  - **Passwords** go to `7zz` on stdin, never on the command line. 7zz prompts on stdin only when it meets encrypted data; without a password stdin is empty and 7zz gives up at the prompt (status 255, "Break signaled"). A password with a line break fails with `ErrPassword`.
+  - **Exit status and messages** map as follows. Status 0 is success. Text containing "Wrong password" or "Cannot open encrypted archive" (or status 255 after "Enter password") is `ErrPassword`; "No space left" or "not enough space" is `ErrDiskFull`; status 8 or "Can't allocate required memory" is `ErrTooLarge`; "Unsupported Method" or "Unsupported Feature" is `ErrUnsupported`; status 1 (warning) and status 2 (fatal: headers error, data error, CRC failed, unexpected end of archive, not an archive) are `ErrCorrupt`; status 7 (a bug in our command line) and 255 are plain errors. Cancelling the context kills the 7zz process group and removes the staging directory.
+  - The listing of an archive may be at most `entries * 600` bytes (at least 4 MiB, at most 512 MiB); a longer one is cut off by the runner and fails with `ErrTooManyEntries`.
+  - **No dictionary or header-memory options.** The 7z header memory guard (M3-12) and `WithMaxDictionary`/`WithMaxHeaderMemory` are gone. A hostile archive that makes 7zz allocate gigabytes is contained by the container's memory limit, not by us; `7zz` exits with status 8 or 2 when an allocation fails, and that is `ErrTooLarge`/`ErrCorrupt`.
+  - Real archives covered by tests: the 7z fixtures of `sevenzip` (copied from that project's test data, including four encrypted variants and a six-volume set), one 87-byte stored RAR4, archives built by 7zz in the tests (7z, zip, encrypted, split volumes, symlinks), zips written with `archive/zip` (hostile names, symlinks, a header that lies about the size) and stored RAR4/RAR5 built by test helpers (multi-volume old and new style, encrypted, links, special files, hostile names). RAR cannot be created without the RAR program, so compressed RAR (LZ, PPM, filters) and header-encrypted RAR are not covered by our tests; 7-Zip's own decoder handles them.
 
 ### Unpack guards
 
 These rules apply to every archive entry before anything is written.
 - Normalize the name with `/` separators and pass each segment through `SafeName`. Reject absolute paths, `..`, and drive letters. Then use `SafeJoin` into the staging dir.
-- Skip symlink, hardlink, device and FIFO entries and log them. Only regular files and dirs are extracted.
+- Refuse symlink, hardlink, device, FIFO and socket entries (`path_violation`), in the listing and again when walking the extracted tree. Only regular files and dirs are extracted. *Changed by ADR-0007: the pure-Go version skipped and logged them.*
 - **Size caps:**
   - The declared total uncompressed size must fit into free space minus `min_free`.
-  - Writing stops at the declared size + 1% (catches lying headers).
-  - Per archive, a compression ratio above 100:1 at more than 1 GiB output is aborted as a bomb.
+  - 7zz writes at most the size the header declares (a lying header is a `Data Error`), and the walk after extraction fails when more files or bytes appeared than the listing declared.
+  - Per archive, a compression ratio above 100:1 at more than 1 GiB declared output is refused as a bomb, before extraction.
 - When a guard trips, the Download fails with `path_violation` or `archive_corrupt`, and nothing outside staging is touched.
 
 ### Cleanup and move
@@ -174,15 +125,16 @@ These rules apply to every archive entry before anything is written.
 
 ## Exit criteria
 
-- Golden fixtures pass:
+- Tests with real `par2` sets (made by `par2 c` in the tests) pass:
   - an intact set
   - damage within recovery capacity, which is repaired byte-exactly
   - damage beyond capacity → Failed
   - obfuscated names, which are renamed
+  - a hostile file name in the set → Failed (`path_violation`) before par2 starts
   - RAR3 old-style, RAR5 multi-volume, encrypted RAR, 7z multi-volume
   - a path-traversal archive → Failed
 - Recovery volumes are fetched only when needed. A test shows a clean download fetches 0 volume bytes.
-- The fuzz targets (PAR2 packets, archive entry names) run in CI.
+- The fuzz targets (PAR2 file names, archive entry names) run in CI.
 - The compatibility spike (M3-11) is documented.
 
 ## Issues
@@ -206,6 +158,8 @@ These rules apply to every archive entry before anything is written.
 - [ ] Fetched → PostProcessing → Ready/Failed transitions go through core `Transition` only.
 
 ### M3-02: PAR2 packet parser
+
+> **Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md).** `par2` reads the packets now. All that is left of the parser is `par2.ReadNames`, a minimal File Description reader used to refuse hostile file names before par2 starts (with `FuzzReadNames`); see "PAR2 with par2cmdline-turbo". The merged `Set` model, resync and set selection are gone.
 - **Labels:** area:postproc, ready-for-agent
 - **Depends on:** M1-01
 
@@ -223,6 +177,8 @@ These rules apply to every archive entry before anything is written.
 - [ ] A fuzz target runs in CI with bounded memory.
 
 ### M3-03: PAR2 Verify including obfuscated-file renaming
+
+> **Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md).** `Verifier` runs `par2 v`; obfuscated files are found by par2 (by hash, through the extra-file list), renamed with `par2 r -O`, and the `name.1` backups removed. Renaming no longer goes through `SafeName`: names are checked, not rewritten (see the known gap in "PAR2 with par2cmdline-turbo"). Verify writes nothing except those renames and the removal of leftover backups.
 - **Labels:** area:postproc, ready-for-agent
 - **Depends on:** M3-02, M2-01
 
@@ -238,6 +194,8 @@ These rules apply to every archive entry before anything is written.
 - [ ] Verify never writes anything except the rename.
 
 ### M3-04: GF(2^16) arithmetic and Reed-Solomon solver
+
+> **Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md).** No GF(2^16) code, no benchmarks: par2cmdline-turbo does the Reed-Solomon work (multi-threaded, SIMD). `internal/postproc/par2/gf16` is deleted.
 - **Labels:** area:postproc, ready-for-agent
 - **Depends on:** M1-01
 
@@ -255,6 +213,8 @@ These rules apply to every archive entry before anything is written.
 - [ ] Benchmarks are included, and their results are recorded in the package doc.
 
 ### M3-05: PAR2 Repair
+
+> **Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md).** `Repairer` runs `par2 r`; exit 2 becomes the `RecoveryShortfall`, exit 5 `ErrRepairFailed`. Memory is bounded by `-m` (512 MB by default), not by our chunking. A repair that is cancelled leaves a consistent state to run again (see "PAR2 with par2cmdline-turbo").
 - **Labels:** area:postproc, ready-for-agent
 - **Depends on:** M3-03, M3-04
 
@@ -271,6 +231,8 @@ These rules apply to every archive entry before anything is written.
 - [ ] Peak memory is bounded and independent of file size (test with 2 GiB sparse files, or document it in the benchmark).
 
 ### M3-06: PAR2 golden fixtures and benchmarks
+
+> **Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md).** The golden fixtures, their generator script, the conformance suite and the benchmarks are deleted: par2 is the reference implementation. One fixture set (`internal/postproc/par2/testdata/golden/explicit_uniform`, made by par2cmdline 1.4.0) stays because the daemon end-to-end tests serve it from the fake NNTP server. The package tests build their sets with `par2 c` instead.
 - **Labels:** area:postproc, area:ci, ready-for-human
 - **Depends on:** M1-01
 
@@ -305,6 +267,8 @@ These rules apply to every archive entry before anything is written.
 - **Labels:** area:postproc, ready-for-agent
 - **Depends on:** M3-01, M2-01
 
+> Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md): the Unpacker runs `7zz` instead of the pure-Go libraries named below. The port, detection, error mapping and nested-archive behaviour did not change. The acceptance criterion about `os/exec` now reads: only `internal/postproc/tool` imports it (`TestOnlyTheToolRunnerImportsOsExec`).
+
 **Goal:** Implement the Unpacker port with pure-Go libraries, per the "Unpack" design.
 
 **Work**
@@ -316,11 +280,13 @@ These rules apply to every archive entry before anything is written.
 
 **Acceptance criteria**
 - [ ] Fixture tests cover RAR3 old-style, RAR5 multi-volume, encrypted RAR (right and wrong password), 7z multi-volume, and nested RAR.
-- [ ] No subprocess is spawned. A test asserts that `os/exec` is not imported in `internal/`.
+- [ ] No subprocess is spawned. A test asserts that `os/exec` is not imported in `internal/`. *(ADR-0007: only `internal/postproc/tool` may import it.)*
 
 ### M3-09: Unpack guards — path traversal, entry types and size caps
 - **Labels:** area:postproc, ready-for-agent
 - **Depends on:** M3-08
+
+> Superseded in part by [ADR-0007](../adr/0007-external-postproc-tools.md): the guards now run on the `7zz` listing before extraction and on the extracted tree afterwards. Symlinks, hardlinks and special entries are refused (`path_violation`) instead of skipped.
 
 **Goal:** Enforce the "Unpack guards" design on every entry.
 
@@ -353,6 +319,8 @@ These rules apply to every archive entry before anything is written.
 - **Labels:** area:postproc, ready-for-human
 - **Depends on:** M3-08
 
+> **Superseded / dropped by [ADR-0007](../adr/0007-external-postproc-tools.md).** The risk this spike was to check, whether the pure-Go libraries handle real releases, is gone with the libraries: `7zz` is the reference decoder for RAR and 7z. Nothing is left to do here.
+
 **Goal:** Check ADR-0002's main risk: whether `rardecode` and `sevenzip` handle what real Usenet and scene releases use.
 
 **Work**
@@ -367,6 +335,8 @@ These rules apply to every archive entry before anything is written.
 ### M3-12: 7z header memory guard
 - **Labels:** area:postproc, ready-for-agent
 - **Depends on:** M3-08
+
+> **Superseded by [ADR-0007](../adr/0007-external-postproc-tools.md).** The guard existed because `bodgit/sevenzip` allocated from counts in the archive header. `bodgit/sevenzip` and the whole pre-flight (`sevenz_preflight.go`, `sevenz_header.go`, `WithMaxHeaderMemory`, `WithMaxDictionary`) are deleted; 7-Zip parses the header. The text below is kept as the record of what was done.
 
 **Goal:** Prevent a hostile 7z archive from making the daemon allocate gigabytes before any Unpack guard runs.
 

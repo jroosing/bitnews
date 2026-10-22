@@ -1,5 +1,7 @@
 # Pure-Go post-processing, no subprocesses
 
+> **Superseded by [ADR-0007](0007-external-postproc-tools.md):** post-processing now runs 7-Zip and par2cmdline-turbo as subprocesses. This record stays for the history.
+
 Post-processing (PAR2 verify and repair, RAR/7z unpack) is implemented entirely in Go and never shells out to `par2cmdline`, `unrar` or `7z`. Those inputs are hostile, since uploaders control the archives and par2 sets. nzbget and SABnzbd shell out to C/C++ tools here, and closed-source `unrar` has had path-traversal CVEs. A memory-safe, fuzzable Go implementation removes the last native attack surface.
 
 ## Considered Options

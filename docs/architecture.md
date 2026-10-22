@@ -6,7 +6,7 @@ Domain terms (**Download**, **Source**, **Fetched**, **Ready**, …) are defined
 
 ## Guiding constraints
 
-- **Security without concessions.** The daemon parses hostile input constantly, so we use a memory-safe language, mature TLS, and no native subprocesses. See [ADR-0001](adr/0001-go-over-zig.md) and [ADR-0002](adr/0002-pure-go-post-processing.md).
+- **Security without concessions.** The daemon parses hostile input constantly, so we use a memory-safe language and mature TLS. The only native code it runs is 7-Zip and par2cmdline-turbo for post-processing, in a hardened container, with our own guards around them. See [ADR-0001](adr/0001-go-over-zig.md) and [ADR-0007](adr/0007-external-postproc-tools.md) (which replaced ADR-0002).
 - **Media managers must just work.** bitnews imitates the client APIs they already support. "Complete" means Ready, never merely Fetched. See [ADR-0003](adr/0003-emulate-qbittorrent-and-sabnzbd-apis.md).
 - **Hardlinks are the user's layout, not our code.** Sonarr and Radarr make the hardlinks, so the user keeps the complete folders and the library on one filesystem (the TRaSH-guides layout). bitnews never hardlinks, moves with rename and copies when the folders differ, and never modifies files after Ready. See [ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md).
 - **Runs with or without Docker.** It ships as one static binary (`CGO_ENABLED=0`) that is packaged for Docker (the primary target, a homelab) and also runs on bare metal.
@@ -18,8 +18,8 @@ Domain terms (**Download**, **Source**, **Fetched**, **Ready**, …) are defined
 | Language | Go (ADR-0001) |
 | BitTorrent | `anacrolix/torrent`, wrapped behind our own port |
 | Usenet (NNTP, yEnc, NZB) | Our own implementation |
-| PAR2 verify and repair | Our own implementation, Reed-Solomon over GF(2^16) (ADR-0002) |
-| RAR / 7z unpack | `nwaples/rardecode/v2`, `bodgit/sevenzip` (ADR-0002) |
+| PAR2 verify and repair | `par2` (par2cmdline-turbo), run as a subprocess (ADR-0007) |
+| RAR / 7z unpack | `7zz` (7-Zip), run as a subprocess (ADR-0007) |
 | Persistence | SQLite via `modernc.org/sqlite` (no cgo), one `bitnews.db` |
 | TLS | Go `crypto/tls` |
 | Password hashing | argon2id for human passwords. Session tokens are stored as SHA-256 hashes. The single app key is stored in plain text so Settings can show it. |
@@ -68,8 +68,8 @@ internal/usenet/nzb/    NZB parser
 internal/usenet/nntp/   NNTP client, per-Server connection pool, Server Priority fallback
 internal/usenet/yenc/   yEnc decoder + CRC32
 internal/torrent/       TorrentEngine adapter over anacrolix
-internal/postproc/par2/ packet parser, Verify, GF(2^16) Repair
-internal/postproc/unpack/ rardecode + sevenzip, path guard, size caps
+internal/postproc/par2/ runs par2 (Verify, Repair), hostile-name check
+internal/postproc/unpack/ runs 7zz: listing guards, path guard, size caps
 internal/store/         SQLite repositories, migrations, secret encryption
 internal/auth/          sessions, CSRF, argon2id, app key, LAN bypass
 internal/api/           own API v1 + SSE
@@ -117,11 +117,11 @@ Torrent only: Seeding runs in parallel from Fetched until the Share Limit is rea
 
 ## Post-processing
 
-- **Verify** uses PAR2 packet parsing plus MD5/CRC32 checks.
-- **Repair** is Reed-Solomon over GF(2^16), implemented in Go. It runs only when Verify finds damage.
-- **Unpack** uses pure-Go RAR (2–5, multi-volume, passwords) and 7z. It writes to a staging dir, rejects `..`, absolute and symlink entries, and enforces size caps against archive bombs.
+- **Verify** runs `par2 v` (and `par2 r -O` to rename obfuscated files) after checking the file names in the PAR2 set.
+- **Repair** runs `par2 r`. It runs only when Verify finds damage.
+- **Unpack** runs `7zz` (RAR 2–5, 7z, zip, multi-volume, passwords on stdin). It lists the archive first and enforces the entry, size and ratio caps, extracts to a staging dir, then walks the result and rejects `..`, absolute, symlink, hardlink and special entries (ADR-0007).
 - One Download is post-processed at a time by default (configurable). Fetching continues meanwhile: Usenet Download B fetches while A is post-processing.
-- There are no subprocesses at all.
+- 7-Zip and par2cmdline-turbo are the only subprocesses, started through `internal/postproc/tool` (ADR-0007).
 
 ## Scheduling
 
@@ -194,8 +194,8 @@ The defaults follow the TRaSH-guides layout:
 
 ## Testing and CI
 
-- **Fuzzing** (`go test -fuzz`) covers every hostile parser: NZB, NNTP responses, yEnc, PAR2 packets and archive entry paths. The corpus is committed.
-- **PAR2 golden tests:** fixtures are made offline with `par2cmdline` and committed. Repair must restore damaged data byte-exactly. The tool is never used at runtime.
+- **Fuzzing** (`go test -fuzz`) covers every hostile parser: NZB, NNTP responses, yEnc, PAR2 file names and archive entry paths. The corpus is committed.
+- **PAR2 tests:** the tests build real sets with `par2 c` (the pinned `par2`, from `make tools`), damage them and check that Repair restores the data byte-exactly.
 - **Fake NNTP server:** an in-process server simulates `430`s, slow and dropped connections, and Server Priority fallback.
 - **Torrent:** a local anacrolix swarm (seeder plus bitnews as leecher).
 - **Adapter contract tests:** replay recorded Sonarr/Radarr requests.

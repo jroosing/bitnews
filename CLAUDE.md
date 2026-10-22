@@ -11,7 +11,7 @@
 - **Branches:** never commit to `main`. Work on a branch, push it, and open a merge request. List each issue on its own line in the MR description (`Closes #8`, `Closes #9`), because GitLab does not reliably auto-close a comma-separated list.
 - **Before pushing:** run `make fmt fix`, then `make check` (`fmt-check`, `fix-check`, `lint`, `test`, `vuln`). Run `make fuzz-smoke` when touching a parser. CI has three jobs (`lint` with vet, staticcheck and govulncheck; `test` with `-race` tests and fuzz smoke; `build`) and deliberately no format job.
 - **Tests:** test first, in vertical slices (one test, then the code for it), through the public API. `github.com/stretchr/testify` is allowed in tests. Production code uses the standard library plus as few dependencies as possible. Every parser of hostile input (NZB, NNTP, yEnc, PAR2, archives, names) gets a fuzz target.
-- **Security rules:** no subprocesses (ADR-0002), strict TLS with no skip-verify, every hostile name goes through `internal/fsutil`, and secrets use `core.Secret` so they never reach logs or JSON.
+- **Security rules:** subprocesses only for the pinned post-processing tools `7zz` and `par2`, started through the one runner package with an argument list, no shell and a scrubbed environment (ADR-0007), strict TLS with no skip-verify, every hostile name goes through `internal/fsutil`, and secrets use `core.Secret` so they never reach logs or JSON.
 - **Parallel agents:** when several agents work in one tree, give each its own files or package, tell them not to edit `go.mod`/`go.sum` (add dependencies yourself first), and run the full gate after they finish.
 
 ## Agent skills

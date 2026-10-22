@@ -1,9 +1,6 @@
 package unpack
 
 import (
-	"context"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -12,212 +9,134 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func fixtureSet(t testing.TB, names ...string) ArchiveSet {
+	t.Helper()
+	return detectOne(t, copyFixtures(t, "7z", names...))
+}
+
 func TestARerunClearsALeftoverStagingDir(t *testing.T) {
-	s := newSeam(t)
-	stage := s.dst + ".tmp"
+	o := newOut(t)
+	stage := o.dst + ".tmp"
 	require.NoError(t, os.MkdirAll(filepath.Join(stage, "old", "deep"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(stage, "old", "deep", "junk"), []byte("crash leftover"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(stage, "f"), []byte("stale"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(stage, "foo"), []byte("stale"), 0o600))
 
-	_, err := s.run(t, opener(fileEntry("f", "fresh")))
+	_, err := unpackSet(t, fixtureSet(t, "t0.7z"), o.dst)
 
 	require.NoError(t, err)
-	require.Equal(t, []string{"f"}, listing(t, s.dst), "nothing of the old run survives")
-	require.Equal(t, []string{"out"}, children(t, s.parent))
+	require.Equal(t, []string{"bar", "foo"}, listing(t, o.dst), "nothing of the old run survives")
+	require.Equal(t, "foo\n", readFile(t, filepath.Join(o.dst, "foo")))
+	require.Equal(t, []string{"out"}, children(t, o.parent))
+}
+
+func TestALeftoverStagingDirWithoutPermissionsIsCleared(t *testing.T) {
+	o := newOut(t)
+	stage := o.dst + ".tmp"
+	require.NoError(t, os.MkdirAll(filepath.Join(stage, "locked", "inner"), 0o755))
+	require.NoError(t, os.Chmod(filepath.Join(stage, "locked"), 0))
+
+	_, err := unpackSet(t, fixtureSet(t, "t0.7z"), o.dst)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"out"}, children(t, o.parent))
 }
 
 func TestARerunAfterASuccessfulOneIsRefusedUnlessReplaceIsSet(t *testing.T) {
-	s := newSeam(t)
-	_, err := s.run(t, opener(fileEntry("f", "one")))
+	o := newOut(t)
+	set := fixtureSet(t, "t0.7z")
+	_, err := unpackSet(t, set, o.dst)
 	require.NoError(t, err)
 
-	_, err = s.run(t, opener(fileEntry("g", "two")))
+	_, err = unpackSet(t, set, o.dst)
 
 	require.ErrorIs(t, err, ErrExists)
-	require.Equal(t, []string{"f"}, listing(t, s.dst), "the first result is untouched")
-	require.Equal(t, []string{"out"}, children(t, s.parent))
+	require.Equal(t, []string{"bar", "foo"}, listing(t, o.dst), "the first result is untouched")
+	require.Equal(t, []string{"out"}, children(t, o.parent))
 }
 
 func TestReplaceSwapsTheExistingDestination(t *testing.T) {
-	s := newSeam(t)
-	_, err := s.run(t, opener(fileEntry("f", "one")))
-	require.NoError(t, err)
+	o := newOut(t)
+	require.NoError(t, os.MkdirAll(o.dst, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(o.dst, "stale"), []byte("x"), 0o600))
 
-	_, err = s.run(t, opener(fileEntry("g", "two")), WithReplace())
+	_, err := unpackSet(t, fixtureSet(t, "t0.7z"), o.dst, WithReplace())
 
 	require.NoError(t, err)
-	require.Equal(t, []string{"g"}, listing(t, s.dst))
-	require.Equal(t, []string{"out"}, children(t, s.parent))
+	require.Equal(t, []string{"bar", "foo"}, listing(t, o.dst))
+	require.Equal(t, []string{"out"}, children(t, o.parent))
 }
 
 func TestAFailedReplaceKeepsTheExistingDestination(t *testing.T) {
-	s := newSeam(t)
-	_, err := s.run(t, opener(fileEntry("f", "one")))
+	o := newOut(t)
+	_, err := unpackSet(t, fixtureSet(t, "t0.7z"), o.dst)
 	require.NoError(t, err)
+	// A password-protected archive without the password fails.
+	_, err = unpackSet(t, fixtureSet(t, "t3.7z"), o.dst, WithReplace())
+	require.ErrorIs(t, err, ErrPassword)
+	require.Equal(t, []string{"bar", "foo"}, listing(t, o.dst))
+	require.Equal(t, []string{"out"}, children(t, o.parent))
 
-	_, err = s.run(t, opener(fileEntry("g", "two"), fileEntry("../x", "evil")), WithReplace())
-
+	// A failure after the extraction (here: the byte cap seen by the walk
+	// is not reachable, so use a hostile name) keeps it as well.
+	j := newJail(t)
+	arch := t.TempDir()
+	writeZip(t, filepath.Join(arch, "evil.zip"), zipEnt{name: "g", data: "two"}, zipEnt{name: "../x", data: "evil"})
+	_, err = unpackSet(t, oneSet(filepath.Join(arch, "evil.zip")), o.dst, WithReplace())
 	require.ErrorIs(t, err, ErrPathViolation)
-	require.Equal(t, []string{"f"}, listing(t, s.dst))
-	require.Equal(t, []string{"out"}, children(t, s.parent))
+	require.Equal(t, []string{"bar", "foo"}, listing(t, o.dst))
+	j.requireContained(t, false)
 }
 
 func TestALeftoverStagingSymlinkIsRemovedWithoutTouchingItsTarget(t *testing.T) {
-	s := newSeam(t)
+	o := newOut(t)
 	victim := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(victim, "precious"), []byte("keep"), 0o600))
-	require.NoError(t, os.Symlink(victim, s.dst+".tmp"))
+	require.NoError(t, os.Symlink(victim, o.dst+".tmp"))
 
-	_, err := s.run(t, opener(fileEntry("f", "x")))
+	_, err := unpackSet(t, fixtureSet(t, "t0.7z"), o.dst)
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"precious"}, children(t, victim))
-	require.Equal(t, []string{"f"}, listing(t, s.dst))
+	require.Equal(t, []string{"bar", "foo"}, listing(t, o.dst))
 }
 
 func TestTheDestinationParentIsCreated(t *testing.T) {
-	s := newSeam(t)
-	s.dst = filepath.Join(s.parent, "deep", "er", "out")
+	o := newOut(t)
+	dst := filepath.Join(o.parent, "deep", "er", "out")
 
-	_, err := s.run(t, opener(fileEntry("f", "x")))
+	_, err := unpackSet(t, fixtureSet(t, "t0.7z"), dst)
 
 	require.NoError(t, err)
-	require.Equal(t, []string{"f"}, listing(t, s.dst))
-}
-
-func TestAnErrorFromTheSourceMidwayCleansUp(t *testing.T) {
-	s := newSeam(t)
-	boom := errors.New("boom")
-
-	_, err := s.run(t, func() (source, error) {
-		return &failingSource{entries: []*entry{fileEntry("a", "x"), fileEntry("b", "y")}, after: 1, err: boom}, nil
-	})
-
-	// Pass 1 already hits the error, before anything is written.
-	require.ErrorIs(t, err, boom)
-	require.Empty(t, children(t, s.parent))
-}
-
-type failingSource struct {
-	entries []*entry
-	i       int
-	after   int
-	err     error
-}
-
-func (f *failingSource) next() (*entry, error) {
-	if f.i >= f.after {
-		return nil, f.err
-	}
-	e := f.entries[f.i]
-	f.i++
-	return e, nil
-}
-
-func (f *failingSource) close() error { return nil }
-
-func TestAFailureToOpenTheArchiveCleansUp(t *testing.T) {
-	s := newSeam(t)
-	boom := errors.New("cannot open")
-
-	_, err := s.run(t, func() (source, error) { return nil, boom })
-
-	require.ErrorIs(t, err, boom)
-	require.Empty(t, children(t, s.parent))
-}
-
-func TestAReadErrorMidFileIsCorruptAndCleansUp(t *testing.T) {
-	s := newSeam(t)
-	calls := 0
-	r := readerFunc(func(p []byte) (int, error) {
-		calls++
-		if calls == 1 {
-			return copy(p, "partial"), nil
-		}
-		return 0, errors.New("decoder exploded")
-	})
-
-	_, err := s.run(t, opener(streamEntry("f", -1, r)))
-
-	require.ErrorIs(t, err, ErrCorrupt)
-	require.Empty(t, children(t, s.parent))
-}
-
-func TestClassifiedReadErrorsKeepTheirClass(t *testing.T) {
-	for _, want := range []error{ErrPassword, ErrUnsupported, ErrCorrupt} {
-		s := newSeam(t)
-		r := readerFunc(func([]byte) (int, error) { return 0, want })
-
-		_, err := s.run(t, opener(streamEntry("f", -1, r)))
-
-		require.ErrorIs(t, err, want)
-		if want != ErrCorrupt {
-			require.NotErrorIs(t, err, ErrCorrupt)
-		}
-	}
-}
-
-func TestEntryContentOpenFailureCleansUp(t *testing.T) {
-	s := newSeam(t)
-	e := fileEntry("f", "x")
-	e.open = func() (io.Reader, error) { return nil, ErrPassword }
-
-	_, err := s.run(t, opener(e))
-
-	require.ErrorIs(t, err, ErrPassword)
-	require.Empty(t, children(t, s.parent))
+	require.Equal(t, []string{"bar", "foo"}, listing(t, dst))
 }
 
 func TestFailureLeavesTheParentDirectoryExactlyAsItWas(t *testing.T) {
-	s := newSeam(t)
-	require.NoError(t, os.WriteFile(filepath.Join(s.parent, "sibling.txt"), []byte("mine"), 0o600))
-	before := listing(t, s.parent)
+	o := newOut(t)
+	require.NoError(t, os.WriteFile(filepath.Join(o.parent, "bystander"), []byte("x"), 0o600))
 
-	_, err := s.run(t, opener(
-		dirEntry("a"), fileEntry("a/b", "1"), fileEntry("a/../../escape", "2"),
-	))
+	_, err := unpackSet(t, fixtureSet(t, "t3.7z"), o.dst)
 
-	require.ErrorIs(t, err, ErrPathViolation)
-	require.Equal(t, before, listing(t, s.parent))
+	require.ErrorIs(t, err, ErrPassword)
+	require.Equal(t, []string{"bystander"}, children(t, o.parent))
 }
 
-func TestAnEmptyArchiveProducesAnEmptyDestination(t *testing.T) {
-	s := newSeam(t)
+func TestANoSpaceLeftErrorIsDiskFull(t *testing.T) {
+	require.ErrorIs(t, diskErr(&os.PathError{Op: "write", Path: "x", Err: syscall.ENOSPC}), ErrDiskFull)
+	require.NoError(t, diskErr(nil))
+	other := &os.PathError{Op: "write", Path: "x", Err: syscall.EACCES}
+	require.NotErrorIs(t, diskErr(other), ErrDiskFull)
+}
 
-	res, err := s.run(t, opener())
+func TestTheArchivesAreNeverModified(t *testing.T) {
+	dir := copyFixtures(t, "7z", "t0.7z")
+	before, err := os.ReadFile(filepath.Join(dir, "t0.7z"))
+	require.NoError(t, err)
+
+	_, err = unpackSet(t, detectOne(t, dir), newOut(t).dst)
 
 	require.NoError(t, err)
-	require.Empty(t, res.Files)
-	require.DirExists(t, s.dst)
-	require.Empty(t, children(t, s.dst))
-}
-
-func TestAContextCancelledBeforeTheStartLeavesNothing(t *testing.T) {
-	s := newSeam(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := unpackWith(ctx, s.dst, opener(fileEntry("f", "x")), 1, newConfig([]Option{WithLogger(nil)}))
-
-	require.ErrorIs(t, err, context.Canceled)
-	require.Empty(t, children(t, s.parent))
-}
-
-func TestANoSpaceLeftWriteErrorIsDiskFull(t *testing.T) {
-	err := diskErr(&os.PathError{Op: "write", Path: "x", Err: syscall.ENOSPC})
-
-	require.ErrorIs(t, err, ErrDiskFull)
-	require.ErrorIs(t, err, ErrLimit)
-	require.NoError(t, diskErr(nil))
-	other := errors.New("other")
-	require.Equal(t, other, diskErr(other))
-}
-
-func TestADecoderPanicBecomesACorruptArchive(t *testing.T) {
-	err := guarded(func() error { panic("decoder bug") })
-
-	require.ErrorIs(t, err, ErrCorrupt)
-	require.NoError(t, guarded(func() error { return nil }))
-	boom := errors.New("boom")
-	require.Equal(t, boom, guarded(func() error { return boom }))
+	after, err := os.ReadFile(filepath.Join(dir, "t0.7z"))
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	require.Equal(t, []string{"t0.7z"}, children(t, dir), "7zz leaves nothing next to the archive")
 }

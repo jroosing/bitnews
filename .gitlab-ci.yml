@@ -8,7 +8,7 @@ variables:
 cache:
   key:
     files: [go.sum]
-  paths: [.go/pkg/mod, .cache/go-build]
+  paths: [.go/pkg/mod, .cache/go-build, bin/tools]
 
 stages: [lint, test, build, image]
 
@@ -26,6 +26,10 @@ lint:
 
 test:
   stage: test
+  before_script:
+    # make test fetches the pinned 7-Zip and par2 (scripts/get-postproc-tools.sh),
+    # which needs xz and unzip; the Go image has neither.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends xz-utils unzip
   script:
     - make test
     - make fuzz-smoke FUZZTIME=10s

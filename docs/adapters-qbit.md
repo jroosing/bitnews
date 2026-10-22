@@ -1,8 +1,8 @@
 # qBittorrent adapter (`/api/v2/`)
 
-Implementation notes for M5-09 to M5-12; the design is in [m5-torrents.md](milestones/m5-torrents.md). Package `internal/adapter/qbit`, fixtures in `internal/adapter/qbit/testdata/contract/`.
+Implementation notes for M5-10 to M5-12; the design is in [m5-torrents.md](milestones/m5-torrents.md). Package `internal/adapter/qbit`, fixtures in `internal/adapter/qbit/testdata/contract/`.
 
-**Read this first: nothing here was checked against recorded traffic.** M5-09 (the recordings) is a human task and is not done. The adapter was written from the qBittorrent WebUI API documentation and from what Sonarr and Radarr are known to parse, and the fixtures are **hand-written, not recorded**. Each says so in its `provenance` field and a test insists on it. When M5-09 delivers, replace them with the recordings, change their provenance and fix whatever differs: the recordings override this page. The Sonarr-shaped decode structs in `sonarr_shapes_test.go` were written from memory of Sonarr's C# classes.
+**Read this first: nothing here was checked against recorded traffic.** M5-09 (the recordings) was dropped. The adapter was written from the qBittorrent WebUI API documentation and from what Sonarr and Radarr are known to parse, and the fixtures are **hand-written, not recorded**. Each says so in its `provenance` field and a test insists on it. When real use shows a difference, fix the adapter and, where useful, replace the fixture with a recording (change its provenance): what real Sonarr and Radarr do overrides this page. The Sonarr-shaped decode structs in `sonarr_shapes_test.go` were written from memory of Sonarr's C# classes.
 
 ## Wiring
 
@@ -79,7 +79,7 @@ Reads accept GET and POST; calls that change something need POST (`405` with `Al
 
 `adaptertest` got two backwards-compatible additions: `capture` accepts `header:Name:REGEX` (the SID from `Set-Cookie`), and expected object keys may hold `{{variables}}`.
 
-## Open questions for M5-09 and the daemon
+## Open questions for real use and the daemon
 
 - Which `state`/`progress` pairs Sonarr and Radarr treat as "do not import yet" (above).
 - The real `torrents/add` answer for a duplicate and for a failing URL, and the exact error bodies, on current qBittorrent versions.
@@ -98,4 +98,4 @@ Reads accept GET and POST; calls that change something need POST (`405` with `Al
 
 Tested through the whole daemon over real HTTP with the real engine and a local seeder (`internal/daemon/qbit_e2e_test.go`): login with the app key (a wrong password, a username other than `bitnews` and an own-API session all fail; the SID opens nothing under `/api/v1`), add by magnet with an `x.pe` hint and by `.torrent` upload, `torrents/info` polled to completion while checking, on every answer, that **progress 1 or an upload state is never shown before the Download is Ready** (`checkingUP` at less than 1 was observed in most runs, and in the others the window was too short to see), files, `setShareLimits` read back through `torrents/info` (a value, `-2`, `-1`), a limit that is already reached pausing the torrent as `pausedUP`, add with `paused` waiting as `pausedDL` and `resume` starting it, a duplicate and an invalid file as `Fails.`, `delete` with and without files, and an NZB URL refused.
 
-Known gaps: `savepath` and `tags` are ignored; speed limits (`dl_limit`, `up_limit`) are not settable and always 0; nothing was checked against recorded Sonarr/Radarr traffic (M5-09); the adapter session table is in memory, so every restart of bitnews logs the media managers out (they log in again on the next call).
+Known gaps: `savepath` and `tags` are ignored; speed limits (`dl_limit`, `up_limit`) are not settable and always 0; nothing was checked against recorded Sonarr/Radarr traffic (M5-09 was dropped); the adapter session table is in memory, so every restart of bitnews logs the media managers out (they log in again on the next call).

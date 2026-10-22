@@ -125,7 +125,7 @@ type TorrentEngine interface {
 
 ### qBittorrent adapter
 
-The fixtures are the spec, as in M4. M5-09 records real Sonarr/Radarr ↔ qBittorrent traffic. The expected subset of the WebUI API v2, under `/api/v2/`:
+The fixtures are the spec, as in M4. M5-09 (dropped) was to record real Sonarr/Radarr ↔ qBittorrent traffic. The expected subset of the WebUI API v2, under `/api/v2/`:
 
 | Endpoint | Notes |
 |---|---|
@@ -299,6 +299,7 @@ The fixtures are the spec, as in M4. M5-09 records real Sonarr/Radarr ↔ qBitto
 - [ ] A local swarm test with a RAR release: `_unpack/` holds the payload, the originals' hashes are unchanged, the Download is Ready, and seeding stays active throughout.
 
 ### M5-09: Record media manager ↔ qBittorrent traffic fixtures
+- **Status: dropped.** The owner tests against real Sonarr/Radarr and reports what to fix; no recording is planned.
 - **Labels:** area:adapter, ready-for-human
 - **Depends on:** —
 
@@ -347,7 +348,7 @@ The fixtures are the spec, as in M4. M5-09 records real Sonarr/Radarr ↔ qBitto
 - `info` with filters and every field the fixtures require, including `content_path`. Plus `properties` and `files`.
 - `add` (urls or multipart; `savepath` validated against the torrent roots; category, paused or stopped, share limits).
 - `delete`, `pause`/`resume` and `stop`/`start`, `setCategory`, `createCategory`, `categories`, `setShareLimits`, `topPrio`, `bottomPrio` and `setForceStart`.
-- The state mapping table, adjusted to what M5-09 found about the import hold-off.
+- The state mapping table, adjusted to what real use shows about the import hold-off (M5-09 was dropped).
 
 **Acceptance criteria**
 - [ ] Contract tests pass.

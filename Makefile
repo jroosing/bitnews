@@ -4,7 +4,11 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 FUZZTIME ?= 10s
 PLATFORMS ?= linux/amd64 linux/arm64
 
-.PHONY: build build-all fmt fmt-check fix fix-check test lint vuln fuzz-smoke check css css-watch css-check
+# Pinned 7-Zip and par2cmdline-turbo (ADR-0007), downloaded into bin/tools/.
+# The tests that exercise them find them through PATH.
+TOOLS_BIN := $(CURDIR)/bin/tools
+
+.PHONY: tools build build-all fmt fmt-check fix fix-check test lint vuln fuzz-smoke check css css-watch css-check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/bitnews ./cmd/bitnews
@@ -32,8 +36,11 @@ fix-check:
 	@out=$$(go fix -diff ./...) || exit 1; \
 	if [ -n "$$out" ]; then echo "go fix needed (run 'make fix'):"; echo "$$out"; exit 1; fi
 
-test:
-	go test -race ./...
+tools:
+	@scripts/get-postproc-tools.sh >/dev/null
+
+test: tools
+	PATH="$(TOOLS_BIN):$$PATH" go test -race ./...
 
 lint:
 	go vet ./...
@@ -43,11 +50,11 @@ vuln:
 	go tool govulncheck ./...
 
 # Runs every Fuzz* target in every package for $(FUZZTIME).
-fuzz-smoke:
+fuzz-smoke: tools
 	@for pkg in $$(go list ./...); do \
 		for fn in $$(go test -list '^Fuzz' $$pkg | grep '^Fuzz' || true); do \
 			echo "fuzz $$pkg $$fn"; \
-			go test -run '^$$' -fuzz "^$$fn$$" -fuzztime $(FUZZTIME) $$pkg || exit 1; \
+			PATH="$(TOOLS_BIN):$$PATH" go test -run '^$$' -fuzz "^$$fn$$" -fuzztime $(FUZZTIME) $$pkg || exit 1; \
 		done; \
 	done
 

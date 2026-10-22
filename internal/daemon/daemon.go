@@ -155,6 +155,11 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	db := deps.DB
 	tune := deps.Tuning
 
+	tools, err := locateTools()
+	if err != nil {
+		return nil, err
+	}
+
 	users := store.NewUserRepo(db)
 	downloads := store.NewDownloadRepo(db)
 	categories := store.NewCategoryRepo(db)
@@ -258,7 +263,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	if trun != nil {
 		managed = trun.Managed
 	}
-	post, err := newPostProcessor(downloads, sources, run, bus, dirFor, minFree, postprocConcurrency(settings.Current(), tune), tune, log,
+	post, err := newPostProcessor(downloads, sources, run, bus, dirFor, minFree, postprocConcurrency(settings.Current(), tune), tune, log, tools,
 		torrentFinisher{inner: finisher, managed: managed, log: log})
 	if err != nil {
 		return nil, err
@@ -446,7 +451,7 @@ func newPostProcessor(
 	downloads core.DownloadRepo, sources core.DownloadSourceRepo,
 	run *runner.Runner, bus *core.Bus,
 	dirFor func(core.Download) string,
-	minFree func(context.Context) (uint64, error), concurrency int, tune Tuning, log *slog.Logger, finisher core.Finisher,
+	minFree func(context.Context) (uint64, error), concurrency int, tune Tuning, log *slog.Logger, tools postprocTools, finisher core.Finisher,
 ) (*core.PostProcessor, error) {
 	clock := time.Now
 	requeue := func(ctx context.Context, id core.ID) error {
@@ -476,9 +481,9 @@ func newPostProcessor(
 	}
 	return core.NewPostProcessor(core.PostProcessorConfig{
 		Downloads: downloads, Bus: bus,
-		Verifier: adapt.Verifier{DeferredBlocks: run.DeferredBlocks},
-		Repairer: adapt.Repairer{},
-		Unpacker: adapt.Unpacker{Passwords: passwords, MinFreeFunc: func() uint64 { v, _ := minFree(context.Background()); return v }, FreeSpace: tune.FreeSpace},
+		Verifier: adapt.Verifier{DeferredBlocks: run.DeferredBlocks, Par2: tools.par2},
+		Repairer: adapt.Repairer{Par2: tools.par2},
+		Unpacker: adapt.Unpacker{SevenZip: tools.sevenZip, Passwords: passwords, MinFreeFunc: func() uint64 { v, _ := minFree(context.Background()); return v }, FreeSpace: tune.FreeSpace},
 		Finisher: finisher, FetchReporter: torrentFetchReporter{usenet: run},
 		DeferredVolumes: &adapt.DeferredVolumes{Controller: run, Requeue: requeue, Margin: tune.VolumeMargin},
 		FS:              osFS{},

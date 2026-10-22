@@ -17,7 +17,8 @@ import (
 // directory a previous, interrupted call left half-done:
 //
 //   - Verify only reads (apart from renaming obfuscated files to their PAR2
-//     names, which a second run finds already done).
+//     names and removing leftover name.N backups, which a second run finds
+//     already done).
 //   - Repair rewrites damaged files in a way a second run can redo from the
 //     start.
 //   - Unpack clears its staging directory first and replaces dst atomically.

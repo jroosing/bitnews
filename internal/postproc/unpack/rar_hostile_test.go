@@ -8,63 +8,69 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// builders runs a test against both RAR generations.
-func builders() map[string]func([]rarEntry, rarSpec) [][]byte {
-	return map[string]func([]rarEntry, rarSpec) [][]byte{"RAR4": buildRAR4, "RAR5": buildRAR5}
-}
-
 func TestRealRARArchivesWithHostileNamesFailSafely(t *testing.T) {
 	names := []string{"../escape.txt", "a/../../escape.txt", "/etc/passwd", `C:\Windows\x`, "..", `..\..\x`, "sub/../../x"}
 	for gen, build := range builders() {
 		for _, name := range names {
 			t.Run(gen+"/"+name, func(t *testing.T) {
-				vols := build([]rarEntry{
+				dir := writeVolumes(t, []string{"evil.rar"}, build([]rarEntry{
 					{name: "fine.txt", data: []byte("ok")},
 					{name: name, data: []byte("evil")},
-				}, rarSpec{})
-				dir := writeVolumes(t, []string{"evil.rar"}, vols)
-				out := t.TempDir()
-				dst := filepath.Join(out, "out")
+				}, rarSpec{}))
+				base := t.TempDir()
+				dst := filepath.Join(base, "jail", "out")
 				sets, err := Detect(dir)
 				require.NoError(t, err)
 
-				_, err = Unpack(t.Context(), sets[0], dst, WithLogger(nil))
+				_, err = unpackSet(t, sets[0], dst)
 
 				require.ErrorIs(t, err, ErrPathViolation)
-				require.Empty(t, listing(t, out), "no dst, no staging dir, nothing else")
+				require.Equal(t, []string{"jail"}, children(t, base), "nothing outside jail")
+				require.Empty(t, children(t, filepath.Join(base, "jail")), "no dst, no staging dir")
 			})
 		}
 	}
 }
 
-func TestRealRARArchivesSkipLinksAndSpecialEntries(t *testing.T) {
+func TestRealRARArchivesWithLinksAndSpecialEntriesAreRefused(t *testing.T) {
+	// RAR4 has no link records; its symlink is a mode.
+	specials := map[string]struct {
+		rar5Only bool
+		e        rarEntry
+	}{
+		"symlink mode": {e: rarEntry{name: "link-to-etc", data: []byte("/etc"), attr: modeSymlink | 0o777}},
+		"unix symlink": {rar5Only: true, e: rarEntry{name: "link-to-etc", data: []byte("/etc"), attr: modeSymlink | 0o777, link: linkUnixSymlink}},
+		"win symlink":  {rar5Only: true, e: rarEntry{name: "win-link", data: []byte(`C:\Windows`), link: linkWinSymlink}},
+		"junction":     {rar5Only: true, e: rarEntry{name: "junction", data: []byte(`C:\x`), link: linkJunction}},
+		"hardlink":     {rar5Only: true, e: rarEntry{name: "hard", data: []byte("ok.txt"), link: linkHardlink}},
+		"file copy":    {rar5Only: true, e: rarEntry{name: "copy", data: []byte("ok.txt"), link: linkFileCopy}},
+		"fifo":         {e: rarEntry{name: "pipe", attr: modeFIFO | 0o644}},
+		"char device":  {e: rarEntry{name: "chardev", attr: modeChar | 0o644}},
+		"socket":       {e: rarEntry{name: "sock", attr: modeSocket | 0o644}},
+	}
 	for gen, build := range builders() {
-		t.Run(gen, func(t *testing.T) {
-			entries := []rarEntry{
-				{name: "ok.txt", data: []byte("fine")},
-				{name: "link-to-etc", data: []byte("/etc"), attr: modeSymlink | 0o777, link: linkUnixSymlink},
-				{name: "win-link", data: []byte(`C:\Windows`), link: linkWinSymlink},
-				{name: "junction", data: []byte(`C:\x`), link: linkJunction},
-				{name: "hard", data: []byte("ok.txt"), link: linkHardlink},
-				{name: "copy", data: []byte("ok.txt"), link: linkFileCopy},
-				{name: "pipe", attr: modeFIFO | 0o644},
-				{name: "chardev", attr: modeChar | 0o644},
-				{name: "sock", attr: modeSocket | 0o644},
-				{name: "after.txt", data: []byte("still extracted")},
+		for label, c := range specials {
+			if c.rar5Only && gen == "RAR4" {
+				continue
 			}
-			if gen == "RAR4" {
-				// RAR4 has no link records; a symlink is a mode.
-				entries = []rarEntry{entries[0], {name: "link-to-etc", data: []byte("/etc"), attr: modeSymlink | 0o777}, entries[6], entries[7], entries[8], entries[9]}
-			}
-			dir := writeVolumes(t, []string{"links.rar"}, build(entries, rarSpec{}))
+			t.Run(gen+"/"+label, func(t *testing.T) {
+				dir := writeVolumes(t, []string{"links.rar"}, build([]rarEntry{
+					{name: "ok.txt", data: []byte("fine")}, c.e, {name: "after.txt", data: []byte("x")},
+				}, rarSpec{}))
+				base := t.TempDir()
 
-			dst, res, err := unpackDir(t, dir)
+				_, err := unpackSet(t, detectOne(t, dir), filepath.Join(base, "out"))
 
-			require.NoError(t, err)
-			require.Equal(t, []string{"after.txt", "ok.txt"}, res.Files)
-			require.Equal(t, []string{"after.txt", "ok.txt"}, listing(t, dst))
-			require.Equal(t, len(entries)-2, res.Skipped)
-		})
+				require.Error(t, err)
+				if label == "file copy" {
+					// 7zz lists a RAR5 file copy as a file and cannot extract it.
+					require.ErrorIs(t, err, ErrUnsupported)
+				} else {
+					require.ErrorIs(t, err, ErrPathViolation)
+				}
+				require.Empty(t, children(t, base))
+			})
+		}
 	}
 }
 
@@ -90,12 +96,37 @@ func TestRealRARArchivesDropSetuidAndOtherModeBits(t *testing.T) {
 				require.NoError(t, err)
 				require.Zero(t, fi.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky), p)
 				if fi.IsDir() {
-					require.Equal(t, os.FileMode(0o700), fi.Mode().Perm()&0o700, p+": owner rwx")
+					require.Equal(t, os.FileMode(0o755), fi.Mode().Perm(), p)
 				} else {
-					require.Zero(t, fi.Mode().Perm()&0o111, p+": not executable")
-					require.Equal(t, os.FileMode(0o600), fi.Mode().Perm()&0o600, p+": owner rw")
+					require.Equal(t, os.FileMode(0o644), fi.Mode().Perm(), p)
 				}
 			}
+		})
+	}
+}
+
+func TestADirectoryWithoutPermissionsDoesNotBlockCleanupOrTheResult(t *testing.T) {
+	for gen, build := range builders() {
+		t.Run(gen, func(t *testing.T) {
+			dir := writeVolumes(t, []string{"locked.rar"}, build([]rarEntry{
+				{name: "d", dir: true, attr: modeDir},
+				{name: "d/f", data: []byte("inside")},
+			}, rarSpec{}))
+
+			dst, res, err := unpackDir(t, dir)
+
+			require.NoError(t, err)
+			require.Equal(t, []string{"d/f"}, res.Files)
+			require.Equal(t, "inside", readFile(t, filepath.Join(dst, "d", "f")))
+
+			// And when the unpack fails later, the staging directory still goes.
+			dir = writeVolumes(t, []string{"locked.rar"}, build([]rarEntry{
+				{name: "d", dir: true, attr: modeDir},
+				{name: "d/f", data: []byte("inside")},
+			}, rarSpec{}))
+			dst, _, err = unpackDir(t, dir, WithMaxBytes(1))
+			require.ErrorIs(t, err, ErrTooLarge)
+			require.NoDirExists(t, dst+".tmp")
 		})
 	}
 }
@@ -117,15 +148,11 @@ func TestRealRARArchivesRejectCaseDuplicates(t *testing.T) {
 	}
 }
 
-func TestSolidRARArchivesStayInStepWhenAnEntryIsSkipped(t *testing.T) {
+func TestSolidRARArchivesExtract(t *testing.T) {
 	for gen, build := range builders() {
 		t.Run(gen, func(t *testing.T) {
-			link := rarEntry{name: "l", data: []byte("/etc/passwd"), attr: modeSymlink | 0o777, link: linkUnixSymlink}
-			if gen == "RAR4" {
-				link.link = linkNone
-			}
 			dir := writeVolumes(t, []string{"solid.rar"}, build([]rarEntry{
-				{name: "a", data: []byte("first")}, link, {name: "b", data: []byte("second")},
+				{name: "a", data: []byte("first")}, {name: "b", data: []byte("second")},
 			}, rarSpec{solid: true}))
 
 			dst, res, err := unpackDir(t, dir)
@@ -133,6 +160,24 @@ func TestSolidRARArchivesStayInStepWhenAnEntryIsSkipped(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, []string{"a", "b"}, res.Files)
 			require.Equal(t, "second", readFile(t, filepath.Join(dst, "b")))
+		})
+	}
+}
+
+func TestNamesThatSanitizingChangesAreRenamedInPlace(t *testing.T) {
+	for gen, build := range builders() {
+		t.Run(gen, func(t *testing.T) {
+			dir := writeVolumes(t, []string{"names.rar"}, build([]rarEntry{
+				{name: "dir/a:b?.txt", data: []byte("1")},
+				{name: "dir/con.txt", data: []byte("2")},
+				{name: "trailing. ", data: []byte("3")},
+			}, rarSpec{}))
+
+			dst, res, err := unpackDir(t, dir)
+
+			require.NoError(t, err)
+			require.Equal(t, []string{"dir/_con.txt", "dir/a_b_.txt", "trailing"}, res.Files)
+			require.Equal(t, []string{"dir", "dir/_con.txt", "dir/a_b_.txt", "trailing"}, listing(t, dst))
 		})
 	}
 }

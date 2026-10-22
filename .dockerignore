@@ -21,7 +21,8 @@ coverage.*
 **/testdata
 **/*_test.go
 docs
-scripts
+scripts/*
+!scripts/get-postproc-tools.sh
 deploy
 *.md
 Dockerfile

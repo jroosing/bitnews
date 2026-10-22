@@ -77,7 +77,85 @@ func isASCIILetter(b byte) bool { return b|0x20 >= 'a' && b|0x20 <= 'z' }
 
 func truncateForError(s string) string {
 	if len(s) > 80 {
-		return s[:80] + "..."
+		s = s[:80] + "..."
 	}
-	return s
+	// Names are hostile: keep control characters out of error messages and
+	// logs.
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '?'
+		}
+		return r
+	}, s)
+}
+
+// guard applies the per-entry rules to one listing.
+type guard struct {
+	cfg *config
+	// count is the number of entries seen, files is the number of files.
+	count, files int
+	declared     int64
+	seen         map[string]bool // lower-cased path -> is a directory
+}
+
+func newGuard(cfg *config) *guard {
+	return &guard{cfg: cfg, seen: map[string]bool{}}
+}
+
+// admit checks one entry of the listing. Only files and directories pass: a
+// symlink, hardlink, device, FIFO or socket fails the whole Unpack with
+// ErrPathViolation, as does any unsafe or colliding name.
+func (g *guard) admit(e *entry) error {
+	g.count++
+	if g.count > g.cfg.maxEntries {
+		return fmt.Errorf("%w: more than %d", ErrTooManyEntries, g.cfg.maxEntries)
+	}
+	rel, err := cleanName(e.name)
+	if err != nil {
+		return err
+	}
+	switch e.kind {
+	case kindFile, kindDir:
+	default:
+		return fmt.Errorf("%w: the archive contains a %s %q", ErrPathViolation, e.kind, truncateForError(e.name))
+	}
+	if rel == "" {
+		if e.kind == kindDir {
+			return nil
+		}
+		return fmt.Errorf("%w: file named after the root %q", ErrPathViolation, truncateForError(e.name))
+	}
+	if err := g.claim(rel, e.kind == kindDir); err != nil {
+		return err
+	}
+	if e.kind == kindFile {
+		g.files++
+		g.declared = addSat(g.declared, e.size)
+	}
+	return nil
+}
+
+// claim records rel and its parents, refusing a name that collides with an
+// earlier one once case is ignored.
+func (g *guard) claim(rel string, isDir bool) error {
+	for i := 0; i < len(rel); i++ {
+		if rel[i] != '/' {
+			continue
+		}
+		parent := strings.ToLower(rel[:i])
+		if dir, seen := g.seen[parent]; seen && !dir {
+			return fmt.Errorf("%w: %q is both a file and a directory", ErrPathViolation, truncateForError(rel))
+		}
+		g.seen[parent] = true
+	}
+	key := strings.ToLower(rel)
+	dir, seen := g.seen[key]
+	switch {
+	case !seen:
+		g.seen[key] = isDir
+	case dir && isDir:
+	default:
+		return fmt.Errorf("%w: duplicate entry %q", ErrPathViolation, truncateForError(rel))
+	}
+	return nil
 }
