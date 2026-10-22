@@ -16,7 +16,7 @@ import (
 )
 
 // appPages are the pages behind the sign-in.
-var appPages = []string{"/queue", "/history", "/settings", "/ui/styleguide"}
+var appPages = []string{"/queue", "/history", "/settings/paths", "/ui/styleguide"}
 
 func TestPagesRequireASession(t *testing.T) {
 	e := newEnv(t)
@@ -98,7 +98,7 @@ func TestNavMarksTheCurrentPageAndHidesTheStyleGuide(t *testing.T) {
 	b := e.browser()
 	b.login()
 
-	for _, tc := range []struct{ page, current string }{{"/queue", "Queue"}, {"/history", "History"}, {"/settings", "Settings"}} {
+	for _, tc := range []struct{ page, current string }{{"/queue", "Queue"}, {"/history", "History"}, {"/settings/paths", "Settings"}} {
 		doc := parseHTML(t, b.get(tc.page).Body.String())
 		var labels, current []string
 		for _, nav := range findAll(doc, func(n *html.Node) bool { return n.Data == "nav" && strings.HasPrefix(attr(n, "aria-label"), "Main") }) {

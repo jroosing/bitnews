@@ -130,7 +130,7 @@ type Config struct {
 // Defaults.
 const (
 	// DefaultMinFree is the min_free default: 5 GiB.
-	DefaultMinFree uint64 = 5 << 30
+	DefaultMinFree = core.DefaultMinFree
 
 	defaultPollInterval      = 10 * time.Second
 	defaultDiskCheckInterval = 30 * time.Second

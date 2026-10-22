@@ -20,7 +20,7 @@ Only these settings live outside the database. A flag wins over its environment 
 | `--log-format` | `BITNEWS_LOG_FORMAT` | `text` | `text` or `json`. |
 | – | `UMASK` | `002` | Octal file creation mask, applied process-wide at startup before any file is created. See [Identity and UMASK](#identity-and-umask). |
 | – | `BITNEWS_ADMIN_PASSWORD_FILE` | unset | Absolute path of a file holding the initial admin password; skips the setup screen. |
-| – | `BITNEWS_TORRENT_PORT` | `51413` | TCP and uTP port the torrent engine listens on, 1 to 65535. See [Torrent port](#torrent-port). |
+| – | `BITNEWS_TORRENT_PORT` | unset (the setting, `51413`) | TCP and uTP port the torrent engine listens on, 1 to 65535. When set it overrides the port in Settings, Torrent network. See [Torrent port](#torrent-port). |
 
 `bitnews --help` prints the same list and `bitnews --version` prints the version and commit.
 
@@ -91,7 +91,7 @@ Open `http://<host>:9494`. The healthcheck is inherited from the image.
 
 ### Torrent port
 
-The torrent engine listens on `BITNEWS_TORRENT_PORT` (default `51413`) for TCP and uTP (UDP) and, with DHT on, uses the same UDP port. bitnews does **no UPnP or NAT-PMP port mapping**, ever. Peers can only reach you if you forward that port yourself (router: TCP and UDP to the host running bitnews). Without a forwarded port torrents still download and seed over the connections bitnews opens itself, only more slowly and to fewer peers.
+The torrent engine listens on the port of Settings, Torrent network (default `51413`) or, when you set `BITNEWS_TORRENT_PORT`, on that port: the settings page then shows it read-only. It listens for TCP and uTP (UDP) and, with DHT on, uses the same UDP port. bitnews does **no UPnP or NAT-PMP port mapping**, ever. Peers can only reach you if you forward that port yourself (router: TCP and UDP to the host running bitnews). Without a forwarded port torrents still download and seed over the connections bitnews opens itself, only more slowly and to fewer peers.
 
 With Docker publish both protocols (the example compose file does):
 

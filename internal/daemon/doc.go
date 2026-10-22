@@ -35,11 +35,23 @@
 // ContentDir, FetchReport answers with a zero report, and the data remover
 // holds the torrent runner and deletes the whole Download directory inside
 // the torrent roots. The Share Limit actions remove Downloads through the
-// DownloadService. The listen port comes from BITNEWS_TORRENT_PORT
-// (Deps.Torrent.Port); the sockets are bound as settings.network says.
+// DownloadService. The listen port, DHT, PEX and the encryption policy come
+// from settings.torrent, read when the engine starts (BITNEWS_TORRENT_PORT,
+// Deps.Torrent.Port, overrides the port); the sockets are bound as
+// settings.network says.
 // A netbind.Killswitch per bound protocol pauses its Queue while the binding
 // is unavailable and resumes only what it paused. Sockets are not rebound
 // live: a change of the network settings logs a warning and needs a restart.
+//
+// # Speed, queue and disk settings
+//
+// speedApplier gives the runners the limits of settings.speed at start and on
+// every change of them (the overall limit caps each protocol, so each runner
+// gets the tighter of it and its own). Queue sizes, min_free and the Share
+// Limit defaults are read from the Settings by the runners on each pass.
+// settings.torrent and queues.postproc_concurrency are read once, at start:
+// restartWatcher logs a warning when they change, and the web UI says that a
+// restart is pending (webConfig).
 //
 // # Lifecycle
 //

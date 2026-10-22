@@ -96,6 +96,45 @@ func TestPreferencesIsAReadOnlyViewOfTheSettings(t *testing.T) {
 	assert.EqualValues(t, -1, p.MaxSeedingTime)
 }
 
+func TestPreferencesReportsTheTorrentNetworkSettings(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		set        func(*core.TorrentSettings)
+		dht, pex   bool
+		lsd        bool
+		encryption int
+		port       int
+	}{
+		"defaults": {func(*core.TorrentSettings) {}, true, true, false, 0, core.DefaultTorrentPort},
+		"all off": {func(t *core.TorrentSettings) {
+			t.DisableDHT, t.DisablePEX, t.MSE, t.ListenPort = true, true, core.MSEDisable, 6881
+		}, false, false, false, 2, 6881},
+		"required": {func(t *core.TorrentSettings) { t.MSE, t.LSD = core.MSERequire, true }, true, true, true, 1, core.DefaultTorrentPort},
+		"prefer":   {func(t *core.TorrentSettings) { t.MSE = core.MSEPrefer }, true, true, false, 0, core.DefaultTorrentPort},
+	} {
+		s := newStack(t)
+		cur := s.settings.Current()
+		tc.set(&cur.Torrent)
+		require.NoError(t, s.settings.Update(context.Background(), cur))
+		sid := s.login()
+
+		var p struct {
+			DHT        bool `json:"dht"`
+			PeX        bool `json:"pex"`
+			LSD        bool `json:"lsd"`
+			Encryption int  `json:"encryption"`
+			ListenPort int  `json:"listen_port"`
+		}
+		decode(t, s.get(sid, "/api/v2/app/preferences"), &p)
+
+		assert.Equal(t, tc.dht, p.DHT, name)
+		assert.Equal(t, tc.pex, p.PeX, name)
+		assert.Equal(t, tc.lsd, p.LSD, name)
+		assert.Equal(t, tc.encryption, p.Encryption, name)
+		assert.Equal(t, tc.port, p.ListenPort, name)
+	}
+}
+
 func TestPreferencesReportsTheGlobalShareLimit(t *testing.T) {
 	t.Parallel()
 	for action, want := range map[string]int{"pause": 0, "remove": 1, "remove_files": 3, "": 0} {

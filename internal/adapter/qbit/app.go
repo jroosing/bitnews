@@ -3,6 +3,8 @@ package qbit
 import (
 	"strconv"
 	"strings"
+
+	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
 // webAPIAtLeast reports whether the dotted version v is at least major.minor.
@@ -52,6 +54,7 @@ type preferences struct {
 	DLLimit              int     `json:"dl_limit"`
 	ULLimit              int     `json:"up_limit"`
 	Encryption           int     `json:"encryption"`
+	ListenPort           int     `json:"listen_port"`
 	AnonymousMode        bool    `json:"anonymous_mode"`
 	WebUIUsername        string  `json:"web_ui_username"`
 }
@@ -63,6 +66,18 @@ const (
 	ratioActFiles  = 3
 )
 
+// encryptionOf maps the MSE policy onto qBittorrent's encryption setting:
+// 0 prefer, 1 force on, 2 force off.
+func encryptionOf(p core.MSEPolicy) int {
+	switch p {
+	case core.MSERequire:
+		return 1
+	case core.MSEDisable:
+		return 2
+	}
+	return 0
+}
+
 func (h *handler) preferences() preferences {
 	s := h.Settings.Current()
 	p := preferences{
@@ -70,7 +85,8 @@ func (h *handler) preferences() preferences {
 		TempPath: s.Paths.Torrent.Incomplete, CreateSubfolder: true, QueueingEnabled: true,
 		MaxActiveDownloads: s.Queues.Torrent, MaxActiveUploads: 0, MaxActiveTorrents: 0,
 		MaxRatio: -1, MaxSeedingTime: -1, MaxInactiveSeeding: -1,
-		DHT: true, PeX: true, Encryption: 0,
+		DHT: s.Torrent.DHTEnabled(), PeX: s.Torrent.PEXEnabled(), LSD: s.Torrent.LSD,
+		Encryption: encryptionOf(s.Torrent.EffectiveMSE()), ListenPort: s.Torrent.EffectivePort(),
 	}
 	if h.GlobalShare != nil {
 		g := h.GlobalShare()

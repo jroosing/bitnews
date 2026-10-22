@@ -51,7 +51,7 @@ func (b ProtocolBinding) validate(prefix string) []error {
 		}
 	}
 	if b.Address != "" {
-		if err := validBindAddress(b.Address); err != nil {
+		if err := ValidBindAddress(b.Address); err != nil {
 			problems = append(problems, fmt.Errorf("%s.address %q: %w", prefix, b.Address, err))
 		}
 	}
@@ -84,7 +84,10 @@ func ValidInterfaceName(name string) error {
 	return nil
 }
 
-func validBindAddress(s string) error {
+// ValidBindAddress reports why s cannot be the local address to bind to: it
+// has to be a plain IP address, not unspecified, not multicast and without a
+// zone.
+func ValidBindAddress(s string) error {
 	a, err := netip.ParseAddr(s)
 	if err != nil {
 		return fmt.Errorf("not an IP address")

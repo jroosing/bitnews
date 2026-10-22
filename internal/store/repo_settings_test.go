@@ -91,7 +91,7 @@ func TestSettingsRepoStoresJSONUnderOneKey(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "settings", key)
-	assert.JSONEq(t, `{"usenet":1,"torrent":5}`, jsonField(t, value, "queues"))
+	assert.JSONEq(t, `{"usenet":1,"torrent":5,"postproc_concurrency":1,"min_free":5368709120}`, jsonField(t, value, "queues"))
 }
 
 func TestSettingsRepoLoadHonorsCancelledContext(t *testing.T) {
@@ -163,4 +163,40 @@ func TestSettingsRepoSaveThenLoadKeepsTheNetworkBinding(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, s.Network, got.Network)
+}
+
+func TestSettingsRepoRoundTripsTheSpeedTorrentAndDiskSettings(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newSettingsRepo(t)
+	want := core.DefaultSettings()
+	want.Speed = core.SpeedSettings{
+		Global:  core.SpeedLimit{DownKBps: 10_000, UpKBps: 2_000},
+		Usenet:  core.SpeedLimit{DownKBps: 8_000},
+		Torrent: core.SpeedLimit{DownKBps: 5_000, UpKBps: 500},
+	}
+	want.Torrent = core.TorrentSettings{ListenPort: 6881, DisableDHT: true, LSD: true, MSE: core.MSERequire}
+	want.Queues.PostprocConcurrency = 3
+	want.Queues.MinFree = 2 << 30
+
+	require.NoError(t, repo.Save(ctx, want))
+	got, err := repo.Load(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+}
+
+func TestSettingsRepoLoadKeepsTheTransferDefaultsForSettingsStoredBeforeTheyExisted(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newSettingsRepo(t)
+	_, err := db.Writer().ExecContext(ctx,
+		`INSERT INTO settings (key, value, updated_at) VALUES ('settings', '{"queues":{"usenet":2,"torrent":3}}', 0)`)
+	require.NoError(t, err)
+
+	got, err := repo.Load(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.Queues.PostprocConcurrency)
+	assert.Equal(t, int64(core.DefaultMinFree), got.Queues.MinFree)
+	assert.Equal(t, core.SpeedSettings{}, got.Speed)
+	assert.Equal(t, core.TorrentSettings{}, got.Torrent)
 }

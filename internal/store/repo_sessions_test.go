@@ -140,3 +140,44 @@ func TestSessionRepoSessionsDieWithTheirUser(t *testing.T) {
 	_, err = sessions.Get(ctx, s.TokenHash)
 	assert.ErrorIs(t, err, core.ErrNotFound)
 }
+
+func TestSessionRepoDeleteForUserExceptKeepsOnlyTheNamedSession(t *testing.T) {
+	ctx := context.Background()
+	f := newSessionFixture(t)
+	keep, other1, other2 := f.session(1, t0, t0), f.session(2, t0, t0), f.session(3, t0, t0)
+	for _, s := range []core.Session{keep, other1, other2} {
+		require.NoError(t, f.sessions.Create(ctx, s))
+	}
+
+	n, err := f.sessions.DeleteForUserExcept(ctx, f.user.ID, keep.TokenHash)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	_, err = f.sessions.Get(ctx, keep.TokenHash)
+	assert.NoError(t, err)
+	_, err = f.sessions.Get(ctx, other1.TokenHash)
+	assert.ErrorIs(t, err, core.ErrNotFound)
+	_, err = f.sessions.Get(ctx, other2.TokenHash)
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
+func TestSessionRepoDeleteForUserExceptLeavesOtherUsersAlone(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTemp(t)
+	users := store.NewUserRepo(db)
+	a, b := newUser("alice"), newUser("bob")
+	require.NoError(t, users.Create(ctx, a))
+	require.NoError(t, users.Create(ctx, b))
+	repo := store.NewSessionRepo(db)
+	mine := core.Session{TokenHash: core.TokenHash{1}, UserID: a.ID, CreatedAt: t0, LastSeenAt: t0}
+	theirs := core.Session{TokenHash: core.TokenHash{2}, UserID: b.ID, CreatedAt: t0, LastSeenAt: t0}
+	require.NoError(t, repo.Create(ctx, mine))
+	require.NoError(t, repo.Create(ctx, theirs))
+
+	n, err := repo.DeleteForUserExcept(ctx, a.ID, core.TokenHash{9})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	_, err = repo.Get(ctx, theirs.TokenHash)
+	assert.NoError(t, err)
+}

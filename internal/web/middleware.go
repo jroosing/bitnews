@@ -34,7 +34,11 @@ func secure(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Cache-Control", "no-store")
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			r.Body = http.MaxBytesReader(w, r.Body, maxFormBody)
+			limit := int64(maxFormBody)
+			if n, ok := uploadLimits[r.URL.Path]; ok {
+				limit = n
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -147,6 +151,9 @@ func (w *interceptWriter) errorCode() string {
 // authFailure answers a failed authentication or CSRF check.
 func (s *Server) authFailure(w http.ResponseWriter, r *http.Request, status int, code string) {
 	switch {
+	case status == http.StatusUnauthorized && strings.HasPrefix(r.Header.Get("Accept"), "text/event-stream"):
+		// An event stream cannot follow a redirect to the login page.
+		w.WriteHeader(status)
 	case status == http.StatusUnauthorized:
 		target := "/login"
 		if r.Method == http.MethodGet && !isHTMX(r) {

@@ -1,7 +1,55 @@
-{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Downloads that are ready or have failed.</p>{{end}}
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Downloads that are ready or have failed, newest first.</p>{{end}}
 
 {{define "content"}}
-{{template "card_start" dict "NoPad" true}}
-  {{template "empty_state" dict "Icon" "history" "Title" "Nothing in the history yet" "Body" "Finished downloads stay here until you remove them, with the reason for any failure."}}
-{{template "card_end"}}
+{{with .Page}}
+{{if .Unavailable}}
+{{template "alert" dict "Variant" "warn" "Title" "The history is not available" "Body" "The download service is not running."}}
+{{else}}
+<form id="history-filters" method="get" action="/history" class="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,15rem))_auto] lg:items-end"
+      {{attrs "hx-get" "/history" "hx-trigger" "change, submit" "hx-target" "#history-results" "hx-select" "#history-results" "hx-select-oob" "#history-clear" "hx-swap" "outerHTML" "hx-push-url" "true"}}>
+  {{template "select_field" dict "ID" "history-state" "Name" "state" "Label" "Status" "Options" .StateOpts "Selected" .Filter.State}}
+  {{template "select_field" dict "ID" "history-kind" "Name" "kind" "Label" "Type" "Options" .KindOpts "Selected" .Filter.Kind}}
+  {{template "select_field" dict "ID" "history-category" "Name" "category" "Label" "Category" "Options" .CatOpts "Selected" .Filter.Category}}
+  <div id="history-clear" class="flex items-center gap-2">
+    <noscript><button type="submit" class="btn btn-secondary">Apply filters</button></noscript>
+    {{if .Filter.Active}}<a href="/history" class="btn btn-ghost">Clear filters</a>{{end}}
+  </div>
+</form>
+
+<div id="history-results" aria-live="polite">
+  {{if .Rows}}
+  <section class="card" aria-label="Finished downloads">
+    <table class="table table-responsive">
+      <caption class="sr-only">Finished downloads, newest first</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="rounded-tl-xl">Name</th>
+          <th scope="col">Status</th>
+          <th scope="col">Category</th>
+          <th scope="col" class="num">Size</th>
+          <th scope="col">When</th>
+          <th scope="col" class="rounded-tr-xl"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody id="history-rows">
+        {{range .Rows}}{{template "history_row" .}}{{end}}
+      </tbody>
+    </table>
+  </section>
+  <div id="history-more" class="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm text-fg-muted">Showing {{.First}} to {{.Last}} of {{.Total}} {{if eq .Total 1}}download{{else}}downloads{{end}}{{if .Truncated}} (the oldest are left out){{end}}</p>
+    <div class="flex gap-2">
+      {{if .NewestHref}}<a class="btn btn-secondary btn-sm" href="{{.NewestHref}}">Back to newest</a>{{end}}
+      {{if .NextHref}}<a class="btn btn-secondary btn-sm" href="{{.NextHref}}" {{attrs "hx-get" .AppendHref "hx-target" "#history-rows" "hx-swap" "beforeend" "hx-select" "#history-rows > *" "hx-select-oob" "#history-more" "hx-push-url" "false"}}>Show older{{icon "chevron-down" "size-4"}}</a>{{end}}
+    </div>
+  </div>
+  {{else}}
+  <section class="card" aria-label="Finished downloads">
+    {{template "empty_state" dict "Icon" "history" "Title" .EmptyTitle "Body" .EmptyBody}}
+    {{if .Filter.Active}}<div class="flex justify-center pb-8"><a href="/history" class="btn btn-secondary">Clear filters</a></div>{{end}}
+  </section>
+  {{end}}
+</div>
+{{end}}
+{{end}}
 {{end}}

@@ -111,6 +111,8 @@ type e2e struct {
 	engine core.TorrentEngine
 	// noAdmin leaves the database without a user, so first-run setup is open.
 	noAdmin bool
+	// prober replaces the connection tester of the Server tests (okProber when nil).
+	prober app.Prober
 	// tincomplete and tcomplete are the torrent roots.
 	tincomplete, tcomplete string
 
@@ -223,10 +225,17 @@ func (e *e2e) build() *daemon.Daemon {
 	logger := slog.New(slog.NewTextHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	d, err := daemon.Build(context.Background(), daemon.Deps{
 		DB: e.db, Key: e.key, Logger: logger, Version: api.Version{Version: "test", Commit: "test"},
-		Factory: e.factory, Prober: okProber{}, Tuning: e.tune, DisableTorrent: !e.torrents, TorrentEngine: e.engine, Torrent: e.torrentOpts,
+		Factory: e.factory, Prober: e.proberOrOK(), Tuning: e.tune, DisableTorrent: !e.torrents, TorrentEngine: e.engine, Torrent: e.torrentOpts,
 	})
 	require.NoError(e.t, err)
 	return d
+}
+
+func (e *e2e) proberOrOK() app.Prober {
+	if e.prober != nil {
+		return e.prober
+	}
+	return okProber{}
 }
 
 // stop shuts the daemon down in the order Serve uses: HTTP first, then the

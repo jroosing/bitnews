@@ -3,7 +3,7 @@
 <head>
 {{template "head" .}}
 </head>
-<body class="min-h-dvh">
+<body class="min-h-dvh" hx-ext="sse" sse-connect="{{if eq .Path "/queue"}}/ui/events?rows=1{{else}}/ui/events{{end}}">
 <a class="skip-link" href="#main">Skip to main content</a>
 
 <div x-data="shell" @keydown.escape.window="closeNav">
@@ -35,6 +35,7 @@
       <div class="lg:hidden">{{template "brand" .}}</div>
       <div class="ml-auto flex items-center gap-3">
         {{template "live_status" .}}
+        <button type="button" class="btn btn-primary btn-sm" data-add-open aria-haspopup="dialog">{{icon "plus" "size-4"}}<span class="hidden sm:inline">New download</span><span class="sr-only sm:hidden">New download</span></button>
         {{template "user_menu" .UserMenu}}
       </div>
     </header>
@@ -44,7 +45,7 @@
     <main id="main" tabindex="-1" class="mx-auto w-full max-w-7xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8">
       <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div class="min-w-0">
-          <h1 class="text-2xl">{{.Title}}</h1>
+          <h1 class="text-2xl break-words">{{.Title}}</h1>
           {{block "subtitle" .}}{{end}}
         </div>
         <div class="flex items-center gap-2">{{block "actions" .}}{{end}}</div>
@@ -55,6 +56,7 @@
 
   {{template "toast_region" .}}
   {{template "confirm_dialog" .}}
+  {{template "add_dialog" .}}
 </div>
 </body>
 </html>

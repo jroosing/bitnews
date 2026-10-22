@@ -68,3 +68,16 @@ func (r *SessionRepo) DeleteExpired(ctx context.Context, createdBefore, seenBefo
 	n, err := res.RowsAffected()
 	return int(n), mapErr("delete expired sessions", err)
 }
+
+// DeleteForUserExcept removes every Session of the User except the one with
+// the token hash keep, and reports how many it removed. It is how a password
+// change signs out the User's other browsers.
+func (r *SessionRepo) DeleteForUserExcept(ctx context.Context, userID core.ID, keep core.TokenHash) (int, error) {
+	res, err := r.db.Writer().ExecContext(ctx,
+		`DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?`, string(userID), keep[:])
+	if err != nil {
+		return 0, mapErr("delete user sessions", err)
+	}
+	n, err := res.RowsAffected()
+	return int(n), mapErr("delete user sessions", err)
+}

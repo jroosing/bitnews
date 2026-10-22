@@ -1,12 +1,9 @@
-{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Everything that is waiting to download or being downloaded right now.</p>{{end}}
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Everything that is waiting to download, downloading or being processed right now.</p>{{end}}
 
 {{define "content"}}
-<div class="grid gap-6 xl:grid-cols-2">
-  {{template "card_start" dict "Title" "Usenet" "Subtitle" "NZB downloads, one at a time by default" "NoPad" true}}
-    {{template "empty_state" dict "Icon" "inbox" "Title" "No Usenet downloads" "Body" "NZBs added by you, or sent by Sonarr and Radarr, will show up here with live progress."}}
-  {{template "card_end"}}
-  {{template "card_start" dict "Title" "Torrents" "Subtitle" "Magnet links and .torrent files" "NoPad" true}}
-    {{template "empty_state" dict "Icon" "inbox" "Title" "No torrents" "Body" "Torrents you add, or that a media manager sends, will show up here."}}
-  {{template "card_end"}}
-</div>
+{{template "queue_lists" .Page}}
 {{end}}
+
+{{/* Fragments that htmx swaps in (see queue.go). */}}
+{{define "queue_fragment"}}{{template "queue_lists" .Page}}{{end}}
+{{define "queue_row_fragment"}}{{template "queue_row" .Page}}{{end}}

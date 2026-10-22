@@ -17,8 +17,8 @@
 {{end}}
 
 {{define "live_status"}}
-{{/* Placeholder for the live transfer status. The queue work fills these
-     with htmx out-of-band swaps (ids are stable on purpose). */}}
+{{/* The live transfer status. /ui/events replaces the three value spans with
+     out-of-band swaps (queue_events.go); keep their ids. */}}
 <div id="live-status" class="hidden items-center gap-4 sm:flex" aria-label="Transfer status">
   <span class="inline-flex items-center gap-1.5 text-sm text-fg-muted tabular-nums" title="Download speed">
     {{icon "arrow-down" "size-4 text-info-fg"}}<span id="status-down">0 B/s</span>
@@ -26,7 +26,10 @@
   <span class="inline-flex items-center gap-1.5 text-sm text-fg-muted tabular-nums" title="Upload speed">
     {{icon "arrow-up" "size-4 text-ok-fg"}}<span id="status-up">0 B/s</span>
   </span>
-  <span id="status-queue" class="badge badge-queued">Idle</span>
+  <span id="status-queue" role="status" class="badge badge-queued">Idle</span>
+  {{/* The live stream (/ui/events) swaps updates into this sink: it carries
+       the status, live and removed events as out-of-band swaps. */}}
+  <span id="live-sink" hidden hx-swap="none" sse-swap="status,live,removed"></span>
 </div>
 {{end}}
 
