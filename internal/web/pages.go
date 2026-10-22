@@ -26,9 +26,8 @@ type Page struct {
 // builtinPages are the pages of the app shell, in navigation order.
 func builtinPages() []Page {
 	return []Page{
-		{Path: "/queue", Template: "queue.html", Title: "Queue", NavLabel: "Queue", NavIcon: "queue"},
-		{Path: "/history", Template: "history.html", Title: "History", NavLabel: "History", NavIcon: "history"},
-		{Path: "/settings", Template: "settings.html", Title: "Settings", NavLabel: "Settings", NavIcon: "settings", Data: settingsData},
+		{Path: "/queue", Template: "queue.html", Title: "Queue", NavLabel: "Queue", NavIcon: "queue", Data: queueData},
+		{Path: "/history", Template: "history.html", Title: "History", NavLabel: "History", NavIcon: "history", Data: historyData},
 		{Path: "/ui/styleguide", Template: "styleguide.html", Title: "Style guide", Data: styleguideData},
 	}
 }
@@ -66,18 +65,6 @@ func (s *Server) navItems(path string) []NavItem {
 		})
 	}
 	return items
-}
-
-type settingsSection struct{ Icon, Title, Body string }
-
-func settingsData(*Server, *http.Request) (any, error) {
-	return struct{ Sections []settingsSection }{[]settingsSection{
-		{"folder", "Paths and categories", "Download folders per protocol and the categories your media managers use."},
-		{"server", "Usenet servers", "Providers, connections, retention and priority."},
-		{"bolt", "Torrent network", "Listen port, peer discovery, encryption and network binding."},
-		{"arrow-down", "Speed and queue", "Speed limits, how many downloads run at once and free space."},
-		{"shield", "Security", "Sign-in options, API keys and media manager credentials."},
-	}}, nil
 }
 
 type styleSwatch struct{ Name, Class string }

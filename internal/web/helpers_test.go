@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
+	"gitlab.com/kyura4k/gitnews/internal/adapter/sabnzbd"
 	"gitlab.com/kyura4k/gitnews/internal/api"
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
@@ -88,17 +89,45 @@ type env struct {
 	clock    *clock
 	log      *syncBuffer
 	settings *app.SettingsService
-	setup    *auth.Setup
-	sessions *auth.SessionService
-	handler  http.Handler
-	token    string // the setup token, when setup is open
+	servers  *app.ServerService
+	// serverRepo lets a test make stored passwords unreadable (breakServerKey).
+	serverRepo *swapRepo
+	db         *store.DB
+	cats       *app.CategoryService
+	setup      *auth.Setup
+	sessions   *auth.SessionService
+	apiKeys    *auth.APIKeyService
+	adapters   *auth.AdapterCredentialService
+	handler    http.Handler
+	token      string // the setup token, when setup is open
 }
 
 type envOption func(*envConfig)
 
-type envConfig struct{ noAdmin bool }
+type envConfig struct {
+	noAdmin bool
+	prober  app.Prober
+	paths   web.PathChecker
+	config  web.ConfigSource
+	server  []func(*web.Server)
+}
 
 func withoutAdmin() envOption { return func(c *envConfig) { c.noAdmin = true } }
+
+// withProber sets the Prober behind the server connection tests.
+func withProber(p app.Prober) envOption { return func(c *envConfig) { c.prober = p } }
+
+// withPathChecker replaces the file system checks of the paths settings.
+func withPathChecker(p web.PathChecker) envOption { return func(c *envConfig) { c.paths = p } }
+
+// withConfig gives the settings pages what the daemon knows about the running
+// configuration (the settings it started with, the live binding status).
+func withConfig(c web.ConfigSource) envOption { return func(e *envConfig) { e.config = c } }
+
+// withServer changes the web.Server after it is built. Tests only.
+func withServer(f func(*web.Server)) envOption {
+	return func(e *envConfig) { e.server = append(e.server, f) }
+}
 
 func newEnv(t *testing.T, opts ...envOption) *env {
 	t.Helper()
@@ -118,7 +147,8 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	downloads := store.NewDownloadRepo(db)
 	cats := store.NewCategoryRepo(db)
 	key := store.GenerateKey()
-	servers := store.NewServerRepo(db, key)
+	servers := &swapRepo{ServerRepo: store.NewServerRepo(db, key)}
+	e.serverRepo, e.db = servers, db
 	if !ec.noAdmin {
 		require.NoError(t, users.Create(ctx, core.User{
 			ID: core.NewID(), Username: "admin", PasswordHash: sharedAdminHash(t), CreatedAt: epoch,
@@ -138,26 +168,43 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	downloadSvc := app.NewDownloadService(downloads, cats, bus, appOpts...)
 	sources := store.NewDownloadSourceRepo(db, key)
 	catSvc := app.NewCategoryService(cats, downloads, bus, appOpts...)
-	serverSvc := app.NewServerService(servers, bus, nil, appOpts...)
+	serverSvc := app.NewServerService(servers, bus, ec.prober, appOpts...)
+	e.servers, e.cats = serverSvc, catSvc
+	e.apiKeys = auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger))
+	e.adapters = auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db), auth.WithAdapterClock(e.clock.Now), auth.WithAdapterLogger(logger))
+	adder := app.NewAddService(downloadSvc, sources, e.settings, append(appOpts, app.WithLogger(logger))...)
 	webUI, err := web.New(web.Deps{
 		Logger: logger, Version: "1.2.3",
 		Sessions: e.sessions, UIAuth: uiAuth, Setup: e.setup, Settings: e.settings,
 		Downloads: downloadSvc, Categories: catSvc, Servers: serverSvc, Bus: bus,
+		APIKeys: e.apiKeys, AdapterCredentials: e.adapters,
+		Config: ec.config,
 	})
 	require.NoError(t, err)
+	for _, f := range ec.server {
+		f(webUI)
+	}
+	if ec.paths != nil {
+		web.SetPathChecker(webUI, ec.paths)
+	}
 	srv, err := api.New(api.Config{
-		Logger:     logger,
-		Downloads:  downloadSvc,
-		Adder:      app.NewAddService(downloadSvc, sources, e.settings, append(appOpts, app.WithLogger(logger))...),
-		Categories: catSvc,
-		Servers:    serverSvc,
-		Settings:   e.settings,
-		Setup:      e.setup,
-		Sessions:   e.sessions,
-		UIAuth:     uiAuth,
-		APIKeys:    auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger)),
-		Bus:        bus,
-		Web:        webUI,
+		Logger:             logger,
+		Downloads:          downloadSvc,
+		Adder:              adder,
+		Categories:         catSvc,
+		Servers:            serverSvc,
+		Settings:           e.settings,
+		Setup:              e.setup,
+		Sessions:           e.sessions,
+		UIAuth:             uiAuth,
+		APIKeys:            e.apiKeys,
+		AdapterCredentials: e.adapters,
+		SABnzbd: sabnzbd.New(sabnzbd.Deps{
+			Credentials: e.adapters, Downloads: downloadSvc, Adder: adder, Categories: catSvc,
+			Settings: e.settings, Logger: logger, Clock: e.clock.Now,
+		}),
+		Bus: bus,
+		Web: webUI,
 	})
 	require.NoError(t, err)
 	e.handler = srv.Handler()
@@ -326,3 +373,38 @@ type (
 	htmlAttr = template.HTMLAttr
 	htmlHTML = template.HTML
 )
+
+// swapRepo is the ServerRepo of the test stack. breakKey makes it read with
+// a different key from then on, so stored passwords become unreadable the
+// way they do after a restore on another install.
+type swapRepo struct {
+	core.ServerRepo
+	mu sync.RWMutex
+}
+
+func (r *swapRepo) current() core.ServerRepo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.ServerRepo
+}
+
+func (r *swapRepo) Create(ctx context.Context, s core.Server) error {
+	return r.current().Create(ctx, s)
+}
+func (r *swapRepo) Get(ctx context.Context, id core.ID) (core.Server, error) {
+	return r.current().Get(ctx, id)
+}
+func (r *swapRepo) List(ctx context.Context) ([]core.Server, error) { return r.current().List(ctx) }
+func (r *swapRepo) Update(ctx context.Context, s core.Server) error {
+	return r.current().Update(ctx, s)
+}
+func (r *swapRepo) Delete(ctx context.Context, id core.ID) error { return r.current().Delete(ctx, id) }
+
+func (r *swapRepo) breakKey(db *store.DB) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ServerRepo = store.NewServerRepo(db, store.GenerateKey())
+}
+
+// breakServerKey makes every stored server password unreadable.
+func (e *env) breakServerKey() { e.serverRepo.breakKey(e.db) }

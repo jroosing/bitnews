@@ -189,3 +189,8 @@ Semantic HTML, labels on every input, and keyboard-operable actions. The layout 
 - [ ] Enabling LAN bypass without `allowed_hosts` is blocked, with an explanation.
 - [ ] Secrets appear only once and never in later page loads.
 - [ ] Revoking a credential takes effect immediately (the media manager's next request fails).
+
+## Implementation notes
+
+- **Speed & queue / Torrent network (M6-07):** new persisted settings `queues.postproc_concurrency`, `queues.min_free`, `speed.{global,usenet,torrent}.{down_kbps,up_kbps}` and `torrent.{listen_port,disable_dht,disable_pex,lsd,mse}`; a zero value means the default. Speed limits, queue sizes, `min_free` and Share Limit defaults apply live. Listen port, DHT, PEX, MSE, network binding and `postproc_concurrency` apply after a restart, and the UI says so. LSD is stored but has no effect (the engine has no LSD support). The overall speed limit caps each protocol on its own; it is not one shared budget. `BITNEWS_TORRENT_PORT` no longer has a default; when set it overrides the UI port.
+- **Security (M6-08):** turning sign-in off or enabling LAN bypass is blocked without `allowed_hosts`, and also when the list lacks the Host the browser used (no self-lockout). Risky changes go through a confirm card. Password change signs out the user's other sessions (`SessionRepo.DeleteForUserExcept`). Plaintext keys and passwords appear only in the create response (`Cache-Control: no-store`).

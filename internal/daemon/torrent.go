@@ -15,37 +15,35 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/torrent"
 )
 
-// DefaultTorrentPort is the torrent listen port when Deps.Torrent.Port is
-// zero. Peers need it forwarded to reach bitnews: there is no UPnP.
-const DefaultTorrentPort = 51413
+// DefaultTorrentPort is the torrent listen port when neither
+// Deps.Torrent.Port nor the Settings name one. Peers need it forwarded to
+// reach bitnews: there is no UPnP.
+const DefaultTorrentPort = core.DefaultTorrentPort
 
 // TorrentOptions configures the torrent engine Build creates. The zero value
 // is what production uses.
 type TorrentOptions struct {
-	// Port is the TCP and uTP listen port; zero means DefaultTorrentPort.
+	// Port is the TCP and uTP listen port; zero means the port of the
+	// Settings (torrent.listen_port, by default DefaultTorrentPort).
 	Port int
 	// DisableDHT and DisableUTP turn those off. They exist for tests that
 	// must not touch the network.
 	DisableDHT, DisableUTP bool
 }
 
-// newTorrentEngine starts the torrent engine on the real adapters: peer
-// exchange and DHT on, header obfuscation preferred, piece completion in the
-// database, and the sockets bound as the Settings say. A binding that cannot
+// newTorrentEngine starts the torrent engine on the real adapters: the port,
+// DHT, peer exchange and encryption policy of the Settings (read once, so a
+// change needs a restart), piece completion in the database, and the sockets
+// bound as the Settings say. A binding that cannot
 // be applied makes it fail (torrent.ErrBindUnavailable): the daemon does not
 // start with traffic that may leave through the wrong route.
 func newTorrentEngine(db *store.DB, settings core.Settings, o TorrentOptions, log *slog.Logger) (*torrent.Engine, error) {
-	port := o.Port
-	if port == 0 {
-		port = DefaultTorrentPort
-	}
 	b := settings.Network.Torrent
-	return torrent.New(torrent.Config{
-		ListenPort: port, DHT: !o.DisableDHT, PEX: true, MSE: torrent.MSEPrefer, DisableUTP: o.DisableUTP,
-		PieceStore: store.NewTorrentPieceRepo(db),
-		Binding:    netbind.Binding{Interface: b.Interface, Address: b.Address},
-		Logger:     slog.New(warnOnly{log.Handler()}),
-	})
+	cfg := torrentNetwork(settings, o)
+	cfg.PieceStore = store.NewTorrentPieceRepo(db)
+	cfg.Binding = netbind.Binding{Interface: b.Interface, Address: b.Address}
+	cfg.Logger = slog.New(warnOnly{log.Handler()})
+	return torrent.New(cfg)
 }
 
 // warnOnly passes only warnings and errors on: anacrolix logs tracker URLs,

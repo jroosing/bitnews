@@ -124,6 +124,8 @@ type Daemon struct {
 	torrents *trunner.Runner
 	owned    *closeOnce
 	binding  *bindingWatcher
+	restarts *restartWatcher
+	speed    *speedApplier
 	switches []namedSwitch
 
 	ran atomic.Bool
@@ -165,10 +167,9 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	settingsNow := func(context.Context) (core.Settings, error) { return settings.Current(), nil }
 	dirs := newWorkDirs(sources, settings.Current, log)
 
-	minFree := runner.DefaultMinFree
-	if tune.MinFree != nil {
-		minFree = *tune.MinFree
-	}
+	// min_free is read from the Settings on each use, so a change applies
+	// at once; a test's fixed reserve wins.
+	minFree := minFreeFunc(settings.Current, tune.MinFree)
 
 	finisher := finalize.New(finalize.Deps{
 		Settings: settingsNow,
@@ -208,7 +209,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 			Downloads: downloads, Sources: torrentSources, Records: torrentRecords,
 			Engine: engine, Bus: bus, Settings: settingsNow,
 			Destination: finisher.Destination, Remover: shareLimits,
-			MinFree:   func(context.Context) (uint64, error) { return minFree, nil },
+			MinFree:   minFree,
 			FreeSpace: tune.FreeSpace, Logger: log,
 			PollInterval: tune.PollInterval, SampleInterval: tune.TorrentSampleInterval,
 			DoneBytesInterval: tune.DoneBytesInterval, DiskCheckInterval: tune.DiskCheckInterval,
@@ -236,7 +237,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Sources:  nzbSource{repo: sources, log: log},
 		DirFor:   dirFor,
 		Settings: settingsNow,
-		MinFree:  func(context.Context) (uint64, error) { return minFree, nil },
+		MinFree:  minFree,
 		Factory:  usenetFactory(deps.Factory, settings.Current),
 		Progress: store.NewUsenetProgressRepo(db),
 		Reports:  reports{repo: store.NewUsenetReportRepo(db)},
@@ -256,7 +257,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	if trun != nil {
 		managed = trun.Managed
 	}
-	post, err := newPostProcessor(downloads, sources, run, bus, dirFor, minFree, tune, log,
+	post, err := newPostProcessor(downloads, sources, run, bus, dirFor, minFree, postprocConcurrency(settings.Current(), tune), tune, log,
 		torrentFinisher{inner: finisher, managed: managed, log: log})
 	if err != nil {
 		return nil, err
@@ -308,8 +309,10 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	adder := app.NewAddService(downloadService, sources, settings, addOpts...)
 	categoryService := app.NewCategoryService(categories, downloads, bus)
 	var qbitHandler http.Handler
+	var webTorrentSource web.TorrentSource
 	if trun != nil {
 		torrents := newQBitTorrents(downloads, torrentSources, torrentRecords, engine, trun, settings.Current, log)
+		webTorrentSource = newWebTorrents(torrents)
 		qbitHandler = qbit.New(qbit.Deps{
 			Credentials: adapterCreds, Downloads: downloadService, Categories: categoryService, Settings: settings,
 			Torrents: torrents, Files: torrents, ShareLimits: torrents,
@@ -319,12 +322,19 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	}
 	serverService := app.NewServerService(servers, bus, prober)
 	apiKeys := auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyLogger(log))
+	runtime := newWebRuntime(run, torrentRunnerOrNil(trun), engine, downloads, track)
+	// The speed limits of the Settings are in force from the start, before
+	// the runners run (the torrent runner passes them to its engine then).
+	speed := &speedApplier{settings: settings.Current, target: runtime}
+	speed.apply()
+	started := settings.Current()
 	webUI, err := web.New(web.Deps{
 		Logger: log, Version: deps.Version.Version,
 		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
 		Adder: adder, APIKeys: apiKeys, AdapterCredentials: adapterCreds,
-		Runtime: webRuntime(deps), Torrents: webTorrents(deps),
+		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port},
+		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}, track: track},
 	})
 	if err != nil {
 		return nil, err
@@ -365,7 +375,9 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	d = &Daemon{
 		log: log, bus: bus, server: server, runner: run, post: post, sessions: sessions, cleanup: cleanup,
 		dirs: dirs, track: track, torrents: trun, owned: owned,
-		binding: &bindingWatcher{start: settings.Current().Network, current: settings.Current, log: log},
+		binding:  &bindingWatcher{start: started.Network, current: settings.Current, log: log},
+		restarts: &restartWatcher{start: restartOnlyOf(started), current: settings.Current, log: log},
+		speed:    speed,
 	}
 	d.switches = networkSwitches(settings.Current().Network, run, trun, log, tune)
 	return d, nil
@@ -432,7 +444,7 @@ func newPostProcessor(
 	downloads core.DownloadRepo, sources core.DownloadSourceRepo,
 	run *runner.Runner, bus *core.Bus,
 	dirFor func(core.Download) string,
-	minFree uint64, tune Tuning, log *slog.Logger, finisher core.Finisher,
+	minFree func(context.Context) (uint64, error), concurrency int, tune Tuning, log *slog.Logger, finisher core.Finisher,
 ) (*core.PostProcessor, error) {
 	clock := time.Now
 	requeue := func(ctx context.Context, id core.ID) error {
@@ -464,11 +476,11 @@ func newPostProcessor(
 		Downloads: downloads, Bus: bus,
 		Verifier: adapt.Verifier{DeferredBlocks: run.DeferredBlocks},
 		Repairer: adapt.Repairer{},
-		Unpacker: adapt.Unpacker{Passwords: passwords, MinFree: minFree, FreeSpace: tune.FreeSpace},
+		Unpacker: adapt.Unpacker{Passwords: passwords, MinFreeFunc: func() uint64 { v, _ := minFree(context.Background()); return v }, FreeSpace: tune.FreeSpace},
 		Finisher: finisher, FetchReporter: torrentFetchReporter{usenet: run},
 		DeferredVolumes: &adapt.DeferredVolumes{Controller: run, Requeue: requeue, Margin: tune.VolumeMargin},
 		FS:              osFS{},
-		Concurrency:     tune.PostProcConcurrency, PollInterval: tune.PostProcPollInterval,
+		Concurrency:     concurrency, PollInterval: tune.PostProcPollInterval,
 		Logger: log, DirFor: dirFor,
 	})
 }
@@ -544,6 +556,14 @@ func (d *Daemon) Run(ctx context.Context) error {
 		d.binding.run(ctx, d.bus)
 		return nil
 	})
+	start("restart watcher", func(ctx context.Context) error {
+		d.restarts.run(ctx, d.bus)
+		return nil
+	})
+	start("speed limits", func(ctx context.Context) error {
+		d.speed.run(ctx, d.bus)
+		return nil
+	})
 	start("post-processor", d.post.Run)
 	start("working directory cache", func(ctx context.Context) error {
 		d.dirs.forgetRemoved(ctx, d.bus)
@@ -583,4 +603,13 @@ func (d *Daemon) Serve(ctx context.Context, addr string, serve func(ctx context.
 	serveErr := serve(ctx, d.HTTPServer(addr))
 	cancel()
 	return errors.Join(serveErr, <-done)
+}
+
+// torrentRunnerOrNil converts the torrent runner to the interface the UI's
+// runtime needs, keeping a nil runner a nil interface.
+func torrentRunnerOrNil(r *trunner.Runner) torrentQueue {
+	if r == nil {
+		return nil
+	}
+	return r
 }

@@ -110,6 +110,19 @@ func (f *fakeSessions) DeleteExpired(_ context.Context, createdBefore, seenBefor
 	return n, nil
 }
 
+func (f *fakeSessions) DeleteForUserExcept(_ context.Context, userID core.ID, keep core.TokenHash) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for h, s := range f.rows {
+		if s.UserID == userID && h != keep {
+			delete(f.rows, h)
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (f *fakeSessions) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

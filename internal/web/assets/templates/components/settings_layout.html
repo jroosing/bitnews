@@ -1,0 +1,28 @@
+{{/*
+  settings_layout_start / settings_layout_end: the frame of every settings
+  section, called from the section's "content" template:
+
+    {{template "settings_layout_start" .Page}}
+      ...cards...
+    {{template "settings_layout_end"}}
+
+  It draws the section navigation (a scrollable pill bar below 768 px, a
+  sticky sidebar from there up) and a column for the cards. .Page is the
+  settingsPage the shell passes to every section: .Nav lists the sections.
+*/}}
+{{define "settings_layout_start"}}
+<div class="md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:items-start md:gap-8 lg:grid-cols-[14.5rem_minmax(0,1fr)]">
+  <nav aria-label="Settings sections" x-data="settingsNav" class="relative -mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:-mx-6 sm:px-6 md:sticky md:top-20 md:mx-0 md:mb-0 md:flex-col md:gap-1 md:overflow-visible md:px-0 md:pb-0">
+    {{- range .Nav}}
+    <a href="{{.Path}}" class="settings-link"{{if .Active}} aria-current="page"{{end}}>
+      {{icon .Icon "size-5 shrink-0"}}
+      <span>{{.Title}}</span>
+    </a>
+    {{- end}}
+  </nav>
+  <div class="min-w-0 space-y-6">
+{{end}}
+
+{{define "settings_layout_end"}}  </div>
+</div>
+{{end}}

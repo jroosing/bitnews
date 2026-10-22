@@ -111,9 +111,9 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/6) · [wiki]
 |---|---|---|---|---|
 | M6-01 | [#58](https://gitlab.com/kyura4k/bitnews/-/issues/58) | Web foundation — templates, assets, CSP and CSRF wiring | area:ui, ready-for-agent | done |
 | M6-02 | [#59](https://gitlab.com/kyura4k/bitnews/-/issues/59) | Login and setup pages | area:ui, area:auth, ready-for-agent | done |
-| M6-03 | [#60](https://gitlab.com/kyura4k/bitnews/-/issues/60) | Queue page with live SSE updates and actions | area:ui, ready-for-agent | open |
-| M6-04 | [#61](https://gitlab.com/kyura4k/bitnews/-/issues/61) | History page and Download detail | area:ui, ready-for-agent | open |
-| M6-05 | [#62](https://gitlab.com/kyura4k/bitnews/-/issues/62) | Settings — paths and Categories | area:ui, ready-for-agent | open |
-| M6-06 | [#63](https://gitlab.com/kyura4k/bitnews/-/issues/63) | Settings — Usenet Servers | area:ui, area:usenet, ready-for-agent | open |
-| M6-07 | [#64](https://gitlab.com/kyura4k/bitnews/-/issues/64) | Settings — torrent network, speed, queue and Share Limits | area:ui, area:torrent, ready-for-agent | open |
-| M6-08 | [#65](https://gitlab.com/kyura4k/bitnews/-/issues/65) | Settings — security, API keys and media-manager credentials | area:ui, area:auth, ready-for-agent | open |
+| M6-03 | [#60](https://gitlab.com/kyura4k/bitnews/-/issues/60) | Queue page with live SSE updates and actions | area:ui, ready-for-agent | done |
+| M6-04 | [#61](https://gitlab.com/kyura4k/bitnews/-/issues/61) | History page and Download detail | area:ui, ready-for-agent | done |
+| M6-05 | [#62](https://gitlab.com/kyura4k/bitnews/-/issues/62) | Settings — paths and Categories | area:ui, ready-for-agent | done |
+| M6-06 | [#63](https://gitlab.com/kyura4k/bitnews/-/issues/63) | Settings — Usenet Servers | area:ui, area:usenet, ready-for-agent | done |
+| M6-07 | [#64](https://gitlab.com/kyura4k/bitnews/-/issues/64) | Settings — torrent network, speed, queue and Share Limits | area:ui, area:torrent, ready-for-agent | done |
+| M6-08 | [#65](https://gitlab.com/kyura4k/bitnews/-/issues/65) | Settings — security, API keys and media-manager credentials | area:ui, area:auth, ready-for-agent | done |

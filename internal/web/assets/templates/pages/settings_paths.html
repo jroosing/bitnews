@@ -1,0 +1,137 @@
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">{{.Page.Section.Description}}</p>{{end}}
+
+{{define "content"}}
+{{template "settings_layout_start" .Page}}
+{{template "paths_card" .Page.Data.Paths}}
+{{template "categories_card" .Page.Data.Categories}}
+{{template "settings_layout_end"}}
+{{end}}
+
+{{/* One folder input of the paths card. Dot is a pathsField. */}}
+{{define "paths_field"}}
+{{template "field" dict "ID" .ID "Name" .Name "Label" .Label "Value" .Value "Help" .Help "Error" .Error "Placeholder" .Placeholder "Raw" true "Autocomplete" "off" "Required" true}}
+{{end}}
+
+{{define "paths_card"}}
+{{template "settings_form_start" dict "ID" "paths" "Action" "/settings/paths" "Title" "Download folders" "Subtitle" "Where bitnews keeps downloads while they run and after they finish." "CSRF" .CSRF "Error" .Error "Saved" .Saved "Dirty" .Dirty}}
+  {{template "alert" dict "Variant" "info" "Title" "Changes apply to new downloads only" "Body" "Downloads that already exist keep the folders they started with. New downloads use the folders below."}}
+
+  <div class="rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-3.5 text-sm text-fg-muted">
+    <p class="flex items-center gap-2 font-medium text-fg">{{icon "folder" "size-4 text-fg-subtle"}}Tip: put everything under one mount</p>
+    <p class="mt-1.5">Keep your download folders and your media library on the same disk, for example under <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> (<code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/usenet</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/torrents</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/media</code>). A finished download is then moved instantly, and Sonarr, Radarr and friends can hardlink it into your library instead of copying it. In Docker, mount <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> once, not one volume per folder.</p>
+  </div>
+
+  {{range .Groups}}
+  <fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+    <legend class="px-2 text-sm font-semibold text-fg">{{.Title}}</legend>
+    <p class="mb-4 text-sm text-fg-muted">{{.Summary}}</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {{template "paths_field" .Incomplete}}
+      {{template "paths_field" .Complete}}
+    </div>
+  </fieldset>
+  {{end}}
+
+  {{if .Checked}}
+    {{if .Warnings}}
+    <div id="paths-warnings" class="alert alert-warn" role="alert">
+      {{icon "warning" "mt-0.5 size-5 shrink-0"}}
+      <div class="min-w-0">
+        <p class="alert-title">Saved, but check {{if eq (len .Warnings) 1}}this{{else}}these{{end}}</p>
+        <p class="mt-0.5">These do not stop you from saving. Fix them before relying on the folders.</p>
+        <ul class="mt-3 space-y-3">
+          {{range .Warnings}}
+          <li>
+            <p class="font-medium">{{.Title}}</p>
+            <p class="mt-0.5 break-words">{{.Body}}</p>
+          </li>
+          {{end}}
+        </ul>
+      </div>
+    </div>
+    {{else}}
+    {{template "alert" dict "Variant" "success" "ID" "paths-warnings" "Title" "Folders look good" "Body" "They exist, bitnews can write to them, and each protocol keeps its incomplete and complete folders on one filesystem."}}
+    {{end}}
+  {{end}}
+{{template "settings_form_end" dict "Label" "Save folders"}}
+{{end}}
+
+{{define "categories_card"}}
+<section id="categories-card" class="card" aria-labelledby="categories-title">
+  <header class="card-header">
+    <div>
+      <h2 id="categories-title" class="text-base">Categories</h2>
+      <p class="mt-0.5 text-sm text-fg-muted">Labels that decide where finished downloads go and which media manager picks them up. Without a folder, a category uses <code class="rounded bg-surface-2 px-1.5 py-0.5 text-xs">complete folder/name</code>. Changes apply to new downloads only.</p>
+    </div>
+  </header>
+
+  {{if .Items}}
+  {{template "table_start" dict "Caption" "Categories" "Class" "rounded-none border-0 shadow-none"}}
+    <thead><tr><th scope="col">Name</th><th scope="col">Folder</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+      {{range .Items}}{{template "category_row" .}}{{end}}
+    </tbody>
+  {{template "table_end"}}
+  {{else}}
+  {{template "empty_state" dict "Icon" "folder" "Title" "No categories yet" "Body" "Create one per media manager, for example tv, movies or music, and set the same name in Sonarr, Radarr or Lidarr."}}
+  {{end}}
+
+  <form id="category-form" method="post" action="/settings/categories" hx-post="/settings/categories" hx-target="#categories-card" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']"
+        x-data="categoryForm" class="border-t border-line p-5">
+    {{template "csrf_field" .}}
+    <h3 class="text-sm font-semibold">Add a category</h3>
+    {{if .Error}}<div class="mt-3">{{template "alert" dict "Variant" "danger" "Body" .Error}}</div>{{end}}
+    <div class="mt-3 grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:items-start">
+      <div>
+        <label for="category-name" class="label">Name</label>
+        <input id="category-name" name="name" type="text" class="input" value="{{.Name}}" x-model="name" @input="check" maxlength="64" required placeholder="tv" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off"
+          {{- if .NameError}} aria-invalid="true"{{end}} aria-describedby="category-name-help{{if .NameError}} category-name-error{{end}}">
+        <p id="category-name-help" class="help">Lowercase letters, digits, dot, underscore and hyphen.</p>
+        <p id="category-name-live" x-show="invalid" x-cloak class="field-error" role="status">{{icon "error" "mt-px size-4 shrink-0"}}<span x-text="hint"></span></p>
+        {{- if .NameError}}
+        <p id="category-name-error" class="field-error">{{icon "error" "mt-px size-4 shrink-0"}}<span>{{.NameError}}</span></p>
+        {{- end}}
+      </div>
+      <div>
+        {{template "field" dict "ID" "category-dir" "Name" "dir_override" "Label" "Folder" "Optional" true "Value" .Dir "Placeholder" "/data/media/tv" "Help" "Absolute path. Empty uses the default folder." "Error" .DirError "Raw" true "Autocomplete" "off"}}
+      </div>
+    </div>
+    <div class="mt-4 flex justify-end">
+      <button type="submit" class="btn btn-primary"><span class="btn-spinner" aria-hidden="true"></span>{{icon "plus" "size-4 shrink-0"}}Add category</button>
+    </div>
+  </form>
+</section>
+{{end}}
+
+{{define "category_row"}}
+<tr id="category-{{.ID}}">
+  <td data-label="Name"><span class="font-medium text-fg">{{.Name}}</span></td>
+  <td data-label="Folder" class="min-w-0 md:max-w-[22rem]">
+    {{- if .Dir}}<code class="break-all text-xs text-fg">{{.Dir}}</code>
+    {{- else}}<span class="text-fg-subtle">Default <code class="text-xs">…/{{.Name}}</code></span>{{end}}
+  </td>
+  <td data-label="" class="whitespace-nowrap md:w-px">
+    <div class="flex justify-end gap-1">
+      {{template "button" dict "Label" "Edit" "Variant" "ghost" "Size" "sm" "Attrs" (attrs "hx-get" (print "/settings/categories/" .ID "/edit") "hx-target" "closest tr" "hx-swap" "outerHTML")}}
+      {{template "button" dict "Label" (print "Delete " .Name) "Icon" "trash" "IconOnly" true "Variant" "ghost" "Size" "sm" "Attrs" (attrs "hx-delete" (print "/settings/categories/" .ID) "hx-target" "#categories-card" "hx-swap" "outerHTML" "hx-confirm" (print "Delete the category " .Name "? Downloads keep their files; their category is cleared.") "data-confirm-tone" "danger" "data-confirm-label" "Delete")}}
+    </div>
+  </td>
+</tr>
+{{end}}
+
+{{define "category_edit_row"}}
+<tr id="category-{{.ID}}">
+  <td colspan="3" data-label="" class="bg-surface-2">
+    <form method="post" action="/settings/categories/{{.ID}}" hx-post="/settings/categories/{{.ID}}" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']" class="w-full text-left">
+      {{template "csrf_field" .}}
+      <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        {{template "field" dict "ID" (print "category-dir-" .ID) "Name" "dir_override" "Label" (print "Folder for " .Name) "Optional" true "Value" .Dir "Placeholder" "Empty uses the default folder" "Help" "Absolute path. Applies to new downloads only." "Error" .Error "Raw" true "Autocomplete" "off" "Autofocus" true}}
+        <div class="flex justify-end gap-2 sm:pb-6">
+          {{template "button" dict "Label" "Cancel" "Variant" "secondary" "Attrs" (attrs "hx-get" (print "/settings/categories/" .ID) "hx-target" "closest tr" "hx-swap" "outerHTML")}}
+          <button type="submit" class="btn btn-primary"><span class="btn-spinner" aria-hidden="true"></span>Save</button>
+        </div>
+      </div>
+    </form>
+  </td>
+</tr>
+{{end}}

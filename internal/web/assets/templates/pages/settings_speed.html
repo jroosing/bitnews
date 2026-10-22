@@ -1,0 +1,70 @@
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">{{.Page.Section.Description}}</p>{{end}}
+
+{{define "content"}}
+{{template "settings_layout_start" .Page}}
+{{template "speed_limits_card" .Page.Data.limits}}
+{{template "speed_queue_card" .Page.Data.queue}}
+{{template "speed_space_card" .Page.Data.space}}
+{{template "settings_layout_end"}}
+{{end}}
+
+{{/* One whole-number input. Keys: ID, Name, Label, Help, V, E (the card's values and errors), Placeholder. */}}
+{{define "speed_num"}}
+{{template "field" dict "ID" .ID "Name" .Name "Label" .Label "Value" (index .V .Name) "Error" (index .E .Name) "Help" .Help "Placeholder" .Placeholder "Inputmode" "numeric" "Raw" true "Autocomplete" "off"}}
+{{end}}
+
+{{define "speed_limits_card"}}
+{{template "settings_form_start" dict "ID" "speed" "Action" "/settings/speed" "Title" "Speed limits" "Subtitle" "Keep bitnews from using your whole connection. Changes apply right away." "CSRF" .CSRF "Error" .Error "Saved" .Saved "Dirty" .Dirty}}
+  <p class="text-sm text-fg-muted">Limits are in KB/s (1000 KB/s is about 1 MB/s, or 8 Mbit/s). Leave a field empty for no limit.</p>
+
+  <fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+    <legend class="px-2 text-sm font-semibold text-fg">Overall</legend>
+    <p class="mb-4 text-sm text-fg-muted">A ceiling for Usenet and for torrents, each on its own. When both are busy at once, together they can use up to twice this. Use the limits below to split your line between them.</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {{template "speed_num" dict "ID" "global-down" "Name" "global_down_kbps" "Label" "Download (KB/s)" "Placeholder" "No limit" "V" .V "E" .E}}
+      {{template "speed_num" dict "ID" "global-up" "Name" "global_up_kbps" "Label" "Upload (KB/s)" "Placeholder" "No limit" "Help" "Applies to torrents, the only thing bitnews uploads." "V" .V "E" .E}}
+    </div>
+  </fieldset>
+
+  <fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+    <legend class="px-2 text-sm font-semibold text-fg">Usenet</legend>
+    <p class="mb-4 text-sm text-fg-muted">Usenet only downloads, so there is no upload limit here.</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {{template "speed_num" dict "ID" "usenet-down" "Name" "usenet_down_kbps" "Label" "Download (KB/s)" "Placeholder" "No limit" "V" .V "E" .E}}
+    </div>
+  </fieldset>
+
+  <fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+    <legend class="px-2 text-sm font-semibold text-fg">Torrents</legend>
+    <p class="mb-4 text-sm text-fg-muted">Upload speed matters for torrents: leave some room, or downloads slow down too.</p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {{template "speed_num" dict "ID" "torrent-down" "Name" "torrent_down_kbps" "Label" "Download (KB/s)" "Placeholder" "No limit" "V" .V "E" .E}}
+      {{template "speed_num" dict "ID" "torrent-up" "Name" "torrent_up_kbps" "Label" "Upload (KB/s)" "Placeholder" "No limit" "V" .V "E" .E}}
+    </div>
+  </fieldset>
+{{template "settings_form_end" dict "Label" "Save limits"}}
+{{end}}
+
+{{define "speed_queue_card"}}
+{{template "settings_form_start" dict "ID" "queue" "Action" "/settings/speed/queue" "Title" "Downloads at the same time" "Subtitle" "How many downloads each queue works on at once. The rest wait their turn." "CSRF" .CSRF "Error" .Error "Saved" .Saved "Dirty" .Dirty}}
+  {{if .Restart}}
+  {{template "alert" dict "Variant" "info" "ID" "queue-restart" "Title" "Saved, waiting for a restart" "Body" "The post-processing change is saved. Restart bitnews to start using it."}}
+  {{end}}
+
+  <div class="grid gap-4 sm:grid-cols-2">
+    {{template "speed_num" dict "ID" "usenet-queue" "Name" "usenet_queue" "Label" "Usenet downloads" "Help" "Usenet downloads share your connections, so 1 or 2 is plenty. Downloads you force to start ignore this." "V" .V "E" .E}}
+    {{template "speed_num" dict "ID" "torrent-queue" "Name" "torrent_queue" "Label" "Torrent downloads" "Help" "Torrents that are only seeding do not count against this." "V" .V "E" .E}}
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2">
+    {{template "speed_num" dict "ID" "postproc-concurrency" "Name" "postproc_concurrency" "Label" "Unpack and repair at the same time" "Help" "After a download finishes, bitnews checks, repairs and unpacks it. This is disk heavy: raise it only on fast storage. Applies after a restart." "V" .V "E" .E}}
+  </div>
+{{template "settings_form_end" dict "Label" "Save queue sizes"}}
+{{end}}
+
+{{define "speed_space_card"}}
+{{template "settings_form_start" dict "ID" "space" "Action" "/settings/speed/space" "Title" "Free space" "Subtitle" "How much room bitnews leaves on the disk. Changes apply right away." "CSRF" .CSRF "Error" .Error "Saved" .Saved "Dirty" .Dirty}}
+  <div class="grid gap-4 sm:grid-cols-2">
+    {{template "field" dict "ID" "min-free" "Name" "min_free_gb" "Label" "Keep free (GB)" "Value" (index .V "min_free_gb") "Error" (index .E "min_free_gb") "Help" "Downloads wait, and unpacking stops, when the disk would have less than this left. The default is 5 GB." "Placeholder" "5" "Inputmode" "decimal" "Raw" true "Autocomplete" "off" "Required" true}}
+  </div>
+{{template "settings_form_end" dict "Label" "Save free space"}}
+{{end}}

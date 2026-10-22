@@ -18,13 +18,26 @@ type Settings struct {
 	Network NetworkSettings `json:"network"`
 	// Seeding holds the global Share Limit defaults.
 	Seeding SeedingSettings `json:"seeding"`
+	// Speed holds the speed limits, in KB/s, 0 meaning unlimited.
+	Speed SpeedSettings `json:"speed"`
+	// Torrent holds the torrent engine's network options. They apply after a
+	// restart.
+	Torrent TorrentSettings `json:"torrent"`
 }
 
 // QueueLimits is the concurrency limit of each Queue: how many non-force
-// Downloads it runs at once.
+// Downloads it runs at once. It also holds the limits of the stages around
+// the Queues.
 type QueueLimits struct {
 	Usenet  int `json:"usenet"`
 	Torrent int `json:"torrent"`
+	// PostprocConcurrency is how many Downloads are post-processed at once.
+	// Zero means 1. It applies after a restart.
+	PostprocConcurrency int `json:"postproc_concurrency"`
+	// MinFree is the free space in bytes that must stay free on top of what
+	// a Download still needs (the disk guard and unpacking). Zero means
+	// DefaultMinFree (5 GiB).
+	MinFree int64 `json:"min_free"`
 }
 
 // Auth holds the UI authentication options. Disable auth and LAN bypass
@@ -61,7 +74,7 @@ type Roots struct {
 // DefaultSettings returns the Settings of a fresh install.
 func DefaultSettings() Settings {
 	return Settings{
-		Queues: QueueLimits{Usenet: 1, Torrent: 5},
+		Queues: QueueLimits{Usenet: 1, Torrent: 5, PostprocConcurrency: 1, MinFree: int64(DefaultMinFree)},
 		Paths: Paths{
 			Usenet:  Roots{Incomplete: "/data/usenet/incomplete", Complete: "/data/usenet/complete"},
 			Torrent: Roots{Incomplete: "/data/torrents", Complete: "/data/torrents"},
@@ -114,6 +127,7 @@ func (s Settings) Validate() error {
 	}
 	problems = append(problems, s.Network.validate()...)
 	problems = append(problems, s.Seeding.validate()...)
+	problems = append(problems, s.validateTransfer()...)
 	if len(problems) > 0 {
 		return fmt.Errorf("core: %w: %w", ErrInvalidSettings, errors.Join(problems...))
 	}

@@ -1,0 +1,53 @@
+{{/*
+  history_row: one finished Download as a table row (a card below 768 px).
+  Receives a historyRow (history.go). Names, paths and failure details are
+  hostile input: they only appear as escaped text or attribute values, never
+  in hx-vals or an Alpine expression.
+*/}}
+{{define "history_row"}}
+<tr id="download-{{.ID}}" data-state="{{.State}}">
+  <td data-label="" class="md:w-[40%] md:max-w-0">
+    <div class="flex min-w-0 items-start gap-3 text-left">
+      <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-fg-subtle" title="{{.KindLabel}}">{{icon .KindIcon "size-4"}}<span class="sr-only">{{.KindLabel}}</span></span>
+      <div class="min-w-0 flex-1">
+        <a href="/downloads/{{.ID}}" class="block break-words font-medium text-fg hover:text-accent-text">{{.Name}}</a>
+        {{if .Failed}}
+        <p class="mt-1 text-sm"><span class="font-medium text-bad-fg">{{.Reason}}</span>{{if .Detail}}<span class="break-words text-fg-muted"> &ndash; {{.Detail}}</span>{{end}}</p>
+        {{else if .OutputPath}}
+        <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-fg-muted">
+          {{icon "folder" "size-3.5 shrink-0"}}<span class="truncate font-mono" title="{{.OutputPath}}">{{.OutputPath}}</span>
+          <span x-data="clipboard" x-cloak class="shrink-0">
+            <button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy="{{.OutputPath}}" @click="copy" aria-label="Copy the output path of {{.ShortName}}" title="Copy path">
+              <span x-show="!copied">{{icon "copy" "size-4"}}</span><span x-show="copied" x-cloak class="text-ok-fg">{{icon "check" "size-4"}}</span>
+            </button>
+          </span>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </td>
+  <td data-label="Status">{{template "badge" dict "State" .Badge "Label" .BadgeLabel}}</td>
+  <td data-label="Category"{{if not .Category}} class="max-md:hidden"{{end}}>{{if .Category}}<span class="inline-flex max-w-40 items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-xs text-fg-muted ring-1 ring-line"><span class="sr-only">Category </span><span class="truncate">{{.Category}}</span></span>{{else}}<span class="text-fg-subtle" aria-label="No category">&ndash;</span>{{end}}</td>
+  <td data-label="Size" class="num whitespace-nowrap text-fg-muted">{{.Size}}</td>
+  <td data-label="{{.WhenLabel}}" class="whitespace-nowrap text-fg-muted">{{with .When}}{{if .Valid}}<time datetime="{{.ISO}}" title="{{.Abs}}">{{.Rel}}</time>{{end}}{{end}}</td>
+  <td data-label="" class="md:w-px">
+    <div x-data="menu" class="relative flex w-full justify-end md:w-auto" @keydown.escape="close" @click.outside="closeQuiet">
+      <button type="button" x-ref="button" @click="toggle" @keydown="onButtonKey" class="btn btn-ghost btn-icon btn-sm" aria-haspopup="menu" :aria-expanded="open" aria-label="Actions for {{.ShortName}}" title="Actions">{{icon "more" "size-4"}}</button>
+      <div x-ref="panel" x-show="open" x-cloak x-transition.opacity.duration.100ms class="menu-panel text-left" role="menu" aria-label="Actions for {{.ShortName}}" @keydown="onPanelKey" @click="closeQuiet">
+        <a role="menuitem" class="menu-item" href="/downloads/{{.ID}}">{{icon "info" "size-5 text-fg-subtle"}}View details</a>
+        <div class="menu-sep"></div>
+        <button type="button" role="menuitem" class="menu-item" hx-post="/downloads/{{.ID}}/delete" {{hxVals "delete_data" "0" "from" "history"}} hx-target="closest tr" hx-swap="outerHTML"
+                hx-confirm="Remove {{.ShortName}} from the history? Its files stay on disk." data-confirm-label="Remove" data-confirm-tone="danger">
+          {{icon "close" "size-5 text-fg-subtle"}}Remove from history
+        </button>
+        {{if .Ready}}
+        <button type="button" role="menuitem" class="menu-item text-bad-fg" hx-post="/downloads/{{.ID}}/delete" {{hxVals "delete_data" "1" "from" "history"}} hx-target="closest tr" hx-swap="outerHTML"
+                hx-confirm="Remove {{.ShortName}} and delete its files? This cannot be undone." data-confirm-label="Delete files" data-confirm-tone="danger">
+          {{icon "trash" "size-5"}}Remove and delete files
+        </button>
+        {{end}}
+      </div>
+    </div>
+  </td>
+</tr>
+{{end}}

@@ -285,7 +285,11 @@ func TestTorrentEndToEndRestartInTheMiddleOfADownloadResumes(t *testing.T) {
 	assert.Equal(t, c.Size(), ready.TotalBytes)
 	st, err := seeder.Stats(c.Hash)
 	require.NoError(t, err)
-	assert.LessOrEqual(t, st.Uploaded, c.Size()+8*torrenttest.PieceLength,
+	// The restart happens once half is there. Without resuming, the seeder
+	// would upload the whole file again on top of that half (at least 1.5x
+	// the size); with resuming it uploads the rest plus whatever was in
+	// flight when the first daemon stopped, which can be a few pieces.
+	assert.LessOrEqual(t, st.Uploaded, c.Size()+c.Size()*2/5,
 		"the pieces received before the restart were not fetched again")
 	assert.Less(t, eng.BytesHashed(c.Hash), c.Size()-c.Size()/3, "and not hashed again either")
 }

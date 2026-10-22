@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="same-origin">
-<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true,"includeIndicatorStyles":false,"historyCacheSize":0,"refreshOnHistoryMiss":true,"scrollBehavior":"auto","defaultFocusScroll":false,"timeout":30000,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true,"error":false},{"code":"429","swap":true,"error":false},{"code":"[45]..","swap":false,"error":true}]}'>
+<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true,"includeIndicatorStyles":false,"attributesToSettle":["class","width","height"],"historyCacheSize":0,"refreshOnHistoryMiss":true,"scrollBehavior":"auto","defaultFocusScroll":false,"timeout":30000,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true,"error":false},{"code":"429","swap":true,"error":false},{"code":"[45]..","swap":false,"error":true}]}'>
 {{- if .CSRF}}
 <meta name="csrf-token" content="{{.CSRF}}">
 {{- end}}
@@ -12,6 +12,9 @@
 <link rel="stylesheet" href="{{asset "app.css"}}">
 <script src="{{asset "js/theme.js"}}"></script>
 <script src="{{asset "js/app.js"}}" defer></script>
+<script src="{{asset "js/queue.js"}}" defer></script>
+<script src="{{asset "js/detail.js"}}" defer></script>
+<script src="{{asset "js/settings.js"}}" defer></script>
 <script src="{{asset "vendor/htmx-2.0.11.min.js"}}" defer></script>
 <script src="{{asset "vendor/htmx-ext-sse-2.2.4.min.js"}}" defer></script>
 <script src="{{asset "vendor/alpine-csp-3.17.4.min.js"}}" defer></script>

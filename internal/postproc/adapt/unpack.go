@@ -25,6 +25,9 @@ type Unpacker struct {
 	// MinFree is the number of bytes to keep free on the disk; an unpack
 	// whose declared output does not fit fails with core.ErrDiskFull.
 	MinFree uint64
+	// MinFreeFunc, when set, replaces MinFree: it is called for each unpack,
+	// so the reserve can change while the Unpacker lives.
+	MinFreeFunc func() uint64
 	// FreeSpace replaces the free disk space probe (statfs by default).
 	FreeSpace func(path string) (uint64, error)
 	// Options are passed to every unpack.Unpack call after the options
@@ -119,8 +122,12 @@ func (u Unpacker) options(id core.ID) ([]unpack.Option, error) {
 			o = append(o, unpack.WithPassword(pw))
 		}
 	}
-	if u.MinFree > 0 {
-		o = append(o, unpack.WithMinFree(u.MinFree))
+	minFree := u.MinFree
+	if u.MinFreeFunc != nil {
+		minFree = u.MinFreeFunc()
+	}
+	if minFree > 0 {
+		o = append(o, unpack.WithMinFree(minFree))
 	}
 	if u.FreeSpace != nil {
 		o = append(o, unpack.WithFreeSpace(u.FreeSpace))

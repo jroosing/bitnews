@@ -203,6 +203,16 @@ func TestUnpacker_ResourceLimits(t *testing.T) {
 		err := run(Unpacker{MinFree: 1000, FreeSpace: func(string) (uint64, error) { return 1004, nil }})
 		assert.ErrorIs(t, err, core.ErrDiskFull)
 	})
+	t.Run("MinFreeFunc is read at each unpack", func(t *testing.T) {
+		reserve := uint64(1000)
+		u := Unpacker{MinFreeFunc: func() uint64 { return reserve }, FreeSpace: func(string) (uint64, error) { return 1004, nil }}
+		assert.ErrorIs(t, run(u), core.ErrDiskFull)
+
+		reserve = 0
+		dst := filepath.Join(t.TempDir(), "out")
+		_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, u, dir)})
+		assert.NoError(t, err, "a smaller reserve applies without rebuilding the Unpacker")
+	})
 	t.Run("enough free space", func(t *testing.T) {
 		assert.NoError(t, func() error {
 			dst := filepath.Join(t.TempDir(), "out")
