@@ -116,12 +116,16 @@ The password is never returned: `has_password` says whether one is stored. `pass
 **Settings:**
 
 ```json
-{"queues":{"usenet":1,"torrent":5},
+{"queues":{"usenet":1,"torrent":5,"postproc_concurrency":1,"min_free":5368709120},
  "auth":{"disable_auth":false,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":[]},
  "paths":{"usenet":{"incomplete":"…","complete":"…"},"torrent":{"incomplete":"…","complete":"…"}},
  "network":{"usenet":{"interface":"","address":""},"torrent":{"interface":"","address":""}},
- "seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0}}
+ "seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0},
+ "speed":{"global":{"down_kbps":0,"up_kbps":0},"usenet":{"down_kbps":0,"up_kbps":0},"torrent":{"down_kbps":0,"up_kbps":0}},
+ "torrent":{"listen_port":0,"disable_dht":false,"disable_pex":false,"lsd":false,"mse":""}}
 ```
+
+`queues.usenet` and `queues.torrent` are how many non-forced Downloads each Queue runs at once; they apply at once. `queues.min_free` is the free space in bytes that stays free on top of what a Download still needs (the disk guard and unpacking); 0 means the default of 5 GiB, and a change applies at once. `queues.postproc_concurrency` is how many Downloads are post-processed at once (1 to 16, 0 means 1); it is read when bitnews starts. `speed` holds the speed limits in KB/s (0 is unlimited, at most 2^30). Each Queue runs with the tighter of `global` and its own limit, so `global` caps each protocol separately and is not one budget shared by both. Usenet only downloads: `speed.usenet.up_kbps` must be 0. A change applies at once and replaces a limit set on the queue page. `torrent` holds the torrent engine's network options, which are read when bitnews starts: `listen_port` (1 to 65535; 0 means 51413), `disable_dht` and `disable_pex`, `lsd` (local peer discovery; the engine has no support for it yet, so it has no effect) and `mse` (`prefer`, `require` or `disable`; empty means `prefer`). Because the zero value of every new key is its default, a client that does not know them can leave them out.
 
 `network` is described in [network-binding.md](network-binding.md); a change needs a restart. `seeding` holds the global **Share Limit** defaults for torrents: `ratio_limit` (uploaded bytes divided by the torrent size) and `seeding_time_minutes`, where zero or less means no limit (the default: like qBittorrent, bitnews does not stop seeding on its own unless you or a media manager ask it to), and `action`, what happens when either is reached: `pause` (default; the torrent stops uploading and the Download stays Ready, so Sonarr and Radarr remove it), `remove` (delete the Download, keep its files) or `remove_data` (delete both). A Download can have its own limit, which wins. Settings stored without the key load with the defaults.
 

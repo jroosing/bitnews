@@ -125,18 +125,6 @@ func TestSectionPageHasOneH1WithTheSectionTitle(t *testing.T) {
 	}
 }
 
-func TestSectionsNotBuiltYetShowAComingNextCard(t *testing.T) {
-	_, b := settingsSignedIn(t)
-
-	for _, slug := range []string{"speed", "torrent", "security"} {
-		body := b.get("/settings/" + slug).Body.String()
-
-		assert.Contains(t, body, "Coming next", slug)
-		main := byID(parseHTML(t, body), "main")
-		assert.Nil(t, find(main, func(n *html.Node) bool { return n.Data == "form" }), "%s has no form yet", slug)
-	}
-}
-
 func TestSettingsSubNavigationIsAScrollableBarOnPhonesAndASidebarFromMd(t *testing.T) {
 	_, b := settingsSignedIn(t)
 
@@ -192,4 +180,6 @@ func addSettingsResponses(t *testing.T, out map[string]*httptest.ResponseRecorde
 	out["GET /settings/servers (password unavailable)"] = b.get("/settings/servers")
 	out["GET server form (re-enter)"] = b.settingsDo("GET", "/settings/servers/"+string(srv.ID)+"/edit?reenter=1", nil)
 	out["POST server row test (password unavailable)"] = b.settingsPost("/settings/servers/"+string(srv.ID)+"/test", nil)
+	addSecurityResponses(t, e, b, out)
+	addTransferResponses(t, out)
 }

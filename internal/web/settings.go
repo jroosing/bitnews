@@ -61,33 +61,9 @@ func settingsSections() []SettingsSection {
 			Description: "Providers, connections, retention and priority.",
 			Template:    "settings_servers.html", Data: settingsServersData, Routes: (*Server).registerServerRoutes,
 		},
-		{
-			Slug: "speed", Title: "Speed & queue", Icon: "arrow-down", Order: 30,
-			Description: "Speed limits, how many downloads run at once and free space.",
-			Planned: []string{
-				"Global and per-protocol speed limits, with a schedule",
-				"How many Usenet and torrent downloads run at the same time",
-				"Post-processing concurrency and the free space to keep",
-			},
-		},
-		{
-			Slug: "torrent", Title: "Torrent network", Icon: "bolt", Order: 40,
-			Description: "Listen port, peer discovery, encryption and network binding.",
-			Planned: []string{
-				"Listen port, DHT, peer exchange and local discovery",
-				"Encryption policy and the network interface torrents may use",
-				"Default share limits for seeding",
-			},
-		},
-		{
-			Slug: "security", Title: "Security", Icon: "shield", Order: 50,
-			Description: "Sign-in options, API keys and media manager credentials.",
-			Planned: []string{
-				"Turning sign-in off or trusting your local network, with warnings",
-				"Allowed hosts and trusted proxies",
-				"Password change, API keys and media manager credentials",
-			},
-		},
+		speedSection(),
+		torrentSection(),
+		securitySection(),
 	}
 	slices.SortStableFunc(secs, func(a, b SettingsSection) int { return a.Order - b.Order })
 	return secs

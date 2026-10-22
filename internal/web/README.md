@@ -72,7 +72,7 @@ Components: `button`, `field` (text/password), `select_field`, `checkbox_field`,
 
 Every app page opens one SSE connection (`hx-ext="sse" sse-connect` on `<body>`; the queue page adds `?rows=1`). The server renders HTML, not JSON, and sends named events that the `#live-sink` element swaps out of band: `status` (the top bar's `#status-down`, `#status-up`, `#status-queue`; keep those IDs), `live` (the changing cells of queue rows: `dl-<id>-status|progress|speed|eta`) and `removed`. `refresh` and `resync` make `#queue-lists` refetch `/queue/fragment`, and `js/queue.js` refetches whenever the stream (re)opens, because events are not replayed. Bus events are only noted on arrival and rendered once per tick (1 s), so a Download is updated at most once a second per connection. The stream drops a client that does not read within the write timeout and ends on shutdown.
 
-Queue actions are `POST /queue/{id}/pause|resume|priority|move|category|remove` and `POST /queues/{usenet|torrent}/pause|resume|speed`. They answer htmx with the updated row or the whole lists, and errors with a toast (`HX-Trigger`) and a `queue-refresh`. Speed limits are runtime-only (lost on restart). Ready torrents that keep seeding are on the History page, not in the queue.
+Queue actions are `POST /queue/{id}/pause|resume|priority|move|category|remove` and `POST /queues/{usenet|torrent}/pause|resume|speed`. They answer htmx with the updated row or the whole lists, and errors with a toast (`HX-Trigger`) and a `queue-refresh`. A limit set on the queue page is temporary (lost on restart, and replaced when the speed settings change); the saved limits are on Settings, Speed & queue. Ready torrents that keep seeding are on the History page, not in the queue.
 
 ## Static files
 
@@ -84,7 +84,7 @@ Settings is one area with a section per page: `/settings` redirects to the first
 
 ### Registry
 
-`settingsSections()` returns the `SettingsSection` entries: `Slug`, `Title`, `Icon`, `Description`, `Order` (navigation order; the lowest is where `/settings` leads), and optionally `Template`, `Data`, `Routes` and `Planned`. An entry without a `Template` renders the "Coming next" placeholder (`pages/settings_soon.html`) with its `Planned` bullets. Currently: `paths`, `servers`, and the placeholders `speed`, `torrent`, `security`.
+`settingsSections()` returns the `SettingsSection` entries: `Slug`, `Title`, `Icon`, `Description`, `Order` (navigation order; the lowest is where `/settings` leads), and optionally `Template`, `Data`, `Routes` and `Planned`. An entry without a `Template` renders the "Coming next" placeholder (`pages/settings_soon.html`) with its `Planned` bullets. Currently: `paths`, `servers`, `security` and the others listed in the table in `settings.go`.
 
 To fill in a placeholder (for example Speed & queue):
 
@@ -110,6 +110,12 @@ A card with one `<form>` per group of settings, so every card saves on its own:
 - Save is disabled until a field changes (Alpine `settingsForm`, in `js/settings.js`) and shows a spinner while the request runs (the form gets `htmx-request`). Unsaved changes show "Unsaved changes".
 - Non-blocking remarks (like the folder warnings) are an `alert alert-warn` block inside the card, computed on the server after the save.
 
+### Speed & queue and Torrent network (`settings_cards.go`)
+
+These two sections are made of several cards that each edit one slice of `core.Settings`. `settings_cards.go` holds the shared machinery: a `settingsCard` says how to turn the Settings into form values (`values`), how to parse and validate the form into a copy of the current Settings (`read`, one message per field name), optionally which saved values still wait for a restart (`restart`, compared with `Deps.Config.Started()`) and an extra view (`view`). `registerCards` adds the POST route; `cardPage` builds `.Page.Data` as a map keyed by card (`{{template "speed_queue_card" .Page.Data.queue}}`). The card templates read `.V` / `.E` (values and errors by field name), so a failed save shows exactly what was typed. Numbers are parsed by `wholeNumber` / `decimalNumber`, which accept plain ASCII digits only.
+
+`Deps.Config` (`ConfigSource`) is optional: it gives the settings the daemon started with (for the "Saved, waiting for a restart" notes) and the live status of the Usenet and torrent network bindings (bound, unavailable and why, not bound). Speed limits, queue sizes, `min_free` and the Share Limit defaults apply at once (the daemon reacts to `core.SettingsChanged`); the torrent engine options, the network bindings and post-processing concurrency are read at start-up.
+
 ### Rows, dialogs and probes
 
 The Usenet servers section shows the other patterns: a table whose rows swap one at a time (`server_row`), an add/edit dialog whose form is loaded by htmx into one `<dialog>` (Alpine `serverDialog` opens it when the form arrives and closes it on the `dialog-close` event that a successful save sends in `HX-Trigger`), and inline results of a test request (`probe_result`). A successful save answers with `HX-Retarget` and `HX-Reswap` so the list is swapped while the dialog form is the default target for errors.
@@ -118,7 +124,7 @@ Write-only secrets: never put a secret into a `value` attribute; an empty passwo
 
 ### Tests
 
-Handler tests live in `settings_test.go`, `settings_paths_test.go`, `settings_categories_test.go` and `settings_servers_test.go`: `settingsSignedIn(t, opts...)` gives an env and a signed-in browser, `settingsPost` / `settingsDo` send htmx requests with the CSRF header, `withProber` and `withPathChecker` replace the connection prober and the file system checks. Add the new section's pages and fragments to `addSettingsResponses`, so the shared HTML invariant tests (no inline script or style, accessible names, unique ids) cover them.
+Handler tests live in `settings_test.go`, `settings_security_test.go`, `settings_paths_test.go`, `settings_categories_test.go` and `settings_servers_test.go`: `settingsSignedIn(t, opts...)` gives an env and a signed-in browser, `settingsPost` / `settingsDo` send htmx requests with the CSRF header, `withProber` and `withPathChecker` replace the connection prober and the file system checks. Add the new section's pages and fragments to `addSettingsResponses`, so the shared HTML invariant tests (no inline script or style, accessible names, unique ids) cover them.
 
 ## History, Download detail and the "New download" dialog
 
@@ -128,3 +134,11 @@ Handler tests live in `settings_test.go`, `settings_paths_test.go`, `settings_ca
 - `add.go`, `templates/components/add_dialog.html`, `js/detail.js`: the global dialog loads its form from `GET /downloads/add` on the `add-open` window event (any element with `data-add-open` fires it) and posts multipart to `POST /downloads/add`. Refused adds answer with the status of the problem (400, 409, 413, 502, 503) and the form with its errors; `detail.js` lets htmx swap those. Success sets `HX-Trigger` with a toast, `download-added` and `queue-refresh`. `/downloads/add` is the only route with a body limit above 64 KiB (`uploadLimits` in `detail.go`).
 - htmx is configured with `attributesToSettle` without `style`: htmx would otherwise copy `style` attributes between old and new elements with the same id, which is an inline style (blocked by the CSP) and wipes what Alpine's `x-show` set.
 - `.table-responsive` forces `display: block` below 768 px (the Tailwind `table` utility on the same element would win otherwise).
+
+## Settings: Security
+
+`settings_security.go` (registry entry, page data, list parsing) and `settings_security_{access,password,keys,adapters}.go`, one file per card, all on `pages/settings_security.html`.
+
+- **Sign-in and hosts** (`/settings/security/access`, `/hosts`): read `Settings.Current()`, replace only `Auth`, `Update`. Enabling disable-auth or LAN bypass needs an allowed host that includes the Host the browser used (else a field error, so the user cannot lock themselves out). Newly turning sign-in off, adding LAN networks, or trusting proxies while bypass is on answers `200` with a confirm card (`security_confirm`): the values come back as hidden fields plus `confirmed=1`, so confirming is a plain post and nothing is kept on the server. Cancel is `GET` of the card.
+- **Password** (`/password`): `auth.SessionService.ChangePassword` checks the current password through the login limiter (429 + `Retry-After`), applies the length rules, rehashes with the current argon2 parameters and ends the user's other sessions (`SessionRepo.DeleteForUserExcept`). Not offered to bypass or disabled-auth principals.
+- **API keys** and **media manager credentials** (`/api-keys`, `/adapters`): create answers with the card plus the show-once block (`security_secret`, `Cache-Control: no-store`); the plaintext is in that response only. Credential values for Sonarr/Radarr come from the request Host (host, port), `sabnzbd` as the URL base, and the generated key (password for qBittorrent). Revoke is `POST .../{id}/revoke` behind `hx-confirm`.

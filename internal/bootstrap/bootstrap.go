@@ -36,13 +36,13 @@ type Config struct {
 	// AdminPasswordFile optionally bootstraps the admin password. It is
 	// empty when unset.
 	AdminPasswordFile string
-	// TorrentPort is the TCP and uTP port the torrent engine listens on.
-	// Peers need it forwarded to reach bitnews: there is no UPnP.
+	// TorrentPort is the TCP and uTP port the torrent engine listens on,
+	// when the operator fixes it (BITNEWS_TORRENT_PORT, typically to match a
+	// published container port). It overrides the torrent.listen_port
+	// setting. Zero means not set: the setting decides, by default 51413.
+	// Peers need the port forwarded to reach bitnews: there is no UPnP.
 	TorrentPort int
 }
-
-// DefaultTorrentPort is the torrent listen port when none is configured.
-const DefaultTorrentPort = 51413
 
 // Identity is a numeric user and group id.
 type Identity struct {
@@ -85,7 +85,7 @@ var (
 	optPUID        = option{"", "PUID", "uid", "user id to drop to when started as root; requires PGID", "unset"}
 	optPGID        = option{"", "PGID", "gid", "group id to drop to when started as root; requires PUID", "unset"}
 	optUmask       = option{"", "UMASK", "octal", "file mode creation mask applied at startup", "002"}
-	optTorrentPort = option{"", "BITNEWS_TORRENT_PORT", "port", "TCP and uTP port the torrent engine listens on; forward it for incoming peers (no UPnP)", "51413"}
+	optTorrentPort = option{"", "BITNEWS_TORRENT_PORT", "port", "TCP and uTP port the torrent engine listens on, overriding the setting; forward it for incoming peers (no UPnP)", "the torrent port setting (51413)"}
 	optAdminPass   = option{"", "BITNEWS_ADMIN_PASSWORD_FILE", "path", "absolute path of a file holding the initial admin password", "unset"}
 )
 
@@ -248,12 +248,13 @@ func Load(args []string, getenv func(string) (string, bool)) (Config, error) {
 		cfg.AdminPasswordFile = filepath.Clean(adminPass.value)
 	}
 
-	port := lookup(optTorrentPort, strconv.Itoa(DefaultTorrentPort))
-	n, err := strconv.ParseUint(port.value, 10, 16)
-	if err != nil || n == 0 {
-		return Config{}, port.errorf("must be a port number from 1 to 65535")
+	if port := lookup(optTorrentPort, ""); port.value != "" {
+		n, err := strconv.ParseUint(port.value, 10, 16)
+		if err != nil || n == 0 {
+			return Config{}, port.errorf("must be a port number from 1 to 65535")
+		}
+		cfg.TorrentPort = int(n)
 	}
-	cfg.TorrentPort = int(n)
 	return cfg, nil
 }
 

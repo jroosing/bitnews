@@ -124,3 +124,10 @@ func hostOnly(hostport string) string {
 	}
 	return strings.TrimSuffix(strings.ToLower(h), ".")
 }
+
+// HostAllowed reports whether host (a Host header value) is one of the
+// allowed hosts. Ports, case, the brackets of an IPv6 literal and a trailing
+// dot do not matter. It is the check UIAuth makes while disable auth or LAN
+// bypass is on, exported so the settings page can warn before an edit would
+// lock the user out.
+func HostAllowed(host string, allowed []string) bool { return hostInList(host, allowed) }

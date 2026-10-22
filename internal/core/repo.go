@@ -123,6 +123,9 @@ type SessionRepo interface {
 	// (absolute expiry) or last seen before seenBefore (idle expiry) and
 	// reports how many it removed.
 	DeleteExpired(ctx context.Context, createdBefore, seenBefore time.Time) (int, error)
+	// DeleteForUserExcept removes every Session of the User except the one
+	// with the token hash keep and reports how many it removed.
+	DeleteForUserExcept(ctx context.Context, userID ID, keep TokenHash) (int, error)
 }
 
 // APIKeyScope limits what an API key may do.

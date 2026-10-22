@@ -426,10 +426,10 @@ func TestLoadPlacesTheDefaultKeyFileInsideAnExplicitConfigDir(t *testing.T) {
 	assert.Equal(t, "/config/bitnews.key", cfg.KeyFile)
 }
 
-func TestLoadTorrentPortDefaultsTo51413(t *testing.T) {
+func TestLoadTorrentPortIsZeroWhenNotSetSoTheSettingsDecide(t *testing.T) {
 	cfg, err := bootstrap.Load(nil, env(devEnv()))
 	require.NoError(t, err)
-	assert.Equal(t, 51413, cfg.TorrentPort)
+	assert.Zero(t, cfg.TorrentPort, "the torrent.listen_port setting (default 51413) applies")
 }
 
 func TestLoadTorrentPortFromTheEnvironment(t *testing.T) {

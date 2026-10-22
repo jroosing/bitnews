@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
+	"gitlab.com/kyura4k/gitnews/internal/adapter/sabnzbd"
 	"gitlab.com/kyura4k/gitnews/internal/api"
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
@@ -95,6 +96,8 @@ type env struct {
 	cats       *app.CategoryService
 	setup      *auth.Setup
 	sessions   *auth.SessionService
+	apiKeys    *auth.APIKeyService
+	adapters   *auth.AdapterCredentialService
 	handler    http.Handler
 	token      string // the setup token, when setup is open
 }
@@ -105,6 +108,8 @@ type envConfig struct {
 	noAdmin bool
 	prober  app.Prober
 	paths   web.PathChecker
+	config  web.ConfigSource
+	server  []func(*web.Server)
 }
 
 func withoutAdmin() envOption { return func(c *envConfig) { c.noAdmin = true } }
@@ -114,6 +119,15 @@ func withProber(p app.Prober) envOption { return func(c *envConfig) { c.prober =
 
 // withPathChecker replaces the file system checks of the paths settings.
 func withPathChecker(p web.PathChecker) envOption { return func(c *envConfig) { c.paths = p } }
+
+// withConfig gives the settings pages what the daemon knows about the running
+// configuration (the settings it started with, the live binding status).
+func withConfig(c web.ConfigSource) envOption { return func(e *envConfig) { e.config = c } }
+
+// withServer changes the web.Server after it is built. Tests only.
+func withServer(f func(*web.Server)) envOption {
+	return func(e *envConfig) { e.server = append(e.server, f) }
+}
 
 func newEnv(t *testing.T, opts ...envOption) *env {
 	t.Helper()
@@ -156,28 +170,41 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	catSvc := app.NewCategoryService(cats, downloads, bus, appOpts...)
 	serverSvc := app.NewServerService(servers, bus, ec.prober, appOpts...)
 	e.servers, e.cats = serverSvc, catSvc
+	e.apiKeys = auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger))
+	e.adapters = auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db), auth.WithAdapterClock(e.clock.Now), auth.WithAdapterLogger(logger))
+	adder := app.NewAddService(downloadSvc, sources, e.settings, append(appOpts, app.WithLogger(logger))...)
 	webUI, err := web.New(web.Deps{
 		Logger: logger, Version: "1.2.3",
 		Sessions: e.sessions, UIAuth: uiAuth, Setup: e.setup, Settings: e.settings,
 		Downloads: downloadSvc, Categories: catSvc, Servers: serverSvc, Bus: bus,
+		APIKeys: e.apiKeys, AdapterCredentials: e.adapters,
+		Config: ec.config,
 	})
 	require.NoError(t, err)
+	for _, f := range ec.server {
+		f(webUI)
+	}
 	if ec.paths != nil {
 		web.SetPathChecker(webUI, ec.paths)
 	}
 	srv, err := api.New(api.Config{
-		Logger:     logger,
-		Downloads:  downloadSvc,
-		Adder:      app.NewAddService(downloadSvc, sources, e.settings, append(appOpts, app.WithLogger(logger))...),
-		Categories: catSvc,
-		Servers:    serverSvc,
-		Settings:   e.settings,
-		Setup:      e.setup,
-		Sessions:   e.sessions,
-		UIAuth:     uiAuth,
-		APIKeys:    auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger)),
-		Bus:        bus,
-		Web:        webUI,
+		Logger:             logger,
+		Downloads:          downloadSvc,
+		Adder:              adder,
+		Categories:         catSvc,
+		Servers:            serverSvc,
+		Settings:           e.settings,
+		Setup:              e.setup,
+		Sessions:           e.sessions,
+		UIAuth:             uiAuth,
+		APIKeys:            e.apiKeys,
+		AdapterCredentials: e.adapters,
+		SABnzbd: sabnzbd.New(sabnzbd.Deps{
+			Credentials: e.adapters, Downloads: downloadSvc, Adder: adder, Categories: catSvc,
+			Settings: e.settings, Logger: logger, Clock: e.clock.Now,
+		}),
+		Bus: bus,
+		Web: webUI,
 	})
 	require.NoError(t, err)
 	e.handler = srv.Handler()

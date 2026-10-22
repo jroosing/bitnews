@@ -10,11 +10,13 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
-const settingsJSON = `{"queues":{"usenet":2,"torrent":4},
+const settingsJSON = `{"queues":{"usenet":2,"torrent":4,"postproc_concurrency":0,"min_free":0},
 "auth":{"disable_auth":false,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":[]},
 "paths":{"usenet":{"incomplete":"/d/u/inc","complete":"/d/u/done"},"torrent":{"incomplete":"/d/t","complete":"/d/t"}},
 "network":{"usenet":{"interface":"","address":"10.2.0.2"},"torrent":{"interface":"wg0","address":""}},
-"seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0}}`
+"seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0},
+"speed":{"global":{"down_kbps":0,"up_kbps":0},"usenet":{"down_kbps":0,"up_kbps":0},"torrent":{"down_kbps":0,"up_kbps":0}},
+"torrent":{"listen_port":0,"disable_dht":false,"disable_pex":false,"lsd":false,"mse":""}}`
 
 func TestGetSettingsReturnsDefaultsWithEmptyArraysNotNull(t *testing.T) {
 	t.Parallel()
@@ -23,11 +25,13 @@ func TestGetSettingsReturnsDefaultsWithEmptyArraysNotNull(t *testing.T) {
 	rec := e.do("GET", "/api/v1/settings", "", withBearer(e.newKey(core.APIKeyScopeRead)))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.JSONEq(t, `{"queues":{"usenet":1,"torrent":5},
+	assert.JSONEq(t, `{"queues":{"usenet":1,"torrent":5,"postproc_concurrency":1,"min_free":5368709120},
 "auth":{"disable_auth":false,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":[]},
 "paths":{"usenet":{"incomplete":"/data/usenet/incomplete","complete":"/data/usenet/complete"},"torrent":{"incomplete":"/data/torrents","complete":"/data/torrents"}},
 "network":{"usenet":{"interface":"","address":""},"torrent":{"interface":"","address":""}},
-"seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0}}`, rec.Body.String())
+"seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0},
+"speed":{"global":{"down_kbps":0,"up_kbps":0},"usenet":{"down_kbps":0,"up_kbps":0},"torrent":{"down_kbps":0,"up_kbps":0}},
+"torrent":{"listen_port":0,"disable_dht":false,"disable_pex":false,"lsd":false,"mse":""}}`, rec.Body.String())
 	assert.Equal(t, http.StatusUnauthorized, e.do("GET", "/api/v1/settings", "").Code)
 }
 
