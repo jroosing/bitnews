@@ -19,9 +19,20 @@ func open7z(set ArchiveSet, cfg *config) openFunc {
 		if err != nil {
 			return nil, err
 		}
+		// The library allocates from the counts in the header before it checks
+		// them, so it only sees an archive whose header preflight7z validated.
+		var ov *headerOverlay
+		err = guarded(func() (err error) {
+			ov, err = preflight7z(m, m.size, cfg, m.size)
+			return err
+		})
+		if err != nil {
+			_ = m.Close()
+			return nil, err
+		}
 		var r *sevenzip.Reader
 		err = guarded(func() (err error) {
-			r, err = sevenzip.NewReaderWithPassword(m, m.size, cfg.password)
+			r, err = sevenzip.NewReaderWithPassword(ov, ov.size(), cfg.password)
 			return err
 		})
 		if err != nil {

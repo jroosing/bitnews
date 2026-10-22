@@ -9,9 +9,16 @@ import (
 const (
 	// DefaultMaxEntries caps the number of entries in one archive.
 	DefaultMaxEntries = 1_000_000
-	// DefaultMaxDictionary caps the RAR decoder dictionary, which is allocated
-	// from a number the archive controls.
+	// DefaultMaxDictionary caps the decoder dictionary of RAR (LZ) and 7z
+	// (LZMA, LZMA2, PPMd), which is allocated from a number the archive
+	// controls.
 	DefaultMaxDictionary = 1 << 30
+	// DefaultMaxHeaderMemory caps the memory the 7z reader may allocate for the
+	// archive header, estimated from the counts the header declares.
+	DefaultMaxHeaderMemory = 256 << 20
+
+	// maxHeaderBytes caps a 7z header, as stored and as decoded.
+	maxHeaderBytes = 64 << 20
 
 	// bombMinBytes and bombRatio define a compression bomb: more than
 	// bombMinBytes of output at more than bombRatio times the archive size.
@@ -28,6 +35,8 @@ type config struct {
 	maxBytes   int64 // 0: unlimited
 	maxEntries int
 	maxDict    int64
+	maxHeadMem int64 // estimated memory of the 7z header
+	maxHeader  int64 // bytes of a 7z header, stored and decoded
 	replace    bool
 	freeSpace  func(path string) (uint64, error)
 	logger     *slog.Logger
@@ -41,6 +50,8 @@ func newConfig(opts []Option) *config {
 	c := &config{
 		maxEntries: DefaultMaxEntries,
 		maxDict:    DefaultMaxDictionary,
+		maxHeadMem: DefaultMaxHeaderMemory,
+		maxHeader:  maxHeaderBytes,
 		freeSpace:  freeSpace,
 		logger:     slog.Default(),
 		bombMin:    bombMinBytes,
@@ -76,9 +87,17 @@ func WithMaxBytes(n int64) Option { return func(c *config) { c.maxBytes = n } }
 // DefaultMaxEntries.
 func WithMaxEntries(n int) Option { return func(c *config) { c.maxEntries = n } }
 
-// WithMaxDictionary caps the RAR decoder dictionary size in bytes. The default
-// is DefaultMaxDictionary.
+// WithMaxDictionary caps the decoder dictionary size in bytes: the RAR
+// dictionary, and the 7z LZMA/LZMA2 dictionary (as far as the stream needs it)
+// and PPMd memory. The default is DefaultMaxDictionary.
 func WithMaxDictionary(n int64) Option { return func(c *config) { c.maxDict = n } }
+
+// WithMaxHeaderMemory caps the memory a 7z archive header may make the reader
+// allocate, in bytes. The memory is estimated from the file, folder and stream
+// counts the header declares, before the 7z library sees the archive; a header
+// over the cap fails with ErrTooLarge. The default is DefaultMaxHeaderMemory,
+// which allows about 500,000 files per archive.
+func WithMaxHeaderMemory(n int64) Option { return func(c *config) { c.maxHeadMem = n } }
 
 // WithReplace lets Unpack replace an existing destination instead of failing
 // with ErrExists.

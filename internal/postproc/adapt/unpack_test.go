@@ -440,3 +440,23 @@ func children(t testing.TB, dir string) []string {
 	}
 	return out
 }
+
+func TestUnpacker_DefaultDictionaryCapIs256MiB(t *testing.T) {
+	assert.Equal(t, int64(256<<20), int64(DefaultMaxDictionary))
+}
+
+func TestUnpacker_OptionsCanOverrideTheDictionaryCap(t *testing.T) {
+	dir := archiveDir(t, "7z/lzma2.7z")
+	ctx := context.Background()
+
+	// A one-byte cap is below what the stream needs, so it must reach the
+	// unpacker and win over the adapter's default.
+	strict := Unpacker{Options: []unpack.Option{unpack.WithMaxDictionary(1)}}
+	_, err := strict.Unpack(ctx, dir, filepath.Join(t.TempDir(), "out"), core.UnpackOptions{Sets: detect(t, strict, dir)})
+	require.Error(t, err)
+
+	// The default cap lets a normal archive through.
+	def := Unpacker{}
+	_, err = def.Unpack(ctx, dir, filepath.Join(t.TempDir(), "out"), core.UnpackOptions{Sets: detect(t, def, dir)})
+	require.NoError(t, err)
+}

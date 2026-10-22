@@ -76,7 +76,7 @@ internal/api/           own API v1 + SSE
 internal/adapter/qbit/  qBittorrent WebUI API v2 subset
 internal/adapter/sabnzbd/ SABnzbd API subset
 internal/fsutil/        safe join, same-filesystem check, umask, atomic move
-web/                    htmx UI (milestone 6)
+internal/web/           htmx + Tailwind + Alpine UI, templates and assets embedded (milestone 6, ADR-0005)
 ```
 
 ## Download lifecycle

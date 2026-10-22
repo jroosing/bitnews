@@ -100,9 +100,16 @@ func (u Unpacker) Unpack(ctx context.Context, _, dst string, opts core.UnpackOpt
 	return u.unpackMany(ctx, sets, dst, uopts)
 }
 
+// DefaultMaxDictionary caps the decoder dictionary or model memory one
+// archive may ask for (RAR dictionary, 7z LZMA/LZMA2 dictionary, PPMd memory).
+// It is lower than the unpack package's own default because the daemon decodes
+// archives from untrusted uploaders next to everything else it does; real
+// releases rarely need more than 64 MiB. Options can override it.
+const DefaultMaxDictionary = 256 << 20
+
 // options builds the unpack options for a Download.
 func (u Unpacker) options(id core.ID) ([]unpack.Option, error) {
-	var o []unpack.Option
+	o := []unpack.Option{unpack.WithMaxDictionary(DefaultMaxDictionary)}
 	if u.Passwords != nil {
 		pw, err := u.Passwords(id)
 		if err != nil {

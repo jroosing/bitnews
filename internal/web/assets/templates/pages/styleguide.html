@@ -1,0 +1,178 @@
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Every component and state of the bitnews design system. Also the visual test page.</p>{{end}}
+
+{{define "content"}}
+<div class="space-y-10" data-styleguide>
+
+  <section aria-labelledby="sg-colors" class="space-y-3">
+    <h2 id="sg-colors" class="text-lg">Colour tokens</h2>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+      {{range .Page.Swatches}}
+      <div class="overflow-hidden rounded-xl border border-line bg-surface">
+        <div class="h-14 {{.Class}}"></div>
+        <p class="px-3 py-2 text-xs font-medium text-fg">{{.Name}}</p>
+      </div>
+      {{end}}
+    </div>
+  </section>
+
+  <section aria-labelledby="sg-type" class="space-y-3">
+    <h2 id="sg-type" class="text-lg">Typography</h2>
+    {{template "card_start" dict}}
+      <p class="text-3xl font-semibold tracking-tight">Display 3xl semibold</p>
+      <h3 class="mt-3 text-xl">Heading xl</h3>
+      <p class="mt-2">Body text in Inter at 14 px. The quick brown fox jumps over the lazy dog.</p>
+      <p class="mt-1 text-fg-muted">Muted text for descriptions and secondary information.</p>
+      <p class="mt-1 text-fg-subtle">Subtle text for hints and placeholders.</p>
+      <p class="mt-3 tabular-nums">Tabular numbers: 1,234,567.89 &nbsp; 12.5 MB/s &nbsp; 00:42:07</p>
+      <p class="mt-3"><a href="#sg-type">An inline link</a> and <code class="rounded bg-surface-2 px-1.5 py-0.5 text-xs">inline code</code>.</p>
+    {{template "card_end"}}
+  </section>
+
+  <section aria-labelledby="sg-buttons" class="space-y-3">
+    <h2 id="sg-buttons" class="text-lg">Buttons</h2>
+    {{template "card_start" dict}}
+      <div class="flex flex-wrap items-center gap-3">
+        {{template "button" dict "Label" "Primary" "Variant" "primary"}}
+        {{template "button" dict "Label" "Secondary" "Variant" "secondary"}}
+        {{template "button" dict "Label" "Danger" "Variant" "danger"}}
+        {{template "button" dict "Label" "Ghost" "Variant" "ghost"}}
+        {{template "button" dict "Label" "Disabled" "Disabled" true}}
+      </div>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        {{template "button" dict "Label" "Small" "Size" "sm" "Variant" "secondary"}}
+        {{template "button" dict "Label" "Default" "Variant" "secondary"}}
+        {{template "button" dict "Label" "Large" "Size" "lg"}}
+        {{template "button" dict "Label" "With icon" "Icon" "plus"}}
+        {{template "button" dict "Label" "Add download" "Icon" "plus" "IconOnly" true "Variant" "secondary"}}
+        {{template "button" dict "Label" "Delete" "Icon" "trash" "IconOnly" true "Variant" "ghost"}}
+      </div>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <div class="htmx-request">{{template "button" dict "Label" "Loading (htmx-request)" "Loading" true}}</div>
+        {{template "button" dict "Label" "Pause all" "Icon" "pause" "Variant" "secondary" "Size" "sm"}}
+        {{template "button" dict "Label" "Resume" "Icon" "play" "Variant" "secondary" "Size" "sm"}}
+      </div>
+    {{template "card_end"}}
+  </section>
+
+  <section aria-labelledby="sg-forms" class="space-y-3">
+    <h2 id="sg-forms" class="text-lg">Form controls</h2>
+    {{template "card_start" dict "Title" "Example form" "Subtitle" "Labels, help, errors and every control type"}}
+      <form class="grid gap-5 sm:grid-cols-2" action="#" data-demo-form>
+        {{template "field" dict "ID" "sg-text" "Label" "Text input" "Placeholder" "download-name" "Help" "Help text sits under the control."}}
+        {{template "field" dict "ID" "sg-error" "Label" "With an error" "Value" "not-a-number" "Error" "Enter a whole number between 1 and 50."}}
+        {{template "field" dict "ID" "sg-password" "Label" "Password" "Type" "password" "Value" "hunter2" "Help" "The eye button reveals it (JavaScript only)."}}
+        {{template "select_field" dict "ID" "sg-select" "Label" "Select" "Selected" "normal" "Options" .Page.Options}}
+        {{template "field" dict "ID" "sg-disabled" "Label" "Disabled" "Value" "read only" "Disabled" true}}
+        {{template "field" dict "ID" "sg-optional" "Label" "Optional field" "Optional" true}}
+        <div class="space-y-4 sm:col-span-2">
+          {{template "checkbox_field" dict "ID" "sg-check" "Label" "Delete data when removing" "Help" "Also removes the files on disk." "Checked" true}}
+          {{template "checkbox_field" dict "ID" "sg-check2" "Label" "Unchecked option"}}
+          {{template "switch_field" dict "ID" "sg-switch" "Label" "Enable DHT" "Help" "Find peers without a tracker." "Checked" true}}
+          {{template "switch_field" dict "ID" "sg-switch2" "Label" "Enable LAN bypass" "Help" "Skips sign-in for the networks you list."}}
+        </div>
+      </form>
+    {{template "card_end"}}
+  </section>
+
+  <section aria-labelledby="sg-badges" class="space-y-3">
+    <h2 id="sg-badges" class="text-lg">Badges and progress</h2>
+    {{template "card_start" dict}}
+      <div class="flex flex-wrap gap-3">
+        {{range .Page.States}}{{template "badge" dict "State" .}}{{end}}
+      </div>
+      <div class="mt-6 grid gap-5 sm:grid-cols-2">
+        {{template "progress" dict "Value" 12 "Label" "Downloading 12 percent" "Show" true}}
+        {{template "progress" dict "Value" 64 "Label" "Downloading 64 percent" "Show" true}}
+        {{template "progress" dict "Value" 100 "Label" "Ready" "Variant" "ok" "Show" true}}
+        {{template "progress" dict "Value" 38 "Label" "Paused at 38 percent" "Variant" "warn" "Show" true}}
+        {{template "progress" dict "Value" 71 "Label" "Failed at 71 percent" "Variant" "bad" "Show" true}}
+      </div>
+    {{template "card_end"}}
+  </section>
+
+  <section aria-labelledby="sg-alerts" class="space-y-3">
+    <h2 id="sg-alerts" class="text-lg">Alerts</h2>
+    <div class="space-y-3">
+      {{template "alert" dict "Variant" "info" "Title" "Heads up" "Body" "Informational message with some detail."}}
+      {{template "alert" dict "Variant" "success" "Title" "Saved" "Body" "Your settings were saved."}}
+      {{template "alert" dict "Variant" "warn" "Title" "Careful" "Body" "The incomplete and complete folders are on different filesystems, so hardlinks will not work."}}
+      {{template "alert" dict "Variant" "danger" "Title" "Something failed" "Body" "The server refused the connection."}}
+    </div>
+  </section>
+
+  <section aria-labelledby="sg-table" class="space-y-3">
+    <h2 id="sg-table" class="text-lg">Table (cards below 768 px)</h2>
+    {{template "table_start" dict "Caption" "Example downloads"}}
+      <thead><tr><th scope="col">Name</th><th scope="col">State</th><th scope="col" class="num">Size</th><th scope="col" class="num">Speed</th><th scope="col">Progress</th></tr></thead>
+      <tbody>
+        {{range .Page.Rows}}
+        <tr>
+          <td data-label="Name" class="max-w-xs truncate font-medium">{{.Name}}</td>
+          <td data-label="State">{{template "badge" dict "State" .State}}</td>
+          <td data-label="Size" class="num">{{.Size}}</td>
+          <td data-label="Speed" class="num">{{.Speed}}</td>
+          <td data-label="Progress" class="md:w-48">{{template "progress" dict "Value" .Percent "Label" "Progress"}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    {{template "table_end"}}
+    <div class="pt-2">{{template "pagination" dict "Summary" "Showing 4 of 4 downloads" "NextHref" "#sg-table"}}</div>
+  </section>
+
+  <section aria-labelledby="sg-empty" class="space-y-3">
+    <h2 id="sg-empty" class="text-lg">Empty state</h2>
+    {{template "card_start" dict "NoPad" true}}
+      {{template "empty_state" dict "Icon" "inbox" "Title" "Nothing here yet" "Body" "Empty states explain what will appear and how to get started." "ActionLabel" "Go to the queue" "ActionHref" "/queue"}}
+    {{template "card_end"}}
+  </section>
+
+  <section aria-labelledby="sg-overlays" class="space-y-3">
+    <h2 id="sg-overlays" class="text-lg">Dialogs, toasts and menus</h2>
+    {{template "card_start" dict}}
+      <div class="flex flex-wrap items-center gap-3" x-data="toastDemo">
+        <div x-data="modal">
+          <button type="button" class="btn btn-secondary" @click="show">Open dialog</button>
+          {{template "modal_start" dict "ID" "sg-dialog" "Title" "Dialog title" "Description" "A native dialog: Escape closes it and focus is trapped."}}
+            <div class="flex justify-end gap-2">
+              <button type="button" class="btn btn-secondary" @click="hide">Cancel</button>
+              <button type="button" class="btn btn-primary" @click="hide">Save</button>
+            </div>
+          {{template "modal_end"}}
+        </div>
+        <button type="button" class="btn btn-secondary" data-level="success" @click="fire">Success toast</button>
+        <button type="button" class="btn btn-secondary" data-level="info" @click="fire">Info toast</button>
+        <button type="button" class="btn btn-secondary" data-level="warn" @click="fire">Warning toast</button>
+        <button type="button" class="btn btn-secondary" data-level="danger" @click="fire">Error toast</button>
+        {{template "copy_button" dict "Text" "https://bitnews.example/api"}}
+      </div>
+    {{template "card_end"}}
+  </section>
+
+  <section aria-labelledby="sg-tabs" class="space-y-3">
+    <h2 id="sg-tabs" class="text-lg">Tabs</h2>
+    {{template "card_start" dict}}
+      <div x-data="tabs">
+        <div class="flex gap-6 border-b border-line" role="tablist" aria-label="Example tabs">
+          <button type="button" role="tab" class="tab" data-tab="general" :aria-selected="isActive('general')" @click="select">General</button>
+          <button type="button" role="tab" class="tab" data-tab="network" :aria-selected="isActive('network')" @click="select">Network</button>
+          <button type="button" role="tab" class="tab" data-tab="security" :aria-selected="isActive('security')" @click="select">Security</button>
+        </div>
+        <div role="tabpanel" class="pt-4 text-fg-muted" x-show="isActive('general')">General settings go here.</div>
+        <div role="tabpanel" class="pt-4 text-fg-muted" x-show="isActive('network')" x-cloak>Network settings go here.</div>
+        <div role="tabpanel" class="pt-4 text-fg-muted" x-show="isActive('security')" x-cloak>Security settings go here.</div>
+      </div>
+    {{template "card_end"}}
+  </section>
+
+  <section aria-labelledby="sg-icons" class="space-y-3">
+    <h2 id="sg-icons" class="text-lg">Icons</h2>
+    {{template "card_start" dict}}
+      <ul class="grid grid-cols-3 gap-4 sm:grid-cols-6 lg:grid-cols-8">
+        {{range .Page.Icons}}
+        <li class="flex flex-col items-center gap-1.5 text-center text-xs text-fg-muted">{{icon . "size-6 text-fg"}}<span>{{.}}</span></li>
+        {{end}}
+      </ul>
+    {{template "card_end"}}
+  </section>
+</div>
+{{end}}

@@ -361,7 +361,7 @@ M1 routes (more are added in later milestones):
 
 **Work**
 - Hash passwords with argon2id using the parameters from the design, stored as PHC strings, and verify in constant time.
-- Add a setup gate: while there is no user, every route except setup, health and static returns `503 setup_required`.
+- Add a setup gate: while there is no user, every route except setup, health and static returns `503 setup_required`. (M6 also lets `GET /`, `GET /login`, `GET /setup` and `POST /setup` through, for the web UI's setup pages.)
 - Generate a one-time setup token at startup, log it at `warn` level and keep it in memory only. `POST /api/v1/setup` requires it.
 - `BITNEWS_ADMIN_PASSWORD_FILE` creates the admin at startup if none exists. The file is read once and its content is never logged.
 - Enforce a minimum password length of 12.

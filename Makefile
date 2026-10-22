@@ -4,7 +4,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 FUZZTIME ?= 10s
 PLATFORMS ?= linux/amd64 linux/arm64
 
-.PHONY: build build-all fmt fmt-check fix fix-check test lint vuln fuzz-smoke check
+.PHONY: build build-all fmt fmt-check fix fix-check test lint vuln fuzz-smoke check css css-watch css-check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/bitnews ./cmd/bitnews
@@ -52,3 +52,25 @@ fuzz-smoke:
 	done
 
 check: fmt-check fix-check lint test vuln
+
+# The web UI stylesheet. internal/web/assets/static/app.css is generated and
+# committed, so `go build` and CI need no Tailwind step. Run `make css` after
+# changing a template, internal/web/src/app.css or internal/web/assets/static/js.
+# The standalone CLI (no node) is downloaded and checksum-verified into
+# bin/tools/ by scripts/get-tailwind.sh.
+WEB_CSS_SRC := internal/web/src/app.css
+WEB_CSS_OUT := internal/web/assets/static/app.css
+
+css:
+	@tw=$$(scripts/get-tailwind.sh) && $$tw -i $(WEB_CSS_SRC) -o $(WEB_CSS_OUT) --minify
+
+css-watch:
+	@tw=$$(scripts/get-tailwind.sh) && $$tw -i $(WEB_CSS_SRC) -o $(WEB_CSS_OUT) --watch
+
+# Fails when the committed stylesheet is out of date. Not part of `check`
+# or CI (they need no Tailwind binary).
+css-check:
+	@tw=$$(scripts/get-tailwind.sh) && tmp=$$(mktemp) && \
+		$$tw -i $(WEB_CSS_SRC) -o $$tmp --minify >/dev/null 2>&1 && \
+		if cmp -s $$tmp $(WEB_CSS_OUT); then rm -f $$tmp; echo "css up to date"; \
+		else rm -f $$tmp; echo "$(WEB_CSS_OUT) is out of date (run 'make css')"; exit 1; fi

@@ -26,6 +26,7 @@ import (
 	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
+	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
 // DefaultSessionCleanup is how often expired sessions are deleted.
@@ -316,21 +317,34 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 			GlobalShare: qbitGlobalShare(settings.Current), Logger: log,
 		})
 	}
+	serverService := app.NewServerService(servers, bus, prober)
+	apiKeys := auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyLogger(log))
+	webUI, err := web.New(web.Deps{
+		Logger: log, Version: deps.Version.Version,
+		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
+		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
+		Adder: adder, APIKeys: apiKeys, AdapterCredentials: adapterCreds,
+		Runtime: webRuntime(deps), Torrents: webTorrents(deps),
+	})
+	if err != nil {
+		return nil, err
+	}
 	server, err := api.New(api.Config{
 		Logger:     log,
 		Version:    deps.Version,
 		Downloads:  downloadService,
 		Adder:      adder,
 		Categories: categoryService,
-		Servers:    app.NewServerService(servers, bus, prober),
+		Servers:    serverService,
 		Settings:   settings,
 		Setup:      setup,
 		Sessions:   sessions,
 		UIAuth:     uiAuth,
-		APIKeys:    auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyLogger(log)),
+		APIKeys:    apiKeys,
 		Bus:        bus,
 
 		AdapterCredentials: adapterCreds,
+		Web:                webUI,
 		QBit:               qbitHandler,
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
 			Credentials: adapterCreds, Downloads: downloadService, Adder: adder,

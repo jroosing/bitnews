@@ -109,6 +109,8 @@ type e2e struct {
 	torrentOpts daemon.TorrentOptions
 	// engine is the torrent engine to inject when torrents is on.
 	engine core.TorrentEngine
+	// noAdmin leaves the database without a user, so first-run setup is open.
+	noAdmin bool
 	// tincomplete and tcomplete are the torrent roots.
 	tincomplete, tcomplete string
 
@@ -125,6 +127,9 @@ type e2e struct {
 }
 
 type e2eOption func(*e2e)
+
+// withoutAdmin starts the daemon in first-run setup mode.
+func withoutAdmin() e2eOption { return func(e *e2e) { e.noAdmin = true } }
 
 func newE2E(t *testing.T, opts ...e2eOption) *e2e {
 	t.Helper()
@@ -168,9 +173,11 @@ func newE2E(t *testing.T, opts ...e2eOption) *e2e {
 	settings.Paths.Usenet = core.Roots{Incomplete: e.incomplete, Complete: e.complete}
 	settings.Paths.Torrent = core.Roots{Incomplete: e.tincomplete, Complete: e.tcomplete}
 	require.NoError(t, store.NewSettingsRepo(e.db).Save(ctx, settings))
-	require.NoError(t, store.NewUserRepo(e.db).Create(ctx, core.User{
-		ID: core.NewID(), Username: "admin", PasswordHash: sharedAdminHash(t), CreatedAt: time.Now(),
-	}))
+	if !e.noAdmin {
+		require.NoError(t, store.NewUserRepo(e.db).Create(ctx, core.User{
+			ID: core.NewID(), Username: "admin", PasswordHash: sharedAdminHash(t), CreatedAt: time.Now(),
+		}))
+	}
 	e.apiKey, _, err = auth.NewAPIKeyService(store.NewAPIKeyRepo(e.db)).Create(ctx, "e2e", core.APIKeyScopeWrite)
 	require.NoError(t, err)
 	return e
@@ -201,7 +208,9 @@ func (e *e2e) start() {
 	e.runDone = make(chan error, 1)
 	go func() { e.runDone <- d.Run(ctx) }()
 	e.ts = httptest.NewServer(d.Handler())
-	e.sse = e.connectSSE()
+	if !e.noAdmin { // the event stream is gated while setup is open
+		e.sse = e.connectSSE()
+	}
 	e.t.Cleanup(e.stop)
 }
 

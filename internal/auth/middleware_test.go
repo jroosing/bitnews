@@ -107,6 +107,16 @@ func TestUIAuthAcceptsAValidSessionCookie(t *testing.T) {
 	assert.Equal(t, "admin", e.seen.Username)
 }
 
+func TestPrincipalCSRFTokenIsTheSessionsSynchronizerToken(t *testing.T) {
+	e := newUIEnv(t)
+	token := e.login(t)
+
+	e.do(uiReq{cookie: token})
+
+	require.NotNil(t, e.seen)
+	assert.Equal(t, auth.CSRFToken(token), e.seen.CSRFToken())
+}
+
 func TestUIAuthRejectsMissingOrInvalidCookieWith401(t *testing.T) {
 	e := newUIEnv(t)
 

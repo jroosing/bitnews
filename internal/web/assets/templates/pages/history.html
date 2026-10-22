@@ -1,0 +1,7 @@
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Downloads that are ready or have failed.</p>{{end}}
+
+{{define "content"}}
+{{template "card_start" dict "NoPad" true}}
+  {{template "empty_state" dict "Icon" "history" "Title" "Nothing in the history yet" "Body" "Finished downloads stay here until you remove them, with the reason for any failure."}}
+{{template "card_end"}}
+{{end}}

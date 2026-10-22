@@ -1,0 +1,21 @@
+{{define "layout_bare"}}<!doctype html>
+<html lang="en">
+<head>
+{{template "head" .}}
+</head>
+<body class="auth-backdrop min-h-dvh">
+<a class="skip-link" href="#main">Skip to main content</a>
+<div class="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
+  <div class="mb-8 flex flex-col items-center gap-3 text-center">
+    <span class="logo-mark size-12 rounded-xl">{{icon "queue" "size-7"}}</span>
+    <span class="text-2xl font-semibold tracking-tight text-fg">bitnews</span>
+  </div>
+  <main id="main" tabindex="-1" class="w-full max-w-md focus:outline-none">
+    {{template "content" .}}
+  </main>
+  <p class="mt-8 text-xs text-fg-subtle">Usenet and BitTorrent, ready for your media manager.</p>
+</div>
+{{template "toast_region" .}}
+</body>
+</html>
+{{end}}

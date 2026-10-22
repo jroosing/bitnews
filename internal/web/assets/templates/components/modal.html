@@ -1,0 +1,35 @@
+{{/*
+  modal_start / modal_end: a native <dialog>. Wrap the trigger and the dialog
+  in one x-data="modal" element:
+
+    <div x-data="modal">
+      <button type="button" class="btn btn-secondary" @click="show">Open</button>
+      {{template "modal_start" dict "ID" "my-dialog" "Title" "Title"}}
+        ...body...
+      {{template "modal_end"}}
+    </div>
+
+  Buttons inside close it with @click="hide". Keys: ID, Title, Description.
+*/}}
+{{define "modal_start"}}<dialog x-ref="dlg" id="{{.ID}}" class="modal" aria-labelledby="{{.ID}}-title"{{with .Description}} aria-describedby="{{$.ID}}-desc"{{end}} @click="onBackdrop">
+  <div class="p-6">
+    <h2 id="{{.ID}}-title" class="text-lg">{{.Title}}</h2>
+    {{- with .Description}}<p id="{{$.ID}}-desc" class="mt-1.5 text-sm text-fg-muted">{{.}}</p>{{end}}
+    <div class="mt-5">{{end}}
+{{define "modal_end"}}</div>
+  </div>
+</dialog>{{end}}
+
+{{/* confirm_dialog: the one global dialog behind hx-confirm (see app.js). */}}
+{{define "confirm_dialog"}}
+<dialog x-data="confirmDialog" x-ref="dlg" id="confirm-dialog" class="modal" aria-labelledby="confirm-title" @close="onClose" @click="onBackdrop">
+  <div class="p-6">
+    <h2 id="confirm-title" class="text-lg">Are you sure?</h2>
+    <p class="mt-1.5 text-sm text-fg-muted" x-text="message"></p>
+    <div class="mt-6 flex justify-end gap-2">
+      <button type="button" class="btn btn-secondary" @click="cancel">Cancel</button>
+      <button type="button" class="btn" :class="acceptClass" @click="accept" x-text="label"></button>
+    </div>
+  </div>
+</dialog>
+{{end}}

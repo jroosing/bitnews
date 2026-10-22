@@ -1,0 +1,2 @@
+{{/* csrf_field: the hidden field plain form posts use. Pass the View ($). */}}
+{{define "csrf_field"}}{{if .CSRF}}<input type="hidden" name="_csrf" value="{{.CSRF}}">{{end}}{{end}}
