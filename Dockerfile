@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# bitnews container image: a static Go binary on distroless.
+# bitnews container image: a static Go binary and the two static post-processing
+# tools (7-Zip, par2cmdline-turbo) on distroless.
 #
 #   docker build -t bitnews --build-arg VERSION="$(git describe --tags --always --dirty)" \
 #                           --build-arg COMMIT="$(git rev-parse --short HEAD)" .
@@ -39,6 +40,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT" \
         -o /out/bitnews ./cmd/bitnews
 
+# The post-processing tools (ADR-0007): 7-Zip (7zz) and par2cmdline-turbo
+# (par2), static binaries pinned by version and SHA-256 in
+# scripts/get-postproc-tools.sh, fetched for the target platform.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends xz-utils unzip \
+ && rm -rf /var/lib/apt/lists/* \
+ && scripts/get-postproc-tools.sh linux "$TARGETARCH" /out/tools
+
 # /config skeleton, copied into the final stage because distroless has no
 # shell to mkdir with. The final stage copies it with mode 0777, so a fresh
 # named volume (which copies that directory's owner and mode on first use) can
@@ -62,6 +71,7 @@ LABEL org.opencontainers.image.title="bitnews" \
       org.opencontainers.image.revision="$COMMIT"
 
 COPY --from=build /out/bitnews /bitnews
+COPY --from=build /out/tools/7zz /out/tools/par2 /usr/local/bin/
 COPY --from=build --chown=65532:65532 --chmod=0777 /out/config /config
 
 # Bootstrap settings. The master key is generated on first start and stored in

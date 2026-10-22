@@ -25,6 +25,8 @@ On first start (no admin yet), bitnews prints a one-time **setup token** in its 
 
 ## Docker
 
+The image holds bitnews and the two programs it runs for post-processing ([ADR-0007](adr/0007-external-postproc-tools.md)): 7-Zip (`7zz`) and par2cmdline-turbo (`par2`), static binaries pinned by version and checksum, so the image stays on distroless and has no shell. Archives and PAR2 sets are untrusted input and these are native programs, so keep the container hardening from the compose example (non-root user, read-only root with a `tmpfs` at `/tmp`, `cap_drop: ALL`, `no-new-privileges`) and rebuild the image when either tool publishes a security fix. Consider a memory limit (`mem_limit`) too: 7-Zip can use a lot of memory on a large archive.
+
 ### Build the image
 
 ```sh
@@ -193,7 +195,7 @@ The `HEALTHCHECK` uses `--interval=30s --timeout=5s --start-period=20s --retries
 
 ## Without Docker
 
-The binary is static and has no other files to install, so it also runs directly (`make build-all` builds `dist/bitnews-linux-amd64` and `-arm64`). Set the [bootstrap settings](#bootstrap-settings) as flags or environment variables, run it as the user that owns your media (see [Identity and UMASK](#identity-and-umask)), and keep it behind a reverse proxy as described above. `bitnews healthcheck` works outside Docker too, with the same contract. Docker is the supported way to run it; there is no systemd unit.
+The binary is static and has no other files to install, so it also runs directly (`make build-all` builds `dist/bitnews-linux-amd64` and `-arm64`). It needs two programs on `PATH`: `7zz` (7-Zip 23 or newer, for unpacking) and `par2` (par2cmdline or par2cmdline-turbo, for repair), and refuses to start without them. `scripts/get-postproc-tools.sh` downloads the pinned, checksum-verified static versions for Linux and macOS into `bin/tools/`. Set the [bootstrap settings](#bootstrap-settings) as flags or environment variables, run it as the user that owns your media (see [Identity and UMASK](#identity-and-umask)), and keep it behind a reverse proxy as described above. `bitnews healthcheck` works outside Docker too, with the same contract. Docker is the supported way to run it; there is no systemd unit.
 
 ## Hardening checklist
 
