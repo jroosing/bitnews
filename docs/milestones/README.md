@@ -58,17 +58,17 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/3) · [wiki]
 | ID | Issue | Title | Labels | Status |
 |---|---|---|---|---|
 | M3-01 | [#28](https://gitlab.com/kyura4k/bitnews/-/issues/28) | Post-processing pipeline orchestrator | area:core, area:postproc, ready-for-agent | done |
-| M3-02 | [#29](https://gitlab.com/kyura4k/bitnews/-/issues/29) | PAR2 packet parser | area:postproc, ready-for-agent | done |
-| M3-03 | [#30](https://gitlab.com/kyura4k/bitnews/-/issues/30) | PAR2 Verify including obfuscated-file renaming | area:postproc, ready-for-agent | done |
-| M3-04 | [#31](https://gitlab.com/kyura4k/bitnews/-/issues/31) | GF(2^16) arithmetic and Reed-Solomon solver | area:postproc, ready-for-agent | done |
-| M3-05 | [#32](https://gitlab.com/kyura4k/bitnews/-/issues/32) | PAR2 Repair | area:postproc, ready-for-agent | done |
-| M3-06 | [#33](https://gitlab.com/kyura4k/bitnews/-/issues/33) | PAR2 golden fixtures and benchmarks | area:postproc, area:ci, ready-for-human | done |
+| M3-02 | [#29](https://gitlab.com/kyura4k/bitnews/-/issues/29) | PAR2 packet parser | area:postproc, ready-for-agent | done, superseded by ADR-0007 (par2 subprocess) |
+| M3-03 | [#30](https://gitlab.com/kyura4k/bitnews/-/issues/30) | PAR2 Verify including obfuscated-file renaming | area:postproc, ready-for-agent | done, superseded by ADR-0007 (par2 subprocess) |
+| M3-04 | [#31](https://gitlab.com/kyura4k/bitnews/-/issues/31) | GF(2^16) arithmetic and Reed-Solomon solver | area:postproc, ready-for-agent | done, superseded by ADR-0007 (par2 subprocess) |
+| M3-05 | [#32](https://gitlab.com/kyura4k/bitnews/-/issues/32) | PAR2 Repair | area:postproc, ready-for-agent | done, superseded by ADR-0007 (par2 subprocess) |
+| M3-06 | [#33](https://gitlab.com/kyura4k/bitnews/-/issues/33) | PAR2 golden fixtures and benchmarks | area:postproc, area:ci, ready-for-human | done, superseded by ADR-0007 (par2 subprocess) |
 | M3-07 | [#34](https://gitlab.com/kyura4k/bitnews/-/issues/34) | Deferred recovery volumes | area:usenet, area:postproc, ready-for-agent | done |
 | M3-08 | [#35](https://gitlab.com/kyura4k/bitnews/-/issues/35) | Archive detection and Unpack (RAR and 7z) | area:postproc, ready-for-agent | done |
 | M3-09 | [#36](https://gitlab.com/kyura4k/bitnews/-/issues/36) | Unpack guards — path traversal, entry types and size caps | area:postproc, ready-for-agent | done |
 | M3-10 | [#37](https://gitlab.com/kyura4k/bitnews/-/issues/37) | Cleanup and move to complete | area:postproc, ready-for-agent | done |
-| M3-11 | [#38](https://gitlab.com/kyura4k/bitnews/-/issues/38) | Compatibility spike — pure-Go unpack against real releases | area:postproc, ready-for-human | open |
-| M3-12 | [#66](https://gitlab.com/kyura4k/bitnews/-/issues/66) | 7z header memory guard | area:postproc, ready-for-agent | done |
+| M3-11 | [#38](https://gitlab.com/kyura4k/bitnews/-/issues/38) | Compatibility spike — pure-Go unpack against real releases | area:postproc, ready-for-human | superseded (ADR-0007) |
+| M3-12 | [#66](https://gitlab.com/kyura4k/bitnews/-/issues/66) | 7z header memory guard | area:postproc, ready-for-agent | superseded (ADR-0007) |
 
 ### [M4 — SABnzbd adapter](m4-sabnzbd-adapter.md)
 
@@ -129,3 +129,4 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/7) · [wiki]
 | M7-03 | [#69](https://gitlab.com/kyura4k/bitnews/-/issues/69) | Remove the privilege drop | area:deploy, ready-for-agent | done |
 | M7-04 | [#70](https://gitlab.com/kyura4k/bitnews/-/issues/70) | A single API key | area:auth, area:adapter, ready-for-agent | done |
 | M7-05 | [#71](https://gitlab.com/kyura4k/bitnews/-/issues/71) | Security page key card | area:ui, area:auth, ready-for-agent | done |
+| M7-06 | [#72](https://gitlab.com/kyura4k/bitnews/-/issues/72) | Post-processing with 7-Zip and par2cmdline-turbo | area:postproc, area:deploy, ready-for-agent | open |

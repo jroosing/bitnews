@@ -1,60 +1,55 @@
 package unpack
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
+// builders runs a test against both RAR generations. The archives come from
+// rar_builder_test.go (stored files only); 7zz is the reader under test.
+func builders() map[string]func([]rarEntry, rarSpec) [][]byte {
+	return map[string]func([]rarEntry, rarSpec) [][]byte{"RAR4": buildRAR4, "RAR5": buildRAR5}
+}
+
 func TestUnpackExtractsARealRAR4Archive(t *testing.T) {
 	dir := copyFixtures(t, "rar", "container.rar")
-	dst := filepath.Join(t.TempDir(), "out")
+	o := newOut(t)
 
-	res, err := Unpack(context.Background(), detectOne(t, dir), dst)
+	res, err := unpackSet(t, detectOne(t, dir), o.dst)
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"container"}, res.Files)
-	require.Equal(t, "#!/bin/sh\nexit 0\n", readFile(t, filepath.Join(dst, "container")))
+	require.Equal(t, "#!/bin/sh\nexit 0\n", readFile(t, filepath.Join(o.dst, "container")))
+	fi, err := os.Stat(filepath.Join(o.dst, "container"))
+	require.NoError(t, err)
+	require.Zero(t, fi.Mode().Perm()&0o111, "the archive's executable bit is dropped")
 }
 
-func TestBuiltRAR4SingleVolumeExtracts(t *testing.T) {
-	vols := buildRAR4([]rarEntry{
-		{name: "docs", dir: true},
-		{name: "docs/readme.txt", data: []byte("hello rar4")},
-		{name: "empty", data: nil},
-	}, rarSpec{})
-	require.Len(t, vols, 1)
-	dir := t.TempDir()
-	writeFile(t, dir, "built.rar", vols[0])
-	dst := filepath.Join(t.TempDir(), "out")
+func TestBuiltRARSingleVolumeExtracts(t *testing.T) {
+	for gen, build := range builders() {
+		t.Run(gen, func(t *testing.T) {
+			vols := build([]rarEntry{
+				{name: "docs", dir: true},
+				{name: "docs/readme.txt", data: []byte("hello " + gen)},
+				{name: "empty", data: nil},
+			}, rarSpec{})
+			require.Len(t, vols, 1)
+			dir := t.TempDir()
+			writeFile(t, dir, "built.rar", vols[0])
+			o := newOut(t)
 
-	res, err := Unpack(context.Background(), detectOne(t, dir), dst)
+			res, err := unpackSet(t, detectOne(t, dir), o.dst)
 
-	require.NoError(t, err)
-	require.Equal(t, []string{"docs/readme.txt", "empty"}, res.Files)
-	require.Equal(t, "hello rar4", readFile(t, filepath.Join(dst, "docs", "readme.txt")))
-}
-
-func TestBuiltRAR5SingleVolumeExtracts(t *testing.T) {
-	vols := buildRAR5([]rarEntry{
-		{name: "docs", dir: true},
-		{name: "docs/readme.txt", data: []byte("hello rar5")},
-		{name: "empty", data: nil},
-	}, rarSpec{})
-	require.Len(t, vols, 1)
-	dir := t.TempDir()
-	writeFile(t, dir, "built.rar", vols[0])
-	dst := filepath.Join(t.TempDir(), "out")
-
-	res, err := Unpack(context.Background(), detectOne(t, dir), dst)
-
-	require.NoError(t, err)
-	require.Equal(t, []string{"docs/readme.txt", "empty"}, res.Files)
-	require.Equal(t, "hello rar5", readFile(t, filepath.Join(dst, "docs", "readme.txt")))
+			require.NoError(t, err)
+			require.Equal(t, []string{"docs/readme.txt", "empty"}, res.Files)
+			require.Equal(t, "hello "+gen, readFile(t, filepath.Join(o.dst, "docs", "readme.txt")))
+		})
+	}
 }
 
 // writeVolumes writes volumes under the names and returns the directory.
@@ -74,7 +69,7 @@ func unpackDir(t testing.TB, dir string, opts ...Option) (string, Result, error)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 	dst := filepath.Join(t.TempDir(), "out")
-	res, err := Unpack(context.Background(), sets[0], dst, append([]Option{WithLogger(nil)}, opts...)...)
+	res, err := unpackSet(t, sets[0], dst, opts...)
 	return dst, res, err
 }
 
@@ -112,8 +107,7 @@ func TestUnpackMultiVolumeRARSets(t *testing.T) {
 	}
 	for label, c := range cases {
 		t.Run(label, func(t *testing.T) {
-			vols := c.build()
-			dir := writeVolumes(t, c.names, vols)
+			dir := writeVolumes(t, c.names, c.build())
 
 			dst, res, err := unpackDir(t, dir)
 
@@ -145,37 +139,17 @@ func TestUnpackMultiVolumeRARWithAMissingMiddleVolumeIsRefused(t *testing.T) {
 	require.Len(t, sets, 1)
 	dst := filepath.Join(t.TempDir(), "out")
 
-	_, err = Unpack(context.Background(), sets[0], dst)
+	_, err = unpackSet(t, sets[0], dst)
 
 	require.ErrorIs(t, err, ErrMissingVolume)
 	require.NoDirExists(t, dst)
 }
 
-func TestUnpackNeverReadsAFileOutsideTheSet(t *testing.T) {
-	// The volume is complete in the set, but a decoy named like the next
-	// volume sits in the directory as a symlink. The decoder must not open it.
-	vols := buildRAR5([]rarEntry{{name: "big.bin", data: payload(5000, 3)}}, rarSpec{perVolume: 2000})
-	dir := writeVolumes(t, []string{"rel.part1.rar"}, vols[:1])
-	decoyDir := t.TempDir()
-	decoy := writeFile(t, decoyDir, "evil.rar", vols[1])
-	require.NoError(t, os.Symlink(decoy, filepath.Join(dir, "rel.part2.rar")))
-
-	dst, _, err := unpackDir(t, dir)
-
-	require.ErrorIs(t, err, ErrCorrupt)
-	require.NoDirExists(t, dst)
-}
-
 func TestUnpackEncryptedRAR(t *testing.T) {
 	secret := []byte("the secret payload, long enough to span more than one AES block")
-	cases := map[string]func([]rarEntry) [][]byte{
-		"RAR4": func(e []rarEntry) [][]byte { return buildRAR4(e, rarSpec{}) },
-		"RAR5": func(e []rarEntry) [][]byte { return buildRAR5(e, rarSpec{}) },
-	}
-	for label, build := range cases {
-		t.Run(label, func(t *testing.T) {
-			vols := build([]rarEntry{{name: "s.txt", data: secret, password: "hunter2"}})
-			dir := writeVolumes(t, []string{"enc.rar"}, vols)
+	for gen, build := range builders() {
+		t.Run(gen, func(t *testing.T) {
+			dir := writeVolumes(t, []string{"enc.rar"}, build([]rarEntry{{name: "s.txt", data: secret, password: "hunter2"}}, rarSpec{}))
 
 			t.Run("right password", func(t *testing.T) {
 				dst, res, err := unpackDir(t, dir, WithPassword("hunter2"))

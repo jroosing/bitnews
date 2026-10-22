@@ -14,5 +14,9 @@ rar/container.rar
     (https://github.com/Homebrew/brew/blob/master/LICENSE.txt).
     A tiny RAR 4.x archive holding one file named "container".
 
-All other archives used by the tests are generated in memory by the test
-helpers (rar_builder_test.go) and are not stored here.
+All other archives used by the tests are generated on the fly by the test
+helpers (rar_builder_test.go for stored RAR, archive/zip, and the real 7zz) and
+are not stored here.
+
+testdata/fuzz/FuzzUnpack holds seed inputs (crafted 7z headers) for the fuzz
+target; they are read by 7zz as hostile input.

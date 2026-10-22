@@ -15,9 +15,15 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/postproc/unpack"
 )
 
-// Unpacker implements core.Unpacker on top of the unpack package. The zero
-// value is ready to use (no passwords, no free space reserve).
+// Unpacker implements core.Unpacker on top of the unpack package, which runs
+// the 7zz program (ADR-0007). The zero value is ready to use (7zz is looked up
+// on PATH, no passwords, no free space reserve).
 type Unpacker struct {
+	// SevenZip is the path of the 7zz program, as found by tool.Locate at
+	// startup. Optional: empty means look 7zz up on PATH for each unpack. A
+	// missing program is an ordinary error (not an archive error), wrapping
+	// tool.ErrNotFound.
+	SevenZip string
 	// Passwords returns the archive password of a Download. Optional: nil
 	// means no password. An empty Secret also means none. An error from it
 	// is returned as it is.
@@ -103,16 +109,12 @@ func (u Unpacker) Unpack(ctx context.Context, _, dst string, opts core.UnpackOpt
 	return u.unpackMany(ctx, sets, dst, uopts)
 }
 
-// DefaultMaxDictionary caps the decoder dictionary or model memory one
-// archive may ask for (RAR dictionary, 7z LZMA/LZMA2 dictionary, PPMd memory).
-// It is lower than the unpack package's own default because the daemon decodes
-// archives from untrusted uploaders next to everything else it does; real
-// releases rarely need more than 64 MiB. Options can override it.
-const DefaultMaxDictionary = 256 << 20
-
 // options builds the unpack options for a Download.
 func (u Unpacker) options(id core.ID) ([]unpack.Option, error) {
-	o := []unpack.Option{unpack.WithMaxDictionary(DefaultMaxDictionary)}
+	var o []unpack.Option
+	if u.SevenZip != "" {
+		o = append(o, unpack.WithSevenZip(u.SevenZip))
+	}
 	if u.Passwords != nil {
 		pw, err := u.Passwords(id)
 		if err != nil {
@@ -227,8 +229,10 @@ func mergeInto(src, dst string) error {
 //
 // A bomb or an oversized or over-full archive is treated as a damaged
 // archive: the Download cannot be unpacked within the limits, and there is
-// no sentinel for "too big". Context errors and every other error pass
-// through (the latter wrapped, so the orchestrator takes it as internal).
+// no sentinel for "too big". A symlink, hardlink, device or unsafe name in
+// the archive is core.ErrPathViolation. Context errors and every other error
+// (7zz missing, 7zz killed, a bug in the command line) pass through
+// (wrapped, so the orchestrator takes it as internal).
 func MapUnpackError(ctx context.Context, err error) error {
 	switch {
 	case err == nil:

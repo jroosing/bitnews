@@ -1,9 +1,7 @@
 package unpack
 
-import "io"
-
 // entryKind is the type of an archive entry. Only files and directories are
-// ever extracted.
+// ever extracted; every other kind fails the Unpack.
 type entryKind int
 
 const (
@@ -31,29 +29,16 @@ func (k entryKind) String() string {
 	case kindFIFO:
 		return "fifo"
 	}
-	return "other"
+	return "special entry"
 }
 
-// entry is one archive member as the extractor sees it. Everything about it is
-// hostile until the guards have looked at it.
+// entry is one archive member as the 7-Zip listing describes it. Everything
+// about it is hostile until the guards have looked at it.
 type entry struct {
 	name string
 	kind entryKind
-	// size is the declared uncompressed size, negative when unknown.
+	// size is the declared uncompressed size, zero for directories.
 	size int64
-	// open returns the content. It is only called for files (and for skipped
-	// entries whose content must still be read, as in solid archives), and the
-	// reader is only valid until the next call to source.next.
-	open func() (io.Reader, error)
+	// encrypted says the content (or the name) is encrypted.
+	encrypted bool
 }
-
-// source iterates over the entries of one archive.
-type source interface {
-	// next returns the next entry, or io.EOF after the last one. The errors it
-	// returns are already classified (ErrCorrupt, ErrPassword, ...).
-	next() (*entry, error)
-	close() error
-}
-
-// openFunc opens the archive for one pass over its entries.
-type openFunc func() (source, error)

@@ -43,3 +43,17 @@ func moduleRoot() string {
 		dir = parent
 	}
 }
+
+// UsePinned puts bin/tools at the module root first on PATH, when it exists,
+// so a test that starts the daemon (which looks the tools up on PATH) finds
+// the pinned versions. Call it from TestMain.
+func UsePinned() {
+	root := moduleRoot()
+	if root == "" {
+		return
+	}
+	dir := filepath.Join(root, "bin", "tools")
+	if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		_ = os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+}

@@ -16,7 +16,7 @@ var (
 	// ErrPassword means the archive is encrypted and the password is missing or
 	// wrong.
 	ErrPassword = errors.New("unpack: password missing or wrong")
-	// ErrUnsupported means the archive uses a feature the pure-Go decoders lack.
+	// ErrUnsupported means the archive uses a compression method or feature 7zz does not support.
 	ErrUnsupported = errors.New("unpack: unsupported archive feature")
 	// ErrCorrupt means the archive is damaged, truncated or lies about itself.
 	ErrCorrupt = errors.New("unpack: archive corrupt")

@@ -4,7 +4,7 @@ package unpack
 // can build the archives they need (multi-volume sets, hostile names, links,
 // encrypted files) without a RAR tool. The layouts follow the public format
 // descriptions (RAR 4.x technote and RAR 5.0 technote) and what
-// nwaples/rardecode reads. Stored files are not compressed; the decoders are
+// 7-Zip reads. Stored files are not compressed; the decoders are
 // covered by the real archives in testdata.
 
 import (
@@ -219,6 +219,19 @@ func splitIntoVolumes(entries []rarEntry, perVolume int) [][]part {
 	return vols
 }
 
+// partCRC is the CRC a volume's file header carries: the CRC of the part for a
+// file that goes on in the next volume, the CRC of the whole file in the last
+// part (this is what 7-Zip and unrar check).
+func partCRC(p part) uint32 {
+	if p.e.link != linkNone {
+		return crc32.ChecksumIEEE(nil) // a link has no content
+	}
+	if p.split&2 != 0 {
+		return crc32.ChecksumIEEE(p.data)
+	}
+	return crc32.ChecksumIEEE(p.e.data)
+}
+
 // buildRAR4 returns one byte slice per volume.
 func buildRAR4(entries []rarEntry, spec rarSpec) [][]byte {
 	vols := splitIntoVolumes(entries, spec.perVolume)
@@ -240,7 +253,7 @@ func buildRAR4(entries []rarEntry, spec rarSpec) [][]byte {
 		b.Write(rar4Header(0x73, arcFlags, make([]byte, 6)))
 		for _, p := range parts {
 			whole := p.e.data
-			fileCRC := crc32.ChecksumIEEE(whole)
+			fileCRC := partCRC(p)
 			content := p.data
 			var salt []byte
 			if p.e.password != "" {
@@ -410,7 +423,7 @@ func buildRAR5(entries []rarEntry, spec rarSpec) [][]byte {
 			if link {
 				whole = nil
 			}
-			b.Write(rar5FileBlock(p.e, p.split, uint64(len(whole)), crc32.ChecksumIEEE(whole), content, enc))
+			b.Write(rar5FileBlock(p.e, p.split, uint64(len(whole)), partCRC(p), content, enc))
 			b.Write(content)
 		}
 		var endFlags uint64

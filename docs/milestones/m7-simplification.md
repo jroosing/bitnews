@@ -6,7 +6,7 @@ Remove what the operating system already does and what the user is responsible f
 
 ## Scope
 
-**In:** shape-only path validation, removing the same-filesystem warning, one free-space helper, removing the privilege drop, a single API key for SABnzbd, qBittorrent and the own API, and removing dead code.
+**In:** running 7-Zip and par2cmdline-turbo instead of the pure-Go post-processing (M7-06, [ADR-0007](../adr/0007-external-postproc-tools.md)), shape-only path validation, removing the same-filesystem warning, one free-space helper, removing the privilege drop, a single API key for SABnzbd, qBittorrent and the own API, and removing dead code.
 
 **Out:** the restart-only settings machinery and `MoveDir` (both stay as they are), any new feature.
 
@@ -87,3 +87,22 @@ Remove what the operating system already does and what the user is responsible f
 **Acceptance criteria**
 - [ ] The key is shown on the page, and Rotate needs the confirm.
 - [ ] A test confirms the other cards are unchanged and the old routes are gone.
+
+### M7-06: Post-processing with 7-Zip and par2cmdline-turbo
+- **Labels:** area:postproc, area:deploy, ready-for-agent
+- **Depends on:** M3-06, M3-08
+
+**Goal:** Replace the pure-Go PAR2 and RAR/7z code with the reference tools, as decided in [ADR-0007](../adr/0007-external-postproc-tools.md) (reverses ADR-0002).
+
+**Work**
+- `internal/postproc/tool`: the only place that starts a process (no shell, scrubbed environment, capped output, timeout, process-group kill). `scripts/get-postproc-tools.sh` pins both tools by version and SHA-256 (`make tools`).
+- Unpack runs `7zz`: list first and enforce the entry, size and ratio caps, extract to staging, then walk the result and refuse symlinks, special files and escaping paths. Passwords go through stdin. Delete the pure-Go RAR/7z code, the 7z header guard (M3-12) and the `rardecode`/`sevenzip` dependencies.
+- PAR2 verify and repair run `par2`; parse its output into the existing `VerifyOutcome`. A small Go pre-check refuses hostile file names inside a set before par2 runs. Delete the pure-Go PAR2 and GF(2^16) code.
+- The daemon refuses to start when `7zz` or `par2` is missing from `PATH`.
+- Docker image: static `7zz` and `par2` for amd64 and arm64 on distroless. CI installs them for the tests.
+
+**Acceptance criteria**
+- [ ] The orchestrator and the core ports are unchanged, and the post-processing end-to-end tests pass with the real tools.
+- [ ] Crafted archives and PAR2 sets (traversal names, symlinks, bombs, wrong password, truncation, missing volume) end in the right core error and write nothing outside the destination.
+- [ ] No pure-Go PAR2 or RAR/7z code or dependency remains, and `os/exec` is imported only by `internal/postproc/tool`.
+- [ ] The image runs both tools on amd64 and arm64.

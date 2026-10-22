@@ -15,7 +15,7 @@ import (
 // level deep: a RAR inside a RAR is unpacked, a RAR inside that is left alone.
 // Each inner archive is extracted next to where it lay, under the same guards,
 // and its volumes are deleted afterwards. Everything stays inside stage.
-func unpackNested(ctx context.Context, stage string, cfg *config, res *Result) error {
+func unpackNested(ctx context.Context, z *sevenZip, stage string, cfg *config, res *Result) error {
 	var dirs []string
 	err := filepath.WalkDir(stage, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -40,7 +40,7 @@ func unpackNested(ctx context.Context, stage string, cfg *config, res *Result) e
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := unpackInner(ctx, stage, dir, set, cfg, n, res); err != nil {
+			if err := unpackInner(ctx, z, stage, dir, set, cfg, n); err != nil {
 				return err
 			}
 			n++
@@ -56,7 +56,7 @@ func unpackNested(ctx context.Context, stage string, cfg *config, res *Result) e
 // unpackInner extracts one inner set into a scratch directory below stage and
 // moves the result into dir. A name that is already taken is made unique, so
 // the inner archive can never overwrite what the outer one produced.
-func unpackInner(ctx context.Context, stage, dir string, set ArchiveSet, cfg *config, n int, res *Result) error {
+func unpackInner(ctx context.Context, z *sevenZip, stage, dir string, set ArchiveSet, cfg *config, n int) error {
 	if set.Err != nil {
 		return fmt.Errorf("nested archive %q: %w", set.Name, set.Err)
 	}
@@ -74,16 +74,10 @@ func unpackInner(ctx context.Context, stage, dir string, set ArchiveSet, cfg *co
 		})
 		inner.maxBytes = max(cfg.maxBytes-used, 1)
 	}
-	open, packed, err := openerFor(set, &inner)
-	if err != nil {
-		return err
-	}
 	scratch := filepath.Join(stage, fmt.Sprintf(".nested-%d", n))
-	r, err := unpackLevel(ctx, scratch, open, packed, &inner, false)
-	if err != nil {
+	if _, err := unpackLevel(ctx, z, set, scratch, &inner, false); err != nil {
 		return fmt.Errorf("nested archive %q: %w", set.Name, err)
 	}
-	res.Skipped += r.Skipped
 	entries, err := os.ReadDir(scratch)
 	if err != nil {
 		return err

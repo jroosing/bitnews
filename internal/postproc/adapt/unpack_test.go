@@ -1,6 +1,8 @@
 package adapt
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -451,22 +453,47 @@ func children(t testing.TB, dir string) []string {
 	return out
 }
 
-func TestUnpacker_DefaultDictionaryCapIs256MiB(t *testing.T) {
-	assert.Equal(t, int64(256<<20), int64(DefaultMaxDictionary))
+func TestUnpacker_SevenZipFieldSelectsTheProgram(t *testing.T) {
+	dir := archiveDir(t, "7z/t0.7z")
+	u := Unpacker{SevenZip: filepath.Join(t.TempDir(), "no-such-7zz")}
+	dst := filepath.Join(t.TempDir(), "out")
+
+	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, Unpacker{}, dir)})
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, core.ErrArchiveCorrupt, "a missing program is not the archive's fault")
+	assert.NotErrorIs(t, err, core.ErrArchiveUnsupported)
+	assert.NoDirExists(t, dst)
 }
 
-func TestUnpacker_OptionsCanOverrideTheDictionaryCap(t *testing.T) {
-	dir := archiveDir(t, "7z/lzma2.7z")
-	ctx := context.Background()
-
-	// A one-byte cap is below what the stream needs, so it must reach the
-	// unpacker and win over the adapter's default.
-	strict := Unpacker{Options: []unpack.Option{unpack.WithMaxDictionary(1)}}
-	_, err := strict.Unpack(ctx, dir, filepath.Join(t.TempDir(), "out"), core.UnpackOptions{Sets: detect(t, strict, dir)})
-	require.Error(t, err)
-
-	// The default cap lets a normal archive through.
-	def := Unpacker{}
-	_, err = def.Unpack(ctx, dir, filepath.Join(t.TempDir(), "out"), core.UnpackOptions{Sets: detect(t, def, dir)})
+func TestUnpacker_ASymlinkInTheArchiveIsAPathViolation(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	h := &zip.FileHeader{Name: "link", Method: zip.Store}
+	h.SetMode(0o777 | os.ModeSymlink)
+	w, err := zw.CreateHeader(h)
 	require.NoError(t, err)
+	_, err = w.Write([]byte("/etc/passwd"))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	dir := t.TempDir()
+	vol := filepath.Join(dir, "links.zip")
+	require.NoError(t, os.WriteFile(vol, buf.Bytes(), 0o644))
+	set := core.ArchiveSet{Name: "links", Opaque: unpack.ArchiveSet{Format: unpack.Format7z, Name: "links", Volumes: []string{vol}}}
+	base := t.TempDir()
+
+	_, err = Unpacker{}.Unpack(context.Background(), dir, filepath.Join(base, "out"), core.UnpackOptions{Sets: []core.ArchiveSet{set}})
+
+	assert.ErrorIs(t, err, core.ErrPathViolation)
+	assert.Empty(t, children(t, base))
+}
+
+func TestUnpacker_PasswordGoesToSevenZipAndNotIntoTheError(t *testing.T) {
+	dir := archiveDir(t, "7z/t2.7z")
+	u := Unpacker{Passwords: func(core.ID) (core.Secret, error) { return "s3cret-wrong", nil }}
+
+	_, err := u.Unpack(context.Background(), dir, filepath.Join(t.TempDir(), "out"), core.UnpackOptions{Sets: detect(t, u, dir)})
+
+	require.ErrorIs(t, err, core.ErrArchivePassword)
+	assert.NotContains(t, err.Error(), "s3cret")
 }

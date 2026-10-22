@@ -12,57 +12,64 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
+var twoFiles = map[string]int{"alpha.bin": 6500, "beta.dat": 3000} // 7 + 3 blocks
+
 func TestVerifier_IntactSetIsClean(t *testing.T) {
-	dir, m := goldenDir(t, "multi_files")
-	out, err := Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{DownloadID: "d"})
+	s := makeSet(t, 4, twoFiles)
+
+	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
+
 	require.NoError(t, err)
 	assert.True(t, out.HasPAR2)
 	assert.True(t, out.Clean)
 	assert.False(t, out.NeedsRepair)
 	assert.Zero(t, out.DamagedSlices)
-	assert.Equal(t, m.RecoveryBlocks, out.RecoveryOnDisk)
+	assert.Equal(t, 4, out.RecoveryOnDisk)
 	assert.True(t, out.Repairable)
 	assert.NotNil(t, out.Opaque)
 }
 
 func TestVerifier_DamagedCopyNeedsRepair(t *testing.T) {
-	dir, m := goldenDir(t, "multi_files")
-	// 4096-byte slices: offsets 0 and 5000 hit slices 0 and 1 of alpha.bin.
-	flipByte(t, filepath.Join(dir, "alpha.bin"), 0)
-	flipByte(t, filepath.Join(dir, "alpha.bin"), 5000)
+	s := makeSet(t, 4, twoFiles)
+	s.flipByte(t, "alpha.bin", 0)
+	s.flipByte(t, "alpha.bin", 1500) // blocks 0 and 1
 
-	out, err := Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{})
+	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+
 	require.NoError(t, err)
 	assert.True(t, out.HasPAR2)
 	assert.False(t, out.Clean)
 	assert.True(t, out.NeedsRepair)
 	assert.Equal(t, 2, out.DamagedSlices)
-	assert.Equal(t, m.RecoveryBlocks, out.RecoveryOnDisk)
+	assert.Equal(t, 4, out.RecoveryOnDisk)
 	assert.True(t, out.Repairable)
 }
 
 func TestVerifier_MissingFileCountsAllItsSlices(t *testing.T) {
-	dir, _ := goldenDir(t, "multi_files")
-	require.NoError(t, os.Remove(filepath.Join(dir, "beta.dat")))
+	s := makeSet(t, 4, twoFiles)
+	require.NoError(t, os.Remove(s.path("alpha.bin")))
 
-	out, err := Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{})
+	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+
 	require.NoError(t, err)
 	assert.True(t, out.NeedsRepair)
-	assert.Equal(t, 9, out.DamagedSlices)
-	assert.False(t, out.Repairable, "9 damaged slices, 4 recovery blocks")
+	assert.Equal(t, 7, out.DamagedSlices)
+	assert.False(t, out.Repairable, "7 damaged slices, 4 recovery blocks")
 }
 
 func TestVerifier_NoPAR2(t *testing.T) {
-	dir, _ := goldenDir(t, "multi_files")
-	removePAR2(t, dir)
+	s := makeSet(t, 4, twoFiles)
+	s.removePAR2(t)
 
-	out, err := Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{})
+	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+
 	require.NoError(t, err)
 	assert.Equal(t, core.VerifyOutcome{}, out)
 }
 
 func TestVerifier_EmptyDirHasNoPAR2(t *testing.T) {
-	out, err := Verifier{}.Verify(context.Background(), t.TempDir(), core.VerifyOptions{})
+	out, err := verifier(t).Verify(context.Background(), t.TempDir(), core.VerifyOptions{})
+
 	require.NoError(t, err)
 	assert.False(t, out.HasPAR2)
 }
@@ -70,33 +77,36 @@ func TestVerifier_EmptyDirHasNoPAR2(t *testing.T) {
 func TestVerifier_GarbagePAR2HasNoPAR2(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "x.par2"), []byte("not a par2 file"), 0o644))
-	out, err := Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{})
+
+	out, err := verifier(t).Verify(context.Background(), dir, core.VerifyOptions{})
+
 	require.NoError(t, err)
 	assert.False(t, out.HasPAR2)
 }
 
 func TestVerifier_MissingDirectoryIsAnError(t *testing.T) {
-	_, err := Verifier{}.Verify(context.Background(), filepath.Join(t.TempDir(), "nope"), core.VerifyOptions{})
+	_, err := verifier(t).Verify(context.Background(), filepath.Join(t.TempDir(), "nope"), core.VerifyOptions{})
+
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, core.ErrInsufficientRecovery)
 }
 
 func TestVerifier_DeferredBlocksFlipRepairable(t *testing.T) {
-	// single_small has 3 slices and 2 recovery blocks.
-	dir, _ := goldenDir(t, "single_small")
-	for _, off := range []int64{0, 4096, 8192} {
-		flipByte(t, filepath.Join(dir, "single.bin"), off)
+	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	for _, off := range []int{0, 1000, 2000} {
+		s.flipByte(t, "single.bin", off)
 	}
 
-	out, err := Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{DownloadID: "d"})
+	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
 	require.NoError(t, err)
 	assert.Equal(t, 3, out.DamagedSlices)
 	assert.Equal(t, 2, out.RecoveryOnDisk)
 	assert.False(t, out.Repairable)
 
 	var asked core.ID
-	v := Verifier{DeferredBlocks: func(id core.ID) int { asked = id; return 1 }}
-	out, err = v.Verify(context.Background(), dir, core.VerifyOptions{DownloadID: "d"})
+	v := verifier(t)
+	v.DeferredBlocks = func(id core.ID) int { asked = id; return 1 }
+	out, err = v.Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
 	require.NoError(t, err)
 	assert.Equal(t, core.ID("d"), asked)
 	assert.Equal(t, 2, out.RecoveryOnDisk, "deferred blocks are not on disk")
@@ -104,24 +114,45 @@ func TestVerifier_DeferredBlocksFlipRepairable(t *testing.T) {
 }
 
 func TestVerifier_CancelledContext(t *testing.T) {
-	dir, _ := goldenDir(t, "single_small")
+	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := Verifier{}.Verify(ctx, dir, core.VerifyOptions{})
+
+	_, err := verifier(t).Verify(ctx, s.dir, core.VerifyOptions{})
+
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestVerifier_RenamesObfuscatedFiles(t *testing.T) {
-	dir, m := goldenDir(t, "single_small")
-	require.NoError(t, os.Rename(filepath.Join(dir, "single.bin"), filepath.Join(dir, "a1b2c3")))
+	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	require.NoError(t, os.Rename(s.path("single.bin"), s.path("a1b2c3")))
 
-	out, err := Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{})
+	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 	require.NoError(t, err)
 	assert.True(t, out.Clean)
-	requireManifestFiles(t, dir, m)
+	s.requireOriginals(t)
 
 	// A second run finds it already done.
-	out, err = Verifier{}.Verify(context.Background(), dir, core.VerifyOptions{})
+	out, err = verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 	require.NoError(t, err)
 	assert.True(t, out.Clean)
+}
+
+func TestVerifier_UnsafeNameIsAPathViolation(t *testing.T) {
+	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	patchName(t, s.path("set.par2"), "single.bin", "../escaped")
+
+	_, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+
+	assert.ErrorIs(t, err, core.ErrPathViolation)
+}
+
+func TestVerifier_MissingPar2ProgramIsAnError(t *testing.T) {
+	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	t.Setenv("PATH", t.TempDir())
+
+	_, err := Verifier{}.Verify(context.Background(), s.dir, core.VerifyOptions{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "par2")
 }

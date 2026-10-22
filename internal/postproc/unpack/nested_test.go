@@ -107,7 +107,7 @@ func TestHostileNamesInANestedArchiveFailTheWholeUnpack(t *testing.T) {
 	sets, err := Detect(dir)
 	require.NoError(t, err)
 
-	_, err = Unpack(t.Context(), sets[0], filepath.Join(out, "out"), WithLogger(nil))
+	_, err = unpackSet(t, sets[0], filepath.Join(out, "out"))
 
 	require.ErrorIs(t, err, ErrPathViolation)
 	require.Empty(t, listing(t, out))
