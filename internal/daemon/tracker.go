@@ -32,6 +32,13 @@ func (t *tracker) stage(id core.ID) (core.Stage, bool) {
 	return s, ok
 }
 
+// rate is the current rate of one Download being fetched, 0 when unknown.
+func (t *tracker) rate(id core.ID) int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.rates[id]
+}
+
 // speed is the sum of the rates of the Downloads being fetched.
 func (t *tracker) speed() int64 {
 	t.mu.Lock()

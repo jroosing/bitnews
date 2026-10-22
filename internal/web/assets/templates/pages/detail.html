@@ -1,0 +1,241 @@
+{{define "subtitle"}}
+<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+  <span class="inline-flex items-center gap-1.5">{{icon .Page.KindIcon "size-4"}}{{.Page.KindLabel}}</span>
+  {{if .Page.Category}}<span class="inline-flex items-center gap-1.5">{{icon "folder" "size-4"}}<span class="sr-only">Category </span>{{.Page.Category}}</span>{{end}}
+  {{with .Page.Added}}{{if .Valid}}<span>Added <time datetime="{{.ISO}}" title="{{.Abs}}">{{.Rel}}</time></span>{{end}}{{end}}
+</p>
+{{end}}
+
+{{define "actions"}}<a href="{{if .Page.Terminal}}/history{{else}}/queue{{end}}" class="btn btn-secondary">{{icon "chevron-left" "size-4"}}{{if .Page.Terminal}}History{{else}}Queue{{end}}</a>{{end}}
+
+{{define "content"}}
+{{with .Page}}
+<div x-data="tabs" class="space-y-6">
+  <div class="flex gap-6 overflow-x-auto border-b border-line" role="tablist" aria-label="Download sections">
+    <button type="button" role="tab" id="tab-overview" class="tab" data-tab="overview" aria-controls="panel-overview" :aria-selected="isActive('overview')" @click="select">Overview</button>
+    {{if .Torrent}}<button type="button" role="tab" id="tab-files" class="tab" data-tab="files" aria-controls="panel-files" :aria-selected="isActive('files')" @click="select">Files{{if .Torrent.FileCount}} <span class="text-fg-subtle tabular-nums">{{.Torrent.FileCount}}</span>{{end}}</button>{{end}}
+    <button type="button" role="tab" id="tab-details" class="tab" data-tab="details" aria-controls="panel-details" :aria-selected="isActive('details')" @click="select">Details</button>
+  </div>
+
+  <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" x-show="isActive('overview')" class="space-y-6">
+    {{template "detail_live" $}}
+    {{if .Torrent}}{{template "share_card" $}}{{end}}
+    {{template "detail_remove" $}}
+  </div>
+
+  {{if .Torrent}}
+  <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" x-show="isActive('files')" x-cloak>
+    {{template "detail_files" .Torrent}}
+  </div>
+  {{end}}
+
+  <div role="tabpanel" id="panel-details" aria-labelledby="tab-details" x-show="isActive('details')" x-cloak>
+    {{template "detail_details" .}}
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{/* A stat tile. Keys: Label, Value. */}}
+{{define "detail_stat"}}
+<div class="card card-body">
+  <dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">{{.Label}}</dt>
+  <dd class="mt-1.5 text-lg font-semibold tabular-nums break-words text-fg">{{.Value}}</dd>
+  {{with .Note}}<dd class="mt-0.5 text-sm text-fg-muted">{{.}}</dd>{{end}}
+</div>
+{{end}}
+
+{{/*
+  detail_live: the part of the page htmx refreshes every 3 seconds while the
+  Download is not Ready or Failed. It polls itself and carries the trigger
+  only then, so the polling ends with the first terminal answer.
+*/}}
+{{define "detail_live"}}
+{{with .Page}}
+{{if .Removed}}
+<div id="detail-live">
+  {{template "alert" dict "Variant" "info" "Title" "This download was removed" "Body" "It is no longer in bitnews."}}
+  <p class="mt-4"><a href="/history" class="btn btn-secondary">Go to the history</a></p>
+</div>
+{{else}}
+<div id="detail-live" class="space-y-6"{{if not .Terminal}} {{attrs "hx-get" .LiveHref "hx-trigger" "every 3s" "hx-swap" "outerHTML"}}{{end}}>
+  {{if .Failed}}
+  <section class="rounded-xl border border-line bg-bad-soft p-5 text-bad-fg" aria-labelledby="failure-title" role="alert">
+    <div class="flex items-start gap-3">
+      {{icon "error" "mt-0.5 size-6 shrink-0"}}
+      <div class="min-w-0 space-y-3">
+        <div>
+          <h2 id="failure-title" class="text-base font-semibold">Failed: {{.Failure.Title}}</h2>
+          <p class="mt-1 text-sm">{{.Failure.Text}}</p>
+        </div>
+        <p class="text-sm"><span class="font-semibold">What you can do: </span>{{.Failure.Hint}}</p>
+        {{if .FailureDetail}}<p class="break-words rounded-lg bg-surface/60 px-3 py-2 font-mono text-xs text-fg"><span class="sr-only">Detail: </span>{{.FailureDetail}}</p>{{end}}
+      </div>
+    </div>
+  </section>
+  {{end}}
+
+  <dl class="grid grid-cols-2 gap-4 xl:grid-cols-4">
+    <div class="card card-body">
+      <dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Status</dt>
+      <dd class="mt-2">{{template "badge" dict "State" .Badge "Label" .BadgeLabel}}</dd>
+      <dd class="mt-1.5 text-sm text-fg-muted">{{.StateText}}{{if .Stage}}: {{.Stage}}{{end}}</dd>
+    </div>
+    <div class="card card-body col-span-2 sm:col-span-1">
+      <dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Progress</dt>
+      <dd class="mt-2">{{template "progress" dict "Value" .Percent "Label" "Download progress" "Show" true "Variant" (cond .Failed "bad" (cond .Ready "ok" ""))}}</dd>
+      <dd class="mt-1.5 text-sm text-fg-muted tabular-nums">{{if .Ready}}{{.Size}}{{else}}{{.Done}} of {{.Size}}{{end}}</dd>
+    </div>
+    {{template "detail_stat" dict "Label" "Size" "Value" .Size}}
+    {{if .Speed}}{{template "detail_stat" dict "Label" "Speed" "Value" .Speed}}
+    {{else}}{{template "detail_stat" dict "Label" "Priority" "Value" .Priority "Note" (cond .Paused "Paused" "")}}{{end}}
+  </dl>
+
+  {{if .OutputPath}}
+  <section class="card card-body" aria-labelledby="output-title">
+    <h2 id="output-title" class="text-sm font-semibold">Output folder</h2>
+    <div class="mt-2 flex flex-wrap items-center gap-3">
+      <code class="min-w-0 flex-1 break-all rounded-lg bg-surface-2 px-3 py-2 font-mono text-sm">{{.OutputPath}}</code>
+      {{template "copy_button" dict "Text" .OutputPath}}
+    </div>
+  </section>
+  {{end}}
+
+  {{if .Report}}
+  <section class="card" aria-labelledby="report-title">
+    <header class="card-header"><div><h2 id="report-title" class="text-base">Articles</h2><p class="mt-0.5 text-sm text-fg-muted">What the Usenet servers had of this release.</p></div></header>
+    {{if .Report.Clean}}
+    <p class="card-body flex items-center gap-2 text-sm text-ok-fg">{{icon "check-circle" "size-5"}}Every article arrived intact.</p>
+    {{else}}
+    <dl class="card-body grid gap-4 sm:grid-cols-3">
+      <div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Missing articles</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{.Report.MissingArticles}}</dd><dd class="text-sm text-fg-muted">{{.Report.MissingBytes}}</dd></div>
+      <div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Damaged articles</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{.Report.DamagedArticles}}</dd><dd class="text-sm text-fg-muted">{{.Report.DamagedBytes}}</dd></div>
+      <div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Missing files</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{.Report.MissingFiles}}</dd><dd class="text-sm text-fg-muted">no article arrived</dd></div>
+    </dl>
+    {{end}}
+  </section>
+  {{end}}
+
+  {{if .Torrent}}
+  <section class="card" aria-labelledby="swarm-title">
+    <header class="card-header"><div><h2 id="swarm-title" class="text-base">Swarm</h2><p class="mt-0.5 text-sm text-fg-muted">{{if .Torrent.Registered}}Live numbers from the torrent engine.{{else}}The torrent engine does not have this torrent right now.{{end}}</p></div>
+      {{if .Torrent.Private}}<span class="badge badge-paused" title="Private torrent: no DHT, PEX or local peer discovery">Private</span>{{end}}</header>
+    <dl class="card-body grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Peers and seeds</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{.Torrent.Peers}} <span class="text-sm font-normal text-fg-muted">peers</span> · {{.Torrent.Seeds}} <span class="text-sm font-normal text-fg-muted">seeds</span></dd></div>
+      <div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Rates</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{.Torrent.DownRate}} <span class="text-sm font-normal text-fg-muted">down</span><br>{{.Torrent.UpRate}} <span class="text-sm font-normal text-fg-muted">up</span></dd></div>
+      <div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Uploaded</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{.Torrent.Uploaded}}</dd><dd class="text-sm text-fg-muted">ratio {{.Torrent.Ratio}}</dd></div>
+      <div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Seeding time</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{{.Torrent.SeedingTime}}</dd>{{if .Torrent.LimitPaused}}<dd class="text-sm text-warn-fg">Paused: share limit reached</dd>{{end}}</dd></div>
+    </dl>
+  </section>
+  {{else if .TorrentsUnavailable}}
+  {{template "alert" dict "Variant" "info" "Title" "No torrent details" "Body" "The torrent engine did not report anything about this torrent."}}
+  {{end}}
+</div>
+{{end}}
+{{end}}
+{{end}}
+
+{{/* share_card: the Share Limit form of a torrent. htmx replaces it as a whole. */}}
+{{define "share_card"}}
+{{with .Page}}{{with .Torrent}}
+<section id="share-card" class="card" aria-labelledby="share-title" x-data="shareLimit" data-custom="{{if .Form.Custom}}1{{end}}">
+  <header class="card-header"><div><h2 id="share-title" class="text-base">Share limit</h2><p class="mt-0.5 text-sm text-fg-muted">{{.LimitSummary}}</p></div></header>
+  <form method="post" action="/downloads/{{$.Page.ID}}/share-limit" {{attrs "hx-post" (print "/downloads/" $.Page.ID "/share-limit") "hx-target" "#share-card" "hx-swap" "outerHTML"}} class="card-body space-y-4">
+    {{template "csrf_field" $}}
+    {{if .Form.Error}}<div class="alert alert-danger" role="alert">{{icon "error" "mt-0.5 size-5 shrink-0"}}<p>{{.Form.Error}}</p></div>{{end}}
+    <fieldset class="space-y-3">
+      <legend class="label">When should seeding stop?</legend>
+      <div class="flex items-start gap-3">
+        <input id="share-mode-default" type="radio" name="mode" value="default" class="radio mt-0.5"{{if not .Form.Custom}} checked{{end}} @change="useDefault">
+        <label for="share-mode-default" class="text-sm"><span class="font-medium text-fg">Use the global default</span><span class="block text-xs text-fg-muted">Set in the torrent settings.</span></label>
+      </div>
+      <div class="flex items-start gap-3">
+        <input id="share-mode-custom" type="radio" name="mode" value="custom" class="radio mt-0.5"{{if .Form.Custom}} checked{{end}} @change="useCustom">
+        <label for="share-mode-custom" class="text-sm"><span class="font-medium text-fg">Set a limit for this torrent</span><span class="block text-xs text-fg-muted">Seeding stops at whichever limit you set is reached first. Leave one empty for no limit.</span></label>
+      </div>
+    </fieldset>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="share-ratio" class="label">Ratio</label>
+        <input id="share-ratio" name="ratio" type="text" inputmode="decimal" autocomplete="off" class="input" value="{{.Form.Ratio}}" placeholder="No limit" :disabled="isDefault"{{if .Form.RatioError}} aria-invalid="true" aria-describedby="share-ratio-error"{{end}}>
+        {{if .Form.RatioError}}<p id="share-ratio-error" class="field-error">{{icon "error" "mt-px size-4 shrink-0"}}<span>{{.Form.RatioError}}</span></p>{{end}}
+      </div>
+      <div>
+        <label for="share-minutes" class="label">Seeding time in minutes</label>
+        <input id="share-minutes" name="minutes" type="text" inputmode="numeric" autocomplete="off" class="input" value="{{.Form.Minutes}}" placeholder="No limit" :disabled="isDefault"{{if .Form.MinutesError}} aria-invalid="true" aria-describedby="share-minutes-error"{{end}}>
+        {{if .Form.MinutesError}}<p id="share-minutes-error" class="field-error">{{icon "error" "mt-px size-4 shrink-0"}}<span>{{.Form.MinutesError}}</span></p>{{end}}
+      </div>
+    </div>
+    <div class="flex justify-end"><button type="submit" class="btn btn-primary"><span class="btn-spinner" aria-hidden="true"></span>Save share limit</button></div>
+  </form>
+</section>
+{{end}}{{end}}
+{{end}}
+
+{{define "detail_remove"}}
+{{with .Page}}
+<section class="card" aria-labelledby="remove-title">
+  <header class="card-header"><div><h2 id="remove-title" class="text-base">Remove</h2><p class="mt-0.5 text-sm text-fg-muted">{{if .Terminal}}Take this download out of the history.{{else}}Cancel this download and take it out of bitnews.{{end}}</p></div></header>
+  <div class="card-body flex flex-wrap gap-3">
+    <form method="post" action="/downloads/{{.ID}}/delete" {{attrs "hx-post" (print "/downloads/" .ID "/delete") "hx-confirm" "Remove this download from bitnews? Files already downloaded stay on disk." "data-confirm-label" "Remove" "data-confirm-tone" "danger"}}>
+      {{template "csrf_field" $}}
+      <input type="hidden" name="delete_data" value="0"><input type="hidden" name="from" value="detail">
+      <button type="submit" class="btn btn-secondary"><span class="btn-spinner" aria-hidden="true"></span>{{icon "close" "size-4"}}{{if .Terminal}}Remove from history{{else}}Remove, keep files{{end}}</button>
+    </form>
+    <form method="post" action="/downloads/{{.ID}}/delete" {{attrs "hx-post" (print "/downloads/" .ID "/delete") "hx-confirm" "Remove this download and delete its files? This cannot be undone." "data-confirm-label" "Delete files" "data-confirm-tone" "danger"}}>
+      {{template "csrf_field" $}}
+      <input type="hidden" name="delete_data" value="1"><input type="hidden" name="from" value="detail">
+      <button type="submit" class="btn btn-danger"><span class="btn-spinner" aria-hidden="true"></span>{{icon "trash" "size-4"}}Remove and delete files</button>
+    </form>
+  </div>
+</section>
+{{end}}
+{{end}}
+
+{{define "detail_files"}}
+<section class="card" aria-labelledby="files-title">
+  <header class="card-header"><div><h2 id="files-title" class="text-base">Files</h2><p class="mt-0.5 text-sm text-fg-muted">{{.FileCount}} {{if eq .FileCount 1}}file{{else}}files{{end}} in this torrent.</p></div></header>
+  {{if .ShowFiles}}
+  <table class="table">
+    <caption class="sr-only">Files in this torrent</caption>
+    <thead><tr><th scope="col">Path</th><th scope="col" class="num">Size</th></tr></thead>
+    <tbody>
+      {{range .ShowFiles}}<tr><td class="break-all font-mono text-xs">{{.Path}}</td><td class="num whitespace-nowrap text-fg-muted">{{.Size}}</td></tr>{{end}}
+    </tbody>
+  </table>
+  {{if .MoreFiles}}<p class="border-t border-line px-5 py-3 text-sm text-fg-muted">and {{.MoreFiles}} more files.</p>{{end}}
+  {{else}}
+  {{template "empty_state" dict "Icon" "inbox" "Title" "No file list yet" "Body" "The list appears once the torrent's metadata has arrived."}}
+  {{end}}
+</section>
+{{end}}
+
+{{define "detail_details"}}
+<section class="card" aria-labelledby="details-title">
+  <header class="card-header"><div><h2 id="details-title" class="text-base">Details</h2><p class="mt-0.5 text-sm text-fg-muted">Identifiers and raw values, for support and scripts.</p></div></header>
+  <dl class="divide-y divide-line text-sm">
+    {{template "detail_row" dict "Label" "Download ID" "Value" .ID "Copy" true}}
+    {{template "detail_row" dict "Label" "Type" "Value" .KindLabel}}
+    {{template "detail_row" dict "Label" "State" "Value" .State}}
+    {{if .Torrent}}{{template "detail_row" dict "Label" "Info hash" "Value" .Torrent.InfoHash "Copy" true}}{{end}}
+    {{if .CategoryID}}{{template "detail_row" dict "Label" "Category ID" "Value" .CategoryID "Copy" true}}{{end}}
+    {{template "detail_row" dict "Label" "Priority" "Value" .Priority}}
+    {{template "detail_row" dict "Label" "Queue position" "Value" .Position}}
+    {{if .FailureCode}}{{template "detail_row" dict "Label" "Failure reason" "Value" .FailureCode}}{{end}}
+    {{with .Added}}{{if .Valid}}{{template "detail_row" dict "Label" "Added" "Value" .Abs}}{{end}}{{end}}
+    {{with .Fetched}}{{if .Valid}}{{template "detail_row" dict "Label" "Fetched" "Value" .Abs}}{{end}}{{end}}
+    {{with .ReadyAt}}{{if .Valid}}{{template "detail_row" dict "Label" "Ready" "Value" .Abs}}{{end}}{{end}}
+    {{with .Updated}}{{if .Valid}}{{template "detail_row" dict "Label" "Last change" "Value" .Abs}}{{end}}{{end}}
+    {{if .OutputPath}}{{template "detail_row" dict "Label" "Output folder" "Value" .OutputPath "Copy" true}}{{end}}
+  </dl>
+</section>
+{{end}}
+
+{{define "detail_row"}}
+<div class="grid gap-1 px-5 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+  <dt class="text-fg-muted">{{.Label}}</dt>
+  <dd class="flex min-w-0 items-center gap-2"><span class="min-w-0 break-all font-mono text-xs text-fg">{{.Value}}</span>
+    {{if .Copy}}<span x-data="clipboard" x-cloak class="shrink-0"><button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy="{{.Value}}" @click="copy" aria-label="Copy {{.Label}}" title="Copy"><span x-show="!copied">{{icon "copy" "size-4"}}</span><span x-show="copied" x-cloak class="text-ok-fg">{{icon "check" "size-4"}}</span></button></span>{{end}}
+  </dd>
+</div>
+{{end}}

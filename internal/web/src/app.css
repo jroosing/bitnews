@@ -521,7 +521,11 @@
     .table-responsive thead {
       @apply sr-only;
     }
-    .table-responsive,
+    /* The Tailwind "table" utility on the same element would win over a plain
+       display: block (utilities come after components), so force it. */
+    .table-responsive {
+      @apply block! w-full;
+    }
     .table-responsive tbody,
     .table-responsive tr,
     .table-responsive td {
@@ -601,6 +605,28 @@
   }
   .tab[aria-selected="true"] {
     @apply border-accent text-accent-text;
+  }
+
+  /* --- settings navigation: pills on phones, a sidebar from md up ------ */
+  .settings-link {
+    @apply flex shrink-0 items-center gap-2.5 rounded-lg border border-line bg-surface px-3.5 py-2 text-sm font-medium whitespace-nowrap text-fg-muted no-underline transition-colors hover:bg-surface-2 hover:text-fg hover:no-underline md:border-transparent md:bg-transparent;
+  }
+  .settings-link[aria-current="page"] {
+    @apply border-transparent bg-accent-soft text-accent-soft-fg md:bg-accent-soft;
+  }
+
+  /* --- add dialog, radio ---------------------------------------------- */
+  .modal-wide {
+    @apply max-w-xl;
+  }
+  .dropzone {
+    @apply flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-line-strong bg-surface-2 px-4 py-8 text-center transition-colors hover:border-accent-mark focus-within:border-accent-mark focus-within:ring-2 focus-within:ring-ring;
+  }
+  .dropzone-active {
+    @apply border-accent-mark bg-accent-soft;
+  }
+  .radio {
+    @apply size-4 shrink-0 cursor-pointer appearance-none rounded-full border border-control bg-surface align-middle transition-colors checked:border-4 checked:border-accent-mark;
   }
 
   /* --- misc ------------------------------------------------------------ */

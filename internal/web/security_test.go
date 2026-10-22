@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -56,6 +57,10 @@ func renderEverything(t *testing.T) map[string]*httptest.ResponseRecorder {
 		out["GET "+page] = b.get(page)
 	}
 	out["403 csrf (signed in)"] = b.post("/logout", url.Values{})
+	addSettingsResponses(t, out)
+	addQueueResponses(t, out)
+
+	maps.Copy(out, downloadHTMLResponses(t))
 
 	setup := newEnv(t, withoutAdmin())
 	out["GET /setup"] = setup.browser().get("/setup")

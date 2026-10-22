@@ -308,8 +308,10 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	adder := app.NewAddService(downloadService, sources, settings, addOpts...)
 	categoryService := app.NewCategoryService(categories, downloads, bus)
 	var qbitHandler http.Handler
+	var webTorrentSource web.TorrentSource
 	if trun != nil {
 		torrents := newQBitTorrents(downloads, torrentSources, torrentRecords, engine, trun, settings.Current, log)
+		webTorrentSource = newWebTorrents(torrents)
 		qbitHandler = qbit.New(qbit.Deps{
 			Credentials: adapterCreds, Downloads: downloadService, Categories: categoryService, Settings: settings,
 			Torrents: torrents, Files: torrents, ShareLimits: torrents,
@@ -324,7 +326,8 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
 		Adder: adder, APIKeys: apiKeys, AdapterCredentials: adapterCreds,
-		Runtime: webRuntime(deps), Torrents: webTorrents(deps),
+		Runtime: newWebRuntime(run, torrentRunnerOrNil(trun), engine, downloads, track), Torrents: webTorrentSource,
+		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}, track: track},
 	})
 	if err != nil {
 		return nil, err
@@ -583,4 +586,13 @@ func (d *Daemon) Serve(ctx context.Context, addr string, serve func(ctx context.
 	serveErr := serve(ctx, d.HTTPServer(addr))
 	cancel()
 	return errors.Join(serveErr, <-done)
+}
+
+// torrentRunnerOrNil converts the torrent runner to the interface the UI's
+// runtime needs, keeping a nil runner a nil interface.
+func torrentRunnerOrNil(r *trunner.Runner) torrentQueue {
+	if r == nil {
+		return nil
+	}
+	return r
 }

@@ -43,6 +43,11 @@ type Deps struct {
 	// tests, and pages must cope with that.
 	Runtime  RuntimeSource
 	Torrents TorrentSource
+	// Live tunes the /ui/events stream (queue_events.go); the zero value is
+	// what production uses.
+	Live LiveConfig
+	// Detail reports Usenet fetch details for the Download detail page.
+	Detail DetailSource
 }
 
 // Server is the UI: it implements http.Handler.
@@ -54,8 +59,11 @@ type Server struct {
 	csrf   func(http.Handler) http.Handler
 
 	pages  []Page
+	live   liveHub             // the /ui/events streams (queue_events.go)
 	routes map[string][]string // path -> methods, for 405 answers
-	root   http.Handler
+	// pathCheck inspects the folders of the paths settings (settings_fs.go).
+	pathCheck pathChecker
+	root      http.Handler
 }
 
 // New builds the UI handler. It serves every path outside /api/ and
@@ -111,6 +119,9 @@ func (s *Server) registerRoutes() {
 	for _, p := range builtinPages() {
 		s.addPage(p)
 	}
+	s.registerQueue()
+	s.registerSettings()
+	s.registerDownloadRoutes()
 
 	s.mux.HandleFunc("/", s.notFound)
 }

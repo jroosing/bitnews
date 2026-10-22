@@ -1,0 +1,132 @@
+{{/*
+  queue_row: one Download of the queue as a table row (a card below 768 px).
+  Receives a queueRowCtx (queue.go). The cells that change while a Download
+  runs are separate elements with stable ids (queue_status, queue_progress,
+  queue_speed, queue_eta): the live stream replaces just those with
+  out-of-band swaps (queue_live), so an open menu is not closed every second.
+  Download names are hostile input: they only ever appear as escaped text or
+  attribute values, never in hx-vals or an Alpine expression.
+*/}}
+{{define "queue_row"}}
+<tr id="dl-{{.ID}}" data-state="{{.State}}">
+  <td data-label="" class="md:w-[32%] md:max-w-0">
+    <div class="min-w-0 flex-1 text-left">
+      <p class="truncate font-medium text-fg" title="{{.Name}}">{{.Name}}</p>
+      <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
+        {{if .Category}}<span class="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 ring-1 ring-line">{{icon "folder" "size-3.5"}}<span class="sr-only">Category </span>{{.Category}}</span>{{end}}
+        {{if eq .Priority "force"}}<span class="inline-flex items-center gap-1 font-medium text-warn-fg">{{icon "bolt" "size-3.5"}}<span class="sr-only">Priority </span>Force</span>
+        {{else if eq .Priority "high"}}<span class="inline-flex items-center gap-1 font-medium text-info-fg">{{icon "arrow-up" "size-3.5"}}<span class="sr-only">Priority </span>High</span>
+        {{else if eq .Priority "low"}}<span class="inline-flex items-center gap-1 text-fg-subtle">{{icon "arrow-down" "size-3.5"}}<span class="sr-only">Priority </span>Low</span>{{end}}
+      </div>
+    </div>
+  </td>
+  <td data-label="Status">{{template "queue_status" .}}</td>
+  <td data-label="Progress">{{template "queue_progress" .}}</td>
+  <td data-label="Speed">{{template "queue_speed" .}}</td>
+  <td data-label="ETA">{{template "queue_eta" .}}</td>
+  <td data-label="" class="md:w-px">{{template "queue_actions" .}}</td>
+</tr>
+{{end}}
+
+{{define "queue_status"}}
+<div id="dl-{{.ID}}-status"{{if .OOB}} hx-swap-oob="true"{{end}}>{{template "badge" dict "State" .Badge "Label" .Status}}</div>
+{{end}}
+
+{{define "queue_progress"}}
+<div id="dl-{{.ID}}-progress"{{if .OOB}} hx-swap-oob="true"{{end}} class="w-full max-w-64 md:w-52">
+  {{if .Metadata}}
+  <p class="text-sm text-fg-muted">Fetching metadata</p>
+  {{else}}
+  <div class="flex items-center gap-3">
+    <progress class="progress min-w-0 flex-1{{with .Variant}} progress-{{.}}{{end}}" value="{{.Percent}}" max="100" aria-label="Progress of {{.ShortName}}"></progress>
+    <span class="w-10 shrink-0 text-right text-xs text-fg-muted tabular-nums">{{.Percent}}%</span>
+  </div>
+  {{if .HasTotal}}<p class="mt-1 text-right text-xs text-fg-muted tabular-nums md:text-left">{{.Done}} / {{.Total}}</p>{{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "queue_speed"}}
+<div id="dl-{{.ID}}-speed"{{if .OOB}} hx-swap-oob="true"{{end}} class="tabular-nums">
+  <div class="flex flex-wrap items-center justify-end gap-x-3 md:justify-start">
+    <span class="inline-flex items-center gap-1 whitespace-nowrap">{{icon "arrow-down" "size-3.5 text-info-fg"}}<span class="sr-only">Download </span>{{.Rate}}</span>
+    {{if .Torrent}}<span class="inline-flex items-center gap-1 whitespace-nowrap">{{icon "arrow-up" "size-3.5 text-ok-fg"}}<span class="sr-only">Upload </span>{{.UpRate}}</span>{{end}}
+  </div>
+  {{if .ShowSwarm}}<p class="text-xs text-fg-muted">{{.Peers}} peers · ratio {{.Ratio}}</p>{{end}}
+</div>
+{{end}}
+
+{{define "queue_eta"}}
+<div id="dl-{{.ID}}-eta"{{if .OOB}} hx-swap-oob="true"{{end}} class="whitespace-nowrap tabular-nums text-fg-muted">{{.ETA}}</div>
+{{end}}
+
+{{/* queue_live: the cells above as out-of-band swaps (OOB set). */}}
+{{define "queue_live"}}{{template "queue_status" .}}{{template "queue_progress" .}}{{template "queue_speed" .}}{{template "queue_eta" .}}{{end}}
+
+{{define "queue_actions"}}
+<div class="flex items-center justify-end gap-1">
+  {{if .CanPause}}
+  <form method="post" action="/queue/{{.ID}}/pause" hx-post="/queue/{{.ID}}/pause" hx-target="closest tr" hx-swap="outerHTML">
+    {{template "csrf_field" .}}
+    <button type="submit" class="btn btn-ghost btn-icon btn-sm" aria-label="Pause {{.ShortName}}" title="Pause">{{icon "pause" "size-4"}}</button>
+  </form>
+  {{else if .CanResume}}
+  <form method="post" action="/queue/{{.ID}}/resume" hx-post="/queue/{{.ID}}/resume" hx-target="closest tr" hx-swap="outerHTML">
+    {{template "csrf_field" .}}
+    <button type="submit" class="btn btn-ghost btn-icon btn-sm" aria-label="Resume {{.ShortName}}" title="Resume">{{icon "play" "size-4"}}</button>
+  </form>
+  {{end}}
+  <div x-data="menu" class="relative" @keydown.escape="close" @click.outside="closeQuiet">
+    <button type="button" x-ref="button" @click="toggle" @keydown="onButtonKey" class="btn btn-ghost btn-icon btn-sm" aria-haspopup="menu" :aria-expanded="open" aria-label="More actions for {{.ShortName}}" title="More actions">{{icon "more" "size-4"}}</button>
+    <div x-ref="panel" x-show="open" x-cloak x-transition.opacity.duration.100ms class="menu-panel max-h-96 overflow-y-auto text-left" role="menu" aria-label="Actions for {{.ShortName}}" @keydown="onPanelKey" @click="closeQuiet">
+      <p class="menu-label">Priority</p>
+      {{template "queue_choice" (dict "Row" . "Action" "priority" "Key" "priority" "Value" "force" "Label" "Force" "Radio" true "Checked" (eq .Priority "force") "Target" "closest tr")}}
+      {{template "queue_choice" (dict "Row" . "Action" "priority" "Key" "priority" "Value" "high" "Label" "High" "Radio" true "Checked" (eq .Priority "high") "Target" "closest tr")}}
+      {{template "queue_choice" (dict "Row" . "Action" "priority" "Key" "priority" "Value" "normal" "Label" "Normal" "Radio" true "Checked" (eq .Priority "normal") "Target" "closest tr")}}
+      {{template "queue_choice" (dict "Row" . "Action" "priority" "Key" "priority" "Value" "low" "Label" "Low" "Radio" true "Checked" (eq .Priority "low") "Target" "closest tr")}}
+      {{if .CanMove}}
+      <div class="menu-sep"></div>
+      <p class="menu-label">Position</p>
+      {{if not .First}}
+      {{template "queue_choice" (dict "Row" . "Action" "move" "Key" "to" "Value" "top" "Label" "Move to top" "Target" "#queue-lists")}}
+      {{template "queue_choice" (dict "Row" . "Action" "move" "Key" "to" "Value" "up" "Label" "Move up" "Target" "#queue-lists")}}
+      {{end}}
+      {{if not .Last}}
+      {{template "queue_choice" (dict "Row" . "Action" "move" "Key" "to" "Value" "down" "Label" "Move down" "Target" "#queue-lists")}}
+      {{template "queue_choice" (dict "Row" . "Action" "move" "Key" "to" "Value" "bottom" "Label" "Move to bottom" "Target" "#queue-lists")}}
+      {{end}}
+      {{end}}
+      {{if .Cats}}
+      <div class="menu-sep"></div>
+      <p class="menu-label">Category</p>
+      {{template "queue_choice" (dict "Row" . "Action" "category" "Key" "category_id" "Value" "none" "Label" "No category" "Radio" true "Checked" (not .CategoryID) "Target" "closest tr")}}
+      {{range .Cats}}
+      {{template "queue_choice" (dict "Row" $ "Action" "category" "Key" "category_id" "Value" .ID "Label" .Name "Radio" true "Checked" (eq .ID $.CategoryID) "Target" "closest tr")}}
+      {{end}}
+      {{end}}
+      <div class="menu-sep"></div>
+      <button type="button" role="menuitem" class="menu-item" hx-post="/queue/{{.ID}}/remove" {{hxVals "delete_data" "false"}} hx-target="#queue-lists" hx-swap="outerHTML"
+              hx-confirm="Remove {{.ShortName}} from bitnews? Files already downloaded stay on disk." data-confirm-label="Remove" data-confirm-tone="danger">
+        {{icon "close" "size-5 text-fg-subtle"}}Remove, keep files
+      </button>
+      <button type="button" role="menuitem" class="menu-item text-bad-fg" hx-post="/queue/{{.ID}}/remove" {{hxVals "delete_data" "true"}} hx-target="#queue-lists" hx-swap="outerHTML"
+              hx-confirm="Remove {{.ShortName}} and delete its files? This cannot be undone." data-confirm-label="Delete files" data-confirm-tone="danger">
+        {{icon "trash" "size-5"}}Remove and delete files
+      </button>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{/*
+  queue_choice: one menu entry that posts a single value for the row.
+  Keys: Row (queueRowCtx), Action (path segment), Key and Value (form field,
+  both validated by hxVals), Label, Radio and Checked (a radio entry shows a check), Target.
+*/}}
+{{define "queue_choice"}}
+<button type="button" role="{{if .Radio}}menuitemradio{{else}}menuitem{{end}}"{{if .Radio}} aria-checked="{{if .Checked}}true{{else}}false{{end}}"{{end}} class="menu-item"
+        hx-post="/queue/{{.Row.ID}}/{{.Action}}" {{hxVals .Key .Value}} hx-target="{{.Target}}" hx-swap="outerHTML">
+  <span class="flex-1">{{.Label}}</span>
+  {{if and .Radio .Checked}}<span class="text-accent-text">{{icon "check" "size-4"}}</span>{{end}}
+</button>
+{{end}}
