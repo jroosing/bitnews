@@ -55,8 +55,6 @@ How it is done for torrents: anacrolix/torrent's built-in listeners and dialers 
 
 If the binding cannot be applied the dial or listen fails with an error wrapping `netbind.ErrBind`. It never falls back to an unbound socket.
 
-Under systemd, listing interfaces uses netlink: with the hardened unit, add `AF_NETLINK` to `RestrictAddressFamilies` when a binding is used (see [deploy.md](deploy.md)).
-
 ## Monitor and kill switch
 
 `netbind.Monitor` checks the binding every 5 seconds (configurable): the interface must exist and be up, and the address, if set, must be assigned to that interface (to any interface that is up when none is named). It reports the first result and every change after that, with a reason such as `interface "wg0" does not exist`.

@@ -1,6 +1,6 @@
 # The master key lives in the config directory by default
 
-The master key encrypts the secrets bitnews must send in plaintext later: Usenet Server passwords and archive passwords. It is generated on first start and stored as `bitnews.key` (mode `0600`) next to `bitnews.db`, so a default install has nothing to set up. `BITNEWS_KEY_FILE` still places it elsewhere, for example in a Docker secret or a systemd credential.
+The master key encrypts the secrets bitnews must send in plaintext later: Usenet Server passwords and archive passwords. It is generated on first start and stored as `bitnews.key` (mode `0600`) next to `bitnews.db`, so a default install has nothing to set up. `BITNEWS_KEY_FILE` still places it elsewhere, for example in a Docker secret.
 
 The original design forced the key outside the config directory, so a backup of the config directory never held both the database and its key. That cost a separate secret to create, mount and back up for every install, and the owner of the deployment judged it too much setup for a homelab daemon.
 

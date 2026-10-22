@@ -9,7 +9,7 @@ Domain terms (**Download**, **Source**, **Fetched**, **Ready**, …) are defined
 - **Security without concessions.** The daemon parses hostile input constantly, so we use a memory-safe language, mature TLS, and no native subprocesses. See [ADR-0001](adr/0001-go-over-zig.md) and [ADR-0002](adr/0002-pure-go-post-processing.md).
 - **Media managers must just work.** bitnews imitates the client APIs they already support. "Complete" means Ready, never merely Fetched. See [ADR-0003](adr/0003-emulate-qbittorrent-and-sabnzbd-apis.md).
 - **Hardlinks are the user's layout, not our code.** Sonarr and Radarr make the hardlinks, so the user keeps the complete folders and the library on one filesystem (the TRaSH-guides layout). bitnews never hardlinks, moves with rename and copies when the folders differ, and never modifies files after Ready. See [ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md).
-- **Runs with or without Docker.** It ships as one static binary (`CGO_ENABLED=0`) that works in Docker, in LXC/systemd and on bare metal.
+- **Runs with or without Docker.** It ships as one static binary (`CGO_ENABLED=0`) that is packaged for Docker (the primary target, a homelab) and also runs on bare metal.
 
 ## Technology
 
@@ -189,9 +189,8 @@ The defaults follow the TRaSH-guides layout:
 
 - **Binary:** a static `bitnews` for linux amd64/arm64 (darwin for development).
 - **Bootstrap config (flags/env only):** `--config-dir`, optional `--key-file`, listen address (default `:9494`), `UMASK`. Everything else is configured through the UI/API and stored in the DB. The full table is in [M1](milestones/m1-foundation.md#bootstrap-configuration).
-- **Privileges:** bitnews runs as whoever starts it ([ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md)): Docker `user:`, systemd `User=`/`Group=`. There is no in-process privilege drop. It applies `UMASK` (default `002`) before creating any file, and running as root works without a warning.
+- **Privileges:** bitnews runs as whoever starts it ([ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md)): Docker `user:`. There is no in-process privilege drop. It applies `UMASK` (default `002`) before creating any file, and running as root works without a warning.
 - **Docker:** distroless image, `/config` volume (database and key), `/data` mounted at the same path as in the media-manager containers. HTTPS is terminated by a reverse proxy (Caddy/Traefik/nginx).
-- **systemd / LXC:** a `bitnews` user, DB and key in `/var/lib/bitnews`, and hardening (`ProtectSystem=strict`, `NoNewPrivileges`, `ReadWritePaths=` for data dirs only).
 
 ## Testing and CI
 

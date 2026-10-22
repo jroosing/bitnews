@@ -27,7 +27,7 @@ These are the only settings that do not live in the DB. Each can be given as a f
 
 | Flag | Env | Default | Notes |
 |---|---|---|---|
-| `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` (dev) | Holds `bitnews.db`. Docker uses `/config`, systemd uses `/var/lib/bitnews`. |
+| `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` (dev) | Holds `bitnews.db`. Docker uses `/config`. |
 | `--key-file` | `BITNEWS_KEY_FILE` | `bitnews.key` inside `config-dir` | Master key for secret encryption, generated on first start ([ADR-0004](../adr/0004-master-key-in-config-dir.md)). Set it only to keep the key apart from the database. If it is missing and its directory is not writable, startup fails with instructions. |
 | `--listen` | `BITNEWS_LISTEN` | `0.0.0.0:9494` | One port for the own API, adapters and UI. |
 | `--log-level` | `BITNEWS_LOG_LEVEL` | `info` | |
@@ -190,11 +190,10 @@ M1 routes (more are added in later milestones):
   - The image starts as root so that `PUID`/`PGID` can work; the binary then drops privileges. `user:` in compose also works. (Removed: superseded by M7-03 / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md); the image now runs as a non-root user.)
   - Volumes: `/config` (database and key), `/data`.
 - **compose:** `deploy/docker-compose.example.yml` with `PUID`/`PGID`/`UMASK`, the `/data` layout from TRaSH, and a commented gluetun variant.
-- **systemd:** `deploy/bitnews.service` runs as the `bitnews` user with `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`, `NoNewPrivileges=true`, and `ReadWritePaths=/var/lib/bitnews /data`. The key is generated in `/var/lib/bitnews`; `LoadCredential=` is an optional way to keep it apart.
 
 ## Exit criteria
 
-- `bitnews` starts in Docker (with and without `PUID`/`PGID`) and under systemd. It creates the DB and key, and requires setup.
+- `bitnews` starts in Docker. It creates the DB and key, and requires setup.
 - An admin can log in, create API keys and Categories, read and update settings, and see an SSE stream.
 - CI is green: `go vet`, `staticcheck`, `govulncheck`, `-race` tests and fuzz smoke runs. `gofmt -s` and `go fix` are run locally (`make check` includes `fmt-check` and `fix-check`).
 
@@ -445,21 +444,20 @@ M1 routes (more are added in later milestones):
 - [ ] A test client receives the events published after connecting.
 - [ ] Ping arrives on schedule (fake clock), and a disconnect frees the subscriber with no goroutine leak (goleak or a manual check).
 
-### M1-15: Docker image, compose example and systemd unit
+### M1-15: Docker image and compose example
 - **Labels:** area:deploy, ready-for-agent
-
-> **Note:** the `PUID`/`PGID` parts are superseded by M7-03 / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).
 - **Depends on:** M1-03, M1-13
 
-**Goal:** Packaging that matches the deployment design, so bitnews runs both with and without Docker.
+**Goal:** Packaging for the primary target, a homelab running Docker. (systemd was dropped from this issue: Docker is the supported way to run bitnews.) Verified on 2026-10-22 with Docker 29 on arm64: a compose run with `user:` set to the host ids, read-only root, `cap_drop: ALL`, healthy, setup through the browser form, the one API key accepted by `/api/v1`, SABnzbd and qBittorrent, and a restart that kept the key file, the admin login and the API key. A fresh named volume also works for an arbitrary uid. The CI image job could not be run locally and first runs on the default branch.
 
 **Work**
-- Write a multi-stage `Dockerfile` ending in distroless static. It starts as root so `PUID`/`PGID` work. Add a healthcheck via `bitnews healthcheck`, a subcommand that hits `/api/v1/health`.
-- Write `deploy/docker-compose.example.yml` with the TRaSH `/data` layout, `PUID`/`PGID`/`UMASK`, and a commented gluetun variant. The key needs no secret; it is generated in `/config`.
-- Write `deploy/bitnews.service` with the hardening from the design and `LoadCredential=` for the key.
-- Add CI image builds for amd64/arm64 to the GitLab container registry.
-- Write `docs/deploy.md` covering both paths.
+- Write a multi-stage `Dockerfile` ending in distroless static, running as a non-root user that `user:` overrides (see [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md)). Add a healthcheck via `bitnews healthcheck`, a subcommand that hits `/api/v1/health`.
+- Write `deploy/docker-compose.example.yml` with the TRaSH `/data` layout, `user:`/`UMASK`, and a commented gluetun variant. The key needs no secret; it is generated in `/config`.
+- Add a CI job that builds the image for amd64/arm64 and pushes it to the GitLab container registry on the default branch and on tags.
+- Write `docs/deploy.md` for the Docker path.
 
 **Acceptance criteria**
-- [ ] `docker compose up` with the example reaches the setup screen and runs as `PUID`/`PGID`.
-- [ ] Under systemd, the service passes `systemd-analyze security` with a score below 3.0.
+- [x] `docker compose up` with the example reaches the setup screen and runs as the `user:` ids, and the container reports healthy.
+- [x] The setup flow works, and the database and key survive `docker compose down` and `up` (the key does not change).
+- [x] The image builds for arm64 and amd64.
+

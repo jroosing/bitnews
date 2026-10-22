@@ -30,7 +30,7 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/1) · [wiki]
 | M1-12 | [#12](https://gitlab.com/kyura4k/bitnews/-/issues/12) | API keys with scopes | area:auth, ready-for-agent | done |
 | M1-13 | [#13](https://gitlab.com/kyura4k/bitnews/-/issues/13) | HTTP server and own API v1 | area:api, ready-for-agent | done |
 | M1-14 | [#14](https://gitlab.com/kyura4k/bitnews/-/issues/14) | SSE event stream | area:api, ready-for-agent | done |
-| M1-15 | [#15](https://gitlab.com/kyura4k/bitnews/-/issues/15) | Docker image, compose example and systemd unit | area:deploy, ready-for-agent | built, open until run on Docker and systemd |
+| M1-15 | [#15](https://gitlab.com/kyura4k/bitnews/-/issues/15) | Docker image and compose example | area:deploy, ready-for-agent | done (verified with Docker; the CI image job first runs on `main`) |
 
 ### [M2 — Usenet fetch](m2-usenet-fetch.md)
 

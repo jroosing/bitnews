@@ -1,9 +1,6 @@
 # Deploying bitnews
 
-bitnews is one static binary that listens on one port (default `9494`) for the UI, its own API and the Sonarr/Radarr adapters. It speaks plain HTTP; put a reverse proxy in front of it for TLS. Two supported ways to run it:
-
-- [Docker](#docker) (distroless image, `deploy/docker-compose.example.yml`)
-- [systemd / bare metal / LXC](#systemd-and-bare-metal) (`deploy/bitnews.service`)
+bitnews is one static binary that listens on one port (default `9494`) for the UI, its own API and the Sonarr/Radarr adapters. It speaks plain HTTP; put a reverse proxy in front of it for TLS. Docker is the supported way to run it: a distroless image and `deploy/docker-compose.example.yml`, aimed at a homelab. [Running without Docker](#without-docker) is possible but not packaged.
 
 Then read the [hardening checklist](#hardening-checklist).
 
@@ -13,7 +10,7 @@ Only these settings live outside the database. A flag wins over its environment 
 
 | Flag | Env | Default | Notes |
 |---|---|---|---|
-| `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` | Holds `bitnews.db` and the master key `bitnews.key`. Image: `/config`. systemd: `/var/lib/bitnews`. Absolute path. |
+| `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` | Holds `bitnews.db` and the master key `bitnews.key`. Image: `/config`. Absolute path. |
 | `--key-file` | `BITNEWS_KEY_FILE` | `bitnews.key` inside the config dir | Master key that encrypts the stored Server and archive passwords. Generated on first start. Set it only to keep the key apart from the database (see [The master key](#the-master-key)). Absolute path. |
 | `--listen` | `BITNEWS_LISTEN` | `0.0.0.0:9494` | `host:port`. |
 | `--log-level` | `BITNEWS_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. |
@@ -24,7 +21,7 @@ Only these settings live outside the database. A flag wins over its environment 
 
 `bitnews --help` prints the same list and `bitnews --version` prints the version and commit.
 
-On first start (no admin yet), bitnews prints a one-time **setup token** in its log. The setup screen asks for it, so nobody else on the LAN can claim a fresh instance. Read it with `docker compose logs bitnews` or `journalctl -u bitnews`.
+On first start (no admin yet), bitnews prints a one-time **setup token** in its log. The setup screen asks for it, so nobody else on the LAN can claim a fresh instance. Read it with `docker compose logs bitnews`.
 
 ## Docker
 
@@ -194,60 +191,19 @@ The image's `HEALTHCHECK` runs `["/bitnews", "healthcheck"]` (exec form, because
 
 The `HEALTHCHECK` uses `--interval=30s --timeout=5s --start-period=20s --retries=3`. Inspect it with `docker inspect --format '{{.State.Health.Status}}' bitnews`. It always queries the loopback address, so keep `BITNEWS_LISTEN` on `0.0.0.0` or `127.0.0.1` inside the container.
 
-## systemd and bare metal
+## Without Docker
 
-The same steps work in an LXC container. Keeping the key apart from the database with `LoadCredential=` needs systemd 250 or newer.
-
-```sh
-# 1. Binary (build with `make build-all`, or download a release)
-sudo install -m 0755 dist/bitnews-linux-amd64 /usr/local/bin/bitnews     # or -arm64
-
-# 2. Service user. For sharing files with Sonarr/Radarr use their group
-#    as Group= in the unit instead (see the comments in bitnews.service).
-sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin bitnews
-
-# 3. Config directory for the optional settings file
-sudo install -d -m 0755 /etc/bitnews
-
-# 4. Data tree, writable for the service (TRaSH layout, same filesystem as the library)
-sudo install -d -m 2775 -o bitnews -g bitnews /data/usenet /data/usenet/incomplete /data/usenet/complete
-
-# 5. Optional settings, then the unit
-sudo install -m 0640 deploy/bitnews.env.example /etc/bitnews/bitnews.env     # edit, uncomment what you need
-sudo install -m 0644 deploy/bitnews.service /etc/systemd/system/bitnews.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now bitnews
-journalctl -u bitnews -f           # setup token
-```
-
-How the unit is built:
-
-- **User and ids.** It runs as `User=bitnews` / `Group=bitnews` directly; change them (or add `SupplementaryGroups=`) to share files with Sonarr and Radarr. `UMask=0002` matches the Docker default.
-- **State.** `StateDirectory=bitnews` creates `/var/lib/bitnews` (the config dir, mode `0700`) and keeps it writable despite `ProtectSystem=strict`. `ReadWritePaths=/data` opens the download and library tree; the unit does not start if that path is missing, so create it first or write `-/data`.
-- **Key.** Generated on first start as `/var/lib/bitnews/bitnews.key`, next to the database; back up the whole directory. To keep it apart, create `/etc/bitnews/bitnews.key` as root (`head -c 32 /dev/urandom | base64`, mode `600`) and uncomment the two lines in the unit: `LoadCredential=bitnews.key:/etc/bitnews/bitnews.key` makes systemd expose a private copy to this service only, and `BITNEWS_KEY_FILE=%d/bitnews.key` points at it (`%d` is `$CREDENTIALS_DIRECTORY`). That directory is read-only, so with a credential the key is never auto-generated: create it first.
-- **Settings.** `EnvironmentFile=-/etc/bitnews/bitnews.env` is optional and overrides the `Environment=` lines. `%d` is not expanded inside the env file. For `BITNEWS_ADMIN_PASSWORD_FILE` use the commented `LoadCredential=` lines in the unit.
-- **Restart and stop.** `Restart=on-failure`, and `TimeoutStopSec=30` leaves room for the 10 second graceful shutdown (stop accepting requests, flush state, close the DB).
-- **Hardening.** See the list in the unit. `MemoryDenyWriteExecute=true` is fine for a static Go binary. `RestrictAddressFamilies` omits `AF_NETLINK`; add it when the torrent interface binding (M5) is used. The `SystemCallFilter` lines return `EPERM` for blocked calls instead of killing the process.
-
-Check it on the machine that runs it:
-
-```sh
-systemd-analyze verify /etc/systemd/system/bitnews.service
-systemd-analyze security bitnews.service        # target: overall exposure below 3.0
-```
-
-Proxy, `allowed_hosts` and `trusted_proxies` work exactly as in the Docker section; set `BITNEWS_LISTEN=127.0.0.1:9494` in the env file when the proxy is on the same host. The `healthcheck` subcommand also works outside Docker (`bitnews healthcheck`, same contract) for a monitoring script.
+The binary is static and has no other files to install, so it also runs directly (`make build-all` builds `dist/bitnews-linux-amd64` and `-arm64`). Set the [bootstrap settings](#bootstrap-settings) as flags or environment variables, run it as the user that owns your media (see [Identity and UMASK](#identity-and-umask)), and keep it behind a reverse proxy as described above. `bitnews healthcheck` works outside Docker too, with the same contract. Docker is the supported way to run it; there is no systemd unit.
 
 ## Hardening checklist
 
-- [ ] The container (or service) runs as a dedicated non-root user (`user: "1000:1000"` / `User=bitnews`).
-- [ ] The config directory, which holds the database and the master key, is backed up as a whole and readable only by the service. If you want the key apart from the database: a Docker secret or `LoadCredential=` via `BITNEWS_KEY_FILE`.
+- [ ] The container runs as a dedicated non-root user (`user: "1000:1000"`).
+- [ ] The config directory, which holds the database and the master key, is backed up as a whole and readable only by the service. If you want the key apart from the database: a Docker secret via `BITNEWS_KEY_FILE`.
 - [ ] TLS is terminated by a reverse proxy; port 9494 is not reachable from the internet (loopback or internal Docker network only).
 - [ ] `allowed_hosts` lists the public hostname, `trusted_proxies` lists only the proxy, and *disable auth* and *LAN bypass* are off.
 - [ ] Compose: `read_only: true`, `tmpfs: /tmp`, `cap_drop: [ALL]` with nothing added back, `no-new-privileges:true`.
-- [ ] systemd: `systemd-analyze security bitnews.service` is below 3.0 on your system.
 - [ ] Base images are pinned to digests and rebuilt regularly, and `govulncheck` (CI) is clean for the release you run.
 - [ ] One `/data` mount shared with the *arr containers, same path everywhere, same group, `UMASK=002`.
 - [ ] A VPN, if wanted, is configured and tested in its own container (bitnews does not manage it).
 - [ ] The API key (Settings → Security) is rotated if it leaked, and then updated in Sonarr, Radarr and your scripts. There is one key for all of them, with full access. No admin password in the environment or shell history (`BITNEWS_ADMIN_PASSWORD_FILE` points at a file only the service can read).
-- [ ] The database (`/config`, `/var/lib/bitnews`) is backed up; the key is not stored with it.
+- [ ] The database (`/config`) is backed up; the key is not stored with it.
