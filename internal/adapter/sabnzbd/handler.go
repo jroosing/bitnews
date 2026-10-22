@@ -40,14 +40,14 @@ type SettingsReader interface {
 	Current() core.Settings
 }
 
-// Deps is everything the adapter needs. Credentials, Downloads, Adder,
+// Deps is everything the adapter needs. AppKey, Downloads, Adder,
 // Categories and Settings are required; the rest are optional.
 type Deps struct {
-	Credentials *auth.AdapterCredentialService
-	Downloads   *app.DownloadService
-	Adder       *app.AddService
-	Categories  *app.CategoryService
-	Settings    SettingsReader
+	AppKey     *auth.AppKeyService
+	Downloads  *app.DownloadService
+	Adder      *app.AddService
+	Categories *app.CategoryService
+	Settings   SettingsReader
 
 	// StageSource reports the Post-processing stage a Download is in, which
 	// decides whether its history status is Verifying, Repairing,
@@ -72,7 +72,7 @@ type Deps struct {
 // New returns the handler for /sabnzbd/api. It panics if a required
 // dependency is missing, since that is a wiring bug found at startup.
 func New(d Deps) http.Handler {
-	if d.Credentials == nil || d.Downloads == nil || d.Adder == nil || d.Categories == nil || d.Settings == nil {
+	if d.AppKey == nil || d.Downloads == nil || d.Adder == nil || d.Categories == nil || d.Settings == nil {
 		panic("sabnzbd: Deps is missing a required service")
 	}
 	if d.Logger == nil {
@@ -115,9 +115,8 @@ func (c *call) get(name string) string { return strings.TrimSpace(c.params.Get(n
 // ServeHTTP dispatches on the mode parameter.
 //
 // A call is authenticated by its apikey parameter, which must be an
-// adapter_sab credential: "API Key Required" without one and "API Key
-// Incorrect" with a wrong, revoked or foreign one, both as HTTP 200 like
-// SABnzbd. mode=version needs no key. The output parameter is ignored: the
+// app key: "API Key Required" without one and "API Key Incorrect" with a
+// wrong or refreshed-away one, both as HTTP 200 like SABnzbd. mode=version needs no key. The output parameter is ignored: the
 // answer is always JSON.
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -270,19 +269,12 @@ func (c *call) authorize() bool {
 		c.fail("API Key Required")
 		return false
 	}
-	_, err := c.h.Credentials.Authenticate(c.ctx(), auth.KindAdapterSAB, key)
-	switch {
-	case err == nil:
-		c.authOK = true
-		return true
-	case errors.Is(err, auth.ErrInvalidAdapterCredential):
+	if !c.h.AppKey.Authenticate(key) {
 		c.fail("API Key Incorrect")
-	default:
-		c.h.log.Error("sabnzbd: authentication failed", "err", err)
-		c.w.WriteHeader(http.StatusInternalServerError)
-		c.encode(errorBody{Error: "Internal error"})
+		return false
 	}
-	return false
+	c.authOK = true
+	return true
 }
 
 // json answers 200 with v.

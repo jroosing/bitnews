@@ -3,8 +3,10 @@ package runner_test
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -142,6 +144,23 @@ func TestAnEngineErrorFailsTheDownloadThatIsStillBeingFetched(t *testing.T) {
 	h.eventually(func() bool { return len(h.callsFor("Remove", a.ID)) == 1 }, "the failed torrent leaves the engine")
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, core.StateReady, h.get(b.ID).State, "a Ready Download is not failed after the fact")
+}
+
+func TestAPermissionErrorFromTheEngineFailsTheDownloadNamingTheFolderAndTheUser(t *testing.T) {
+	h := newHarness(t)
+	a := h.addTorrent()
+	h.start()
+	h.waitState(a.ID, core.StateFetching)
+	folder := filepath.Join(h.incomplete, string(a.ID))
+
+	h.engine.Emit(core.TorrentEvent{Kind: core.TorrentErrored, Hash: hashOf(a.ID),
+		Err: &fs.PathError{Op: "open", Path: filepath.Join(folder, "file.bin"), Err: syscall.EACCES}})
+
+	h.waitState(a.ID, core.StateFailed)
+	got := h.get(a.ID)
+	assert.Equal(t, core.FailureInternal, got.FailureReason)
+	assert.Contains(t, got.FailureDetail, folder)
+	assert.Contains(t, got.FailureDetail, fmt.Sprintf("uid %d", os.Geteuid()))
 }
 
 func TestInfoDescribesARegisteredTorrentFromMemory(t *testing.T) {

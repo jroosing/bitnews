@@ -21,9 +21,8 @@ Wants=network-online.target
 Type=exec
 ExecStart=/usr/local/bin/bitnews
 
-# The service runs directly as an unprivileged user, so there is no privilege
-# drop: do NOT set PUID/PGID here (bitnews refuses them when not started as
-# root). To share files with Sonarr/Radarr, give this service their group:
+# bitnews runs as the user systemd starts it as. To share files with
+# Sonarr/Radarr, give this service their group:
 #   Group=media            (or keep Group=bitnews and add the next line)
 #   SupplementaryGroups=media
 User=bitnews

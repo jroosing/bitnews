@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"sync"
 	"time"
-
-	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
 const (
@@ -18,7 +16,8 @@ const (
 )
 
 // sessions is the table of SID sessions: random 128-bit tokens in memory,
-// each bound to the adapter credential that logged in. A session lives one
+// each bound to the generation of the app key that logged in, so a refresh
+// ends them all. A session lives one
 // hour after its last use and the table holds a bounded number of them.
 // Sessions are valid on /api/v2 only, since nothing else reads them.
 type sessions struct {
@@ -30,7 +29,7 @@ type sessions struct {
 }
 
 type session struct {
-	credential core.ID
+	generation uint64
 	lastUsed   time.Time
 }
 
@@ -38,9 +37,9 @@ func newSessions(now func() time.Time, limit int) *sessions {
 	return &sessions{now: now, max: limit, m: make(map[string]*session)}
 }
 
-// create opens a session for the credential and returns its token. When the
+// create opens a session for the key generation and returns its token. When the
 // table is full, expired sessions go first, then the least recently used one.
-func (t *sessions) create(credential core.ID) (string, error) {
+func (t *sessions) create(generation uint64) (string, error) {
 	raw := make([]byte, sidBytes)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
@@ -62,7 +61,7 @@ func (t *sessions) create(credential core.ID) (string, error) {
 		}
 		delete(t.m, oldest)
 	}
-	t.m[token] = &session{credential: credential, lastUsed: now}
+	t.m[token] = &session{generation: generation, lastUsed: now}
 	return token, nil
 }
 
@@ -74,39 +73,29 @@ func (t *sessions) sweep(now time.Time) {
 	}
 }
 
-// use returns the credential of a live session and refreshes its idle timer.
-func (t *sessions) use(token string) (core.ID, bool) {
+// use returns the key generation of a live session and refreshes its idle
+// timer.
+func (t *sessions) use(token string) (uint64, bool) {
 	if len(token) != 2*sidBytes {
-		return "", false
+		return 0, false
 	}
 	now := t.now()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	s, ok := t.m[token]
 	if !ok {
-		return "", false
+		return 0, false
 	}
 	if now.Sub(s.lastUsed) >= sessionIdle {
 		delete(t.m, token)
-		return "", false
+		return 0, false
 	}
 	s.lastUsed = now
-	return s.credential, true
+	return s.generation, true
 }
 
 func (t *sessions) drop(token string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.m, token)
-}
-
-// dropCredential ends every session of a credential.
-func (t *sessions) dropCredential(id core.ID) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for k, s := range t.m {
-		if s.credential == id {
-			delete(t.m, k)
-		}
-	}
 }

@@ -19,6 +19,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 	"gitlab.com/kyura4k/gitnews/internal/netbind"
 	"gitlab.com/kyura4k/gitnews/internal/postproc/adapt"
 	"gitlab.com/kyura4k/gitnews/internal/postproc/finalize"
@@ -293,14 +294,17 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	downloadService := app.NewDownloadService(downloads, categories, bus, app.WithDataRemover(remover))
 	shareLimits.downloads = downloadService
 	track := newTracker()
-	diskSpace := statfs
+	diskSpace := fsDiskSpace
 	if tune.FreeSpace != nil {
 		diskSpace = func(path string) (int64, int64, bool) {
 			free, err := tune.FreeSpace(path)
 			return int64(min(free, math.MaxInt64)), int64(min(free, math.MaxInt64)), err == nil //nolint:gosec // clamped
 		}
 	}
-	adapterCreds := auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db), auth.WithAdapterLogger(log))
+	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, deps.Key), auth.WithAppKeyLogger(log))
+	if err != nil {
+		return nil, err
+	}
 	addOpts := []app.Option{app.WithLogger(log)}
 	if trun != nil {
 		addOpts = append(addOpts, app.WithTorrentSources(torrentSources))
@@ -311,19 +315,18 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	if trun != nil {
 		torrents := newQBitTorrents(downloads, torrentSources, torrentRecords, engine, trun, settings.Current, log)
 		qbitHandler = qbit.New(qbit.Deps{
-			Credentials: adapterCreds, Downloads: downloadService, Categories: categoryService, Settings: settings,
+			AppKey: appKey, Downloads: downloadService, Categories: categoryService, Settings: settings,
 			Torrents: torrents, Files: torrents, ShareLimits: torrents,
 			Adder:       &qbitAdder{add: adder, limits: torrents, log: log},
 			GlobalShare: qbitGlobalShare(settings.Current), Logger: log,
 		})
 	}
 	serverService := app.NewServerService(servers, bus, prober)
-	apiKeys := auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyLogger(log))
 	webUI, err := web.New(web.Deps{
 		Logger: log, Version: deps.Version.Version,
 		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
-		Adder: adder, APIKeys: apiKeys, AdapterCredentials: adapterCreds,
+		Adder: adder, AppKey: appKey,
 		Runtime: webRuntime(deps), Torrents: webTorrents(deps),
 	})
 	if err != nil {
@@ -340,14 +343,13 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Setup:      setup,
 		Sessions:   sessions,
 		UIAuth:     uiAuth,
-		APIKeys:    apiKeys,
+		AppKey:     appKey,
 		Bus:        bus,
 
-		AdapterCredentials: adapterCreds,
-		Web:                webUI,
-		QBit:               qbitHandler,
+		Web:  webUI,
+		QBit: qbitHandler,
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
-			Credentials: adapterCreds, Downloads: downloadService, Adder: adder,
+			AppKey: appKey, Downloads: downloadService, Adder: adder,
 			Categories: categoryService, Settings: settings,
 			StageSource: track.stage,
 			SpeedSource: func() (int64, bool) { paused, _ := run.QueuePaused(); return track.speed(), paused },
@@ -583,4 +585,14 @@ func (d *Daemon) Serve(ctx context.Context, addr string, serve func(ctx context.
 	serveErr := serve(ctx, d.HTTPServer(addr))
 	cancel()
 	return errors.Join(serveErr, <-done)
+}
+
+// fsDiskSpace reports the free and total bytes of the filesystem holding
+// path, or ok false when they cannot be read.
+func fsDiskSpace(path string) (free, total int64, ok bool) {
+	f, t, err := fsutil.DiskSpace(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	return int64(min(f, math.MaxInt64)), int64(min(t, math.MaxInt64)), true //nolint:gosec // clamped
 }

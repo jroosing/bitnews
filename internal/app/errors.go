@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
@@ -72,4 +73,14 @@ func upstream(code, format string, args ...any) error {
 
 func unavailable(code, format string, args ...any) error {
 	return &Error{Kind: ErrUnavailable, Code: code, Message: fmt.Sprintf(format, args...)}
+}
+
+// createDirError is the failure to create a Download's directory. A
+// permission error is the user's to fix, so it names the folder and the user
+// id bitnews runs as (code "folder_not_writable"); anything else is internal.
+func createDirError(err error) error {
+	if errors.Is(err, fs.ErrPermission) {
+		return unavailable("folder_not_writable", "%s", err)
+	}
+	return fmt.Errorf("app: create download dir: %w", err)
 }

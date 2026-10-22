@@ -122,70 +122,47 @@ func (f *fakeSessions) touchCount() int {
 	return f.touches
 }
 
-// fakeAPIKeys is an in-memory core.APIKeyRepo that counts touches.
-type fakeAPIKeys struct {
-	mu      sync.Mutex
-	keys    []core.APIKey
-	touches int
-	// wrongHash makes GetByHash return the first key whatever the hash,
-	// like a buggy repository would.
-	wrongHash bool
+// fakeAppKeys is an in-memory core.AppKeyRepo that counts reads.
+type fakeAppKeys struct {
+	mu     sync.Mutex
+	key    core.Secret
+	set    bool
+	gets   int
+	getErr error
+	setErr error
 }
 
-func (f *fakeAPIKeys) Create(_ context.Context, k core.APIKey) error {
+func (f *fakeAppKeys) Get(context.Context) (core.Secret, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.keys = append(f.keys, k)
+	f.gets++
+	switch {
+	case f.getErr != nil:
+		return "", f.getErr
+	case !f.set:
+		return "", core.ErrNotFound
+	}
+	return f.key, nil
+}
+
+func (f *fakeAppKeys) Set(_ context.Context, key core.Secret) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.setErr != nil {
+		return f.setErr
+	}
+	f.key, f.set = key, true
 	return nil
 }
 
-func (f *fakeAPIKeys) List(context.Context) ([]core.APIKey, error) {
+func (f *fakeAppKeys) stored() core.Secret {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]core.APIKey(nil), f.keys...), nil
+	return f.key
 }
 
-func (f *fakeAPIKeys) GetByHash(_ context.Context, h core.TokenHash) (core.APIKey, error) {
+func (f *fakeAppKeys) getCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.wrongHash && len(f.keys) > 0 {
-		return f.keys[0], nil
-	}
-	for _, k := range f.keys {
-		if k.Hash == h {
-			return k, nil
-		}
-	}
-	return core.APIKey{}, core.ErrNotFound
-}
-
-func (f *fakeAPIKeys) TouchLastUsed(_ context.Context, id core.ID, at time.Time) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for i := range f.keys {
-		if f.keys[i].ID == id {
-			f.keys[i].LastUsedAt = at
-			f.touches++
-			return nil
-		}
-	}
-	return core.ErrNotFound
-}
-
-func (f *fakeAPIKeys) Delete(_ context.Context, id core.ID) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for i := range f.keys {
-		if f.keys[i].ID == id {
-			f.keys = append(f.keys[:i], f.keys[i+1:]...)
-			return nil
-		}
-	}
-	return core.ErrNotFound
-}
-
-func (f *fakeAPIKeys) touchCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.touches
+	return f.gets
 }

@@ -225,7 +225,7 @@ What was decided, and is therefore a guess until then:
 **Goal:** Prove the first daily-use point on real containers with the TRaSH layout.
 
 **Work**
-- Use `deploy/e2e/docker-compose.yml` with bitnews, Sonarr and Radarr (and optionally Prowlarr), all sharing one `/data` mount, with the same `PUID`/`PGID`/`UMASK`.
+- Use `deploy/e2e/docker-compose.yml` with bitnews, Sonarr and Radarr (and optionally Prowlarr), all sharing one `/data` mount, running as the same user and group (`user:`) with the same `UMASK`.
 - Check these against a real Usenet provider:
   - grab → queue → Ready → import by hardlink (the imported file's link count is 2)
   - a forced failure (a test NZB with too little recovery data) → Failed → blocklisted, and another release is grabbed

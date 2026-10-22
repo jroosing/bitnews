@@ -142,7 +142,7 @@ func (f *Finisher) Finish(ctx context.Context, d core.Download, dir, unpackedDir
 		return "", err
 	}
 	dst := fsutil.Unique(base)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o777); err != nil {
+	if err := fsutil.MkdirAll(filepath.Dir(dst), 0o777); err != nil {
 		return "", fmt.Errorf("finalize: create %q: %w", filepath.Dir(dst), err)
 	}
 	res, err := f.deps.Mover(dir, dst)
@@ -153,7 +153,7 @@ func (f *Finisher) Finish(ctx context.Context, d core.Download, dir, unpackedDir
 		})
 	}
 	if err != nil {
-		return "", fmt.Errorf("finalize: %w", err)
+		return "", fmt.Errorf("finalize: %w", fsutil.WriteError(err))
 	}
 	return dst, nil
 }

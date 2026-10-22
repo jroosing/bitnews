@@ -121,8 +121,8 @@ func (s *AddService) Stage(ctx context.Context, r io.Reader) (st *StagedNZB, err
 	id := core.NewID()
 	dir := filepath.Join(root, string(id))
 	// 0o777 before the umask, like every directory the daemon creates.
-	if err := os.MkdirAll(dir, 0o777); err != nil {
-		return nil, fmt.Errorf("app: create download dir: %w", err)
+	if err := fsutil.MkdirAll(dir, 0o777); err != nil {
+		return nil, createDirError(err)
 	}
 	defer func() {
 		if err != nil {

@@ -12,7 +12,7 @@ import (
 )
 
 // The statements below mirror the fields of the core types (Download,
-// Category, Settings, User, Session, APIKey) so that the repositories can be
+// Category, Settings, User, Session) so that the repositories can be
 // implemented on this schema without further migrations.
 const (
 	insertCategory = `INSERT INTO categories (id, name, dir_override) VALUES ('cat1', 'tv', '/data/tv')`
@@ -26,8 +26,6 @@ const (
 	insertUser     = `INSERT INTO users (id, username, password_hash, created_at) VALUES ('u1', 'admin', x'24617267', 1700000000000)`
 	insertSession  = `INSERT INTO sessions (token_hash, user_id, created_at, last_seen_at)
 		VALUES (zeroblob(32), 'u1', 1700000000000, 1700000000000)`
-	insertAPIKey = `INSERT INTO api_keys (id, name, scope, hash, created_at, last_used_at)
-		VALUES ('k1', 'sonarr', 'write', zeroblob(32), 1700000000000, NULL)`
 )
 
 func openDefault(t *testing.T) *store.DB {
@@ -59,7 +57,7 @@ func TestFreshDatabaseHasTheSchemaOfEveryMigration(t *testing.T) {
 	// Later migrations add tables of their own, so check what earlier ones
 	// created and that the applied versions are contiguous from 1. Each
 	// migration's own tests assert its tables.
-	assert.Subset(t, tables, []string{"api_keys", "categories", "download_sources", "downloads", "schema_migrations", "servers", "sessions", "settings", "torrent_sources", "users"})
+	assert.Subset(t, tables, []string{"categories", "download_sources", "downloads", "schema_migrations", "servers", "sessions", "settings", "torrent_sources", "users"})
 	got := applied(t, db.Reader())
 	require.GreaterOrEqual(t, len(got), 2)
 	assert.Equal(t, appliedRow{1, "initial"}, got[0])
@@ -72,11 +70,11 @@ func TestFreshDatabaseHasTheSchemaOfEveryMigration(t *testing.T) {
 func TestSchemaStoresARowForEachTable(t *testing.T) {
 	db := openDefault(t)
 
-	for _, stmt := range []string{insertCategory, insertDownload, insertSettings, insertUser, insertSession, insertAPIKey} {
+	for _, stmt := range []string{insertCategory, insertDownload, insertSettings, insertUser, insertSession} {
 		exec(t, db, stmt)
 	}
 
-	for _, table := range []string{"categories", "downloads", "settings", "users", "sessions", "api_keys"} {
+	for _, table := range []string{"categories", "downloads", "settings", "users", "sessions"} {
 		assert.Equal(t, 1, count(t, db.Reader(), table), table)
 	}
 }
@@ -112,9 +110,7 @@ func TestSchemaRejectsInvalidEnumValues(t *testing.T) {
 		"download source kind":    strings.Replace(insertDownload, "'nzb'", "'ftp'", 1),
 		"download failure reason": strings.Replace(insertDownload, "NULL,", "'bogus',", 1),
 		"download paused":         strings.Replace(insertDownload, "3, 0,", "3, 2,", 1),
-		"api key scope":           strings.Replace(insertAPIKey, "'write'", "'admin'", 1),
 		"session token length":    strings.Replace(insertSession, "zeroblob(32)", "zeroblob(16)", 1),
-		"api key hash length":     strings.Replace(insertAPIKey, "zeroblob(32)", "zeroblob(16)", 1),
 		"settings not json":       strings.Replace(insertSettings, `'{"queues":{"usenet":1}}'`, "'not json'", 1),
 	}
 	exec(t, db, insertCategory)
@@ -155,14 +151,12 @@ func TestSchemaRejectsOrphansAndDuplicates(t *testing.T) {
 	exec(t, db, insertCategory)
 	exec(t, db, insertUser)
 	exec(t, db, insertSession)
-	exec(t, db, insertAPIKey)
 	tests := map[string]string{
 		"download with unknown category": strings.Replace(insertDownload, "'cat1', 'ready'", "'nope', 'ready'", 1),
 		"session with unknown user":      strings.Replace(insertSession, "'u1'", "'nope'", 1),
 		"duplicate category name":        strings.Replace(insertCategory, "'cat1'", "'cat2'", 1),
 		"duplicate username":             strings.Replace(insertUser, "'u1'", "'u2'", 1),
 		"duplicate session token":        insertSession,
-		"duplicate api key hash":         strings.Replace(insertAPIKey, "'k1'", "'k2'", 1),
 	}
 
 	for name, stmt := range tests {

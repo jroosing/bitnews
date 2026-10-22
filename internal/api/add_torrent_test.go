@@ -56,7 +56,7 @@ type errorFull struct {
 func TestUploadTorrentCreatesAQueuedTorrentDownloadAndStoresTheFile(t *testing.T) {
 	t.Parallel()
 	e, usenetRoot := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	events := e.subscribe()
 	data, hash := coretest.BuildTorrent("Some.Show.S01", showEntries)
 
@@ -96,7 +96,7 @@ func TestUploadTorrentCreatesAQueuedTorrentDownloadAndStoresTheFile(t *testing.T
 func TestUploadTorrentHonorsFormFieldsInAnyOrder(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	cat := core.Category{ID: core.NewID(), Name: "tv"}
 	require.NoError(t, e.cats.Create(context.Background(), cat))
 	data, _ := coretest.BuildTorrent("Inner", showEntries)
@@ -121,7 +121,7 @@ func TestUploadTorrentHonorsFormFieldsInAnyOrder(t *testing.T) {
 func TestAddMagnetCreatesAFetchingMetadataDownloadAndSealsTheLink(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	events := e.subscribe()
 	link := magnetLink("MAGNETSECRET")
 
@@ -185,7 +185,7 @@ func toString(v any) string {
 func TestAddMagnetHonorsTheJSONFields(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	cat := core.Category{ID: core.NewID(), Name: "movies"}
 	require.NoError(t, e.cats.Create(context.Background(), cat))
 
@@ -207,7 +207,7 @@ func TestAddByURLFetchesATorrentAndStoresIt(t *testing.T) {
 		_, _ = w.Write(data)
 	})
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	got := e.addedDownload(e.addURL(key, jsonURL(ix.URL+"/dl?apikey="+urlSecret, "")))
 
@@ -233,7 +233,7 @@ func TestAddByURLFollowsARedirectToAMagnetLinkOnce(t *testing.T) {
 		w.WriteHeader(http.StatusFound)
 	})
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	direct := e.addURL(key, jsonURL(ix.URL+"/dl?apikey="+urlSecret, ""))
 	got := e.addedDownload(direct)
@@ -256,7 +256,7 @@ func TestAddByURLStillStoresAnNZBWhenTorrentsAreEnabled(t *testing.T) {
 	t.Parallel()
 	ix := newIndexer(t, serveNZB(nzbXML(metaName)))
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	got := e.addedDownload(e.addURL(key, jsonURL(ix.URL, "")))
 
@@ -269,7 +269,7 @@ func TestAddByURLOfABrokenTorrentIs400AndLeavesNothing(t *testing.T) {
 	t.Parallel()
 	ix := newIndexer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("d4:infoi5ee")) })
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.addURL(key, jsonURL(ix.URL, ""))
 
@@ -283,7 +283,7 @@ func TestAddByURLOfAHostileTorrentLeavesNothingOnDisk(t *testing.T) {
 	data, _ := coretest.BuildTorrent("root", []coretest.TorrentEntry{{Path: []string{"..", "..", "evil"}, Size: 1}})
 	ix := newIndexer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(data) })
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.addURL(key, jsonURL(ix.URL, ""))
 
@@ -303,7 +303,7 @@ func TestAddByURLRedactsTheKeyInLogsForTorrentFetchesToo(t *testing.T) {
 		_, _ = w.Write(data)
 	})
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	ok := e.addURL(key, jsonURL(ix.URL+"/dl?apikey="+urlSecret+"&t=get", ""))
 	bad := e.addURL(key, jsonURL(ix.URL+"/bad?apikey="+urlSecret, ""))
@@ -321,7 +321,7 @@ func TestAddByURLRedactsTheKeyInLogsForTorrentFetchesToo(t *testing.T) {
 func TestUploadTorrentOverTheLimitIs413AndLeavesNothing(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	data, _ := coretest.BuildTorrent("x", showEntries)
 	data = append(data, make([]byte, core.MaxMetainfoSize)...)
 
@@ -335,7 +335,7 @@ func TestUploadTorrentOverTheLimitIs413AndLeavesNothing(t *testing.T) {
 func TestUploadOfAnInvalidTorrentIs400AndLeavesNothing(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for name, data := range map[string]string{
 		"not bencode": "this is not a torrent",
 		"empty":       "",
@@ -355,7 +355,7 @@ func TestUploadOfAnInvalidTorrentIs400AndLeavesNothing(t *testing.T) {
 func TestUploadOfAHostileTorrentIs400AndNothingIsLeftOnDisk(t *testing.T) {
 	t.Parallel()
 	e, usenetRoot := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for name, entries := range map[string][]coretest.TorrentEntry{
 		"traversal":      {{Path: []string{"..", "..", "evil"}, Size: 1}},
 		"case collision": {{Path: []string{"A"}, Size: 1}, {Path: []string{"a"}, Size: 1}},
@@ -379,7 +379,7 @@ func TestUploadOfAHostileTorrentIs400AndNothingIsLeftOnDisk(t *testing.T) {
 func TestAddDuplicateTorrentIs409WithTheExistingDownload(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	data, hash := coretest.BuildTorrent("First.Copy", showEntries)
 	first := e.addedDownload(e.uploadTorrent(key, data))
 	events := e.subscribe()
@@ -407,7 +407,7 @@ func TestAddDuplicateTorrentIs409WithTheExistingDownload(t *testing.T) {
 func TestTorrentQueuePositionsAreIndependentOfTheNZBQueue(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	nzb1 := e.addedDownload(e.upload(key, nzbXML("")))
 	nzb2 := e.addedDownload(e.upload(key, nzbXML("")))
 
@@ -424,7 +424,7 @@ func TestTorrentQueuePositionsAreIndependentOfTheNZBQueue(t *testing.T) {
 func TestAddTorrentRejectsInvalidFieldsWithoutLeftovers(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	data, _ := coretest.BuildTorrent("x", showEntries)
 	for name, tc := range map[string]struct {
 		extra []formPart
@@ -468,7 +468,7 @@ func TestAddTorrentRejectsInvalidFieldsWithoutLeftovers(t *testing.T) {
 func TestUploadWithTwoSourcesIs400(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	data, _ := coretest.BuildTorrent("x", showEntries)
 	body, ct := multipartBody(t, formPart{"torrent", "a.torrent", string(data)}, formPart{"nzb", "a.nzb", nzbXML("")})
 
@@ -496,7 +496,7 @@ func TestAddTorrentWhenTheSourceCannotBeStoredLeavesNothing(t *testing.T) {
 	s := broken.settings.Current()
 	s.Paths.Torrent.Incomplete = e.torrentRoot()
 	require.NoError(t, broken.settings.Update(context.Background(), s))
-	key := broken.newKey(core.APIKeyScopeWrite)
+	key := broken.apiKey()
 	events := broken.subscribe()
 	data, _ := coretest.BuildTorrent("x", showEntries)
 
@@ -513,18 +513,15 @@ func TestAddTorrentWhenTheSourceCannotBeStoredLeavesNothing(t *testing.T) {
 	assert.Empty(t, list)
 }
 
-func TestAddTorrentNeedsAWriteKeyOrASessionWithCSRF(t *testing.T) {
+func TestAddTorrentNeedsTheKeyOrASessionWithCSRF(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	rkey := e.newKey(core.APIKeyScopeRead)
 	sess := e.login()
 	data, _ := coretest.BuildTorrent("x", showEntries)
 	body, ct := multipartBody(t, formPart{"torrent", "x.torrent", string(data)})
 	ctMod := withHeader("Content-Type", ct)
 	magnet := jsonMagnet(magnetLink("k"), "")
 
-	readKey := e.do("POST", "/api/v1/downloads", body, withBearer(rkey), ctMod)
-	readKeyMagnet := e.do("POST", "/api/v1/downloads", magnet, withBearer(rkey))
 	anonymous := e.do("POST", "/api/v1/downloads", body, ctMod)
 	anonymousMagnet := e.do("POST", "/api/v1/downloads", magnet)
 	noToken := e.do("POST", "/api/v1/downloads", body, withCookie(sess.cookie), ctMod)
@@ -532,10 +529,6 @@ func TestAddTorrentNeedsAWriteKeyOrASessionWithCSRF(t *testing.T) {
 	withToken := e.do("POST", "/api/v1/downloads", body, append(sess.mods(), ctMod)...)
 	magnetWithToken := e.do("POST", "/api/v1/downloads", jsonMagnet("magnet:?xt=urn:btih:"+strings.Repeat("2", 40), ""), sess.mods()...)
 
-	for _, rec := range []*httptest.ResponseRecorder{readKey, readKeyMagnet} {
-		assert.Equal(t, http.StatusForbidden, rec.Code)
-		assert.Equal(t, "insufficient_scope", errorOf(t, rec))
-	}
 	assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
 	assert.Equal(t, http.StatusUnauthorized, anonymousMagnet.Code)
 	for _, rec := range []*httptest.ResponseRecorder{noToken, noTokenMagnet} {
@@ -552,7 +545,7 @@ func TestAddTorrentWithoutTorrentSupportIs503(t *testing.T) {
 	e := newEnv(t, withConfig(func(c *api.Config) {
 		c.Adder = app.NewAddService(c.Downloads, e0Sources{}, c.Settings)
 	}))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	data, _ := coretest.BuildTorrent("x", showEntries)
 
 	file := e.uploadTorrent(key, data)

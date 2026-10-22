@@ -66,7 +66,7 @@ func newServerBody(name string, extra string) string {
 func TestCreateServerReturns201WithDefaultsAndNoPassword(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.do("POST", "/api/v1/servers", newServerBody("main", ""), withBearer(key))
 
@@ -91,7 +91,7 @@ func TestCreateServerReturns201WithDefaultsAndNoPassword(t *testing.T) {
 func TestServerResponseShapeHasNoPasswordAndNoTLSSwitches(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.do("POST", "/api/v1/servers", newServerBody("main", ""), withBearer(key))
 
@@ -109,7 +109,7 @@ func TestServerResponseShapeHasNoPasswordAndNoTLSSwitches(t *testing.T) {
 func TestServerRequestsRejectTLSWeakeningFields(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for _, field := range []string{"tls", "ssl", "insecure", "skip_verify", "tls_skip_verify", "plaintext", "verify_certificate"} {
 		rec := e.do("POST", "/api/v1/servers", newServerBody("x", `,"`+field+`":true`), withBearer(key))
 		assert.Equal(t, http.StatusBadRequest, rec.Code, field)
@@ -123,7 +123,7 @@ func TestServerRequestsRejectTLSWeakeningFields(t *testing.T) {
 func TestServerPasswordNeverAppearsInResponsesOrLogs(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	var bodies []string
 	add := func(rec interface{ String() string }) { bodies = append(bodies, rec.String()) }
 
@@ -149,7 +149,7 @@ func TestServerPasswordNeverAppearsInResponsesOrLogs(t *testing.T) {
 func TestCreateServerRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	e.createServer(key, newServerBody("main", ""))
 	for name, tc := range map[string]struct {
 		body   string
@@ -177,16 +177,16 @@ func TestCreateServerRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-func TestListServersIsOrderedByPriorityThenNameAndNeedsOnlyARead(t *testing.T) {
+func TestListServersIsOrderedByPriorityThenNameAndWorks(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	wkey, rkey := e.newKey(core.APIKeyScopeWrite), e.newKey(core.APIKeyScopeRead)
-	empty := e.do("GET", "/api/v1/servers", "", withBearer(rkey))
-	e.createServer(wkey, newServerBody("zeta", `,"priority":0`))
-	e.createServer(wkey, newServerBody("fill", `,"priority":1,"password":""`))
-	e.createServer(wkey, newServerBody("alpha", `,"priority":0`))
+	key := e.apiKey()
+	empty := e.do("GET", "/api/v1/servers", "", withBearer(key))
+	e.createServer(key, newServerBody("zeta", `,"priority":0`))
+	e.createServer(key, newServerBody("fill", `,"priority":1,"password":""`))
+	e.createServer(key, newServerBody("alpha", `,"priority":0`))
 
-	rec := e.do("GET", "/api/v1/servers", "", withBearer(rkey))
+	rec := e.do("GET", "/api/v1/servers", "", withBearer(key))
 
 	assert.JSONEq(t, `{"items":[]}`, empty.Body.String())
 	var out struct {
@@ -205,7 +205,7 @@ func TestListServersIsOrderedByPriorityThenNameAndNeedsOnlyARead(t *testing.T) {
 func TestGetServer(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	s := e.createServer(key, newServerBody("main", ""))
 
 	rec := e.do("GET", "/api/v1/servers/"+s.ID, "", withBearer(key))
@@ -221,7 +221,7 @@ func TestGetServer(t *testing.T) {
 func TestPatchServerKeepsThePasswordUnlessOneIsGiven(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	s := e.createServer(key, newServerBody("main", ""))
 	path := "/api/v1/servers/" + s.ID
 
@@ -250,7 +250,7 @@ func TestPatchServerKeepsThePasswordUnlessOneIsGiven(t *testing.T) {
 func TestPatchServerRejectsInvalidChanges(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	a := e.createServer(key, newServerBody("a", ""))
 	e.createServer(key, newServerBody("b", ""))
 	path := "/api/v1/servers/" + a.ID
@@ -279,7 +279,7 @@ func TestPatchServerRejectsInvalidChanges(t *testing.T) {
 func TestDeleteServer(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	s := e.createServer(key, newServerBody("main", ""))
 
 	rec := e.do("DELETE", "/api/v1/servers/"+s.ID, "", withBearer(key))
@@ -292,7 +292,7 @@ func TestDeleteServer(t *testing.T) {
 func TestServerChangesAreAnnouncedOnTheEventStream(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	events := e.subscribe()
 
 	s := e.createServer(key, newServerBody("main", ""))
@@ -309,7 +309,7 @@ func TestServerChangesAreAnnouncedOnTheEventStream(t *testing.T) {
 func TestTestServerReportsTheProbeResult(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	s := e.createServer(key, newServerBody("main", ""))
 	e.prober.result = app.ProbeResult{OK: true, Class: app.ProbeOK, Message: "connected and authenticated",
 		ConnectTime: 123 * time.Millisecond, Latency: 45 * time.Millisecond}
@@ -325,7 +325,7 @@ func TestTestServerReportsTheProbeResult(t *testing.T) {
 func TestTestServerReportsAFailureClassWith200(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	s := e.createServer(key, newServerBody("main", ""))
 	e.prober.result = app.ProbeResult{Class: app.ProbeTLS, Detail: "certificate_untrusted", Message: "the server's certificate is not trusted"}
 
@@ -338,7 +338,7 @@ func TestTestServerReportsAFailureClassWith200(t *testing.T) {
 func TestTestUnknownServerIs404AndUnreadablePasswordIs409(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	s := e.createServer(key, newServerBody("main", ""))
 	// Another key, as after losing the key file.
 	cfg := e.cfg
@@ -367,7 +367,7 @@ func TestTestUnknownServerIs404AndUnreadablePasswordIs409(t *testing.T) {
 func TestTestUnsavedServerValidatesAndSavesNothing(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	e.prober.result = app.ProbeResult{Class: app.ProbeAuth, Detail: "rejected", Message: "the server rejected the user name or password (481)"}
 
 	rec := e.do("POST", "/api/v1/servers/test", `{"host":"news.example.com","username":"joe","password":"x"}`, withBearer(key))
@@ -390,11 +390,10 @@ func TestTestUnsavedServerValidatesAndSavesNothing(t *testing.T) {
 	assert.Equal(t, 563, e.prober.probed[0].Port)
 }
 
-func TestServerWriteRoutesNeedAWriteKeyOrASessionWithCSRF(t *testing.T) {
+func TestServerWriteRoutesNeedTheKeyOrASessionWithCSRF(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	wkey, rkey := e.newKey(core.APIKeyScopeWrite), e.newKey(core.APIKeyScopeRead)
-	s := e.createServer(wkey, newServerBody("main", ""))
+	s := e.createServer(e.apiKey(), newServerBody("main", ""))
 	sess := e.login()
 	routes := []struct{ method, path, body string }{
 		{"POST", "/api/v1/servers", newServerBody("x", "")},
@@ -405,12 +404,9 @@ func TestServerWriteRoutesNeedAWriteKeyOrASessionWithCSRF(t *testing.T) {
 	}
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
-			readKey := e.do(rt.method, rt.path, rt.body, withBearer(rkey))
 			anonymous := e.do(rt.method, rt.path, rt.body)
 			noToken := e.do(rt.method, rt.path, rt.body, withCookie(sess.cookie))
 
-			require.Equal(t, http.StatusForbidden, readKey.Code)
-			assert.Equal(t, "insufficient_scope", errorOf(t, readKey))
 			assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
 			require.Equal(t, http.StatusForbidden, noToken.Code)
 			assert.Equal(t, "csrf_token_invalid", errorOf(t, noToken))
@@ -425,7 +421,7 @@ func TestServerWriteRoutesNeedAWriteKeyOrASessionWithCSRF(t *testing.T) {
 func TestOversizedServerBodyIs413(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.do("POST", "/api/v1/servers", `{"name":"`+strings.Repeat("x", 20<<10)+`"}`, withBearer(key))
 

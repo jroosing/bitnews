@@ -24,7 +24,7 @@ type Version struct {
 }
 
 // Config holds everything a Server needs. All fields are required except
-// AdapterCredentials, SABnzbd, QBit, Web and the last four.
+// SABnzbd, QBit, Web and the last four.
 type Config struct {
 	Logger     *slog.Logger
 	Version    Version
@@ -36,20 +36,19 @@ type Config struct {
 	Setup      *auth.Setup
 	Sessions   *auth.SessionService
 	UIAuth     *auth.UIAuth
-	APIKeys    *auth.APIKeyService
-	Bus        *core.Bus
+	// AppKey is the one key that authenticates the own API (Bearer), SABnzbd
+	// and qBittorrent.
+	AppKey *auth.AppKeyService
+	Bus    *core.Bus
 
-	// AdapterCredentials manages the media-manager credentials behind
-	// /api/v1/adapter-credentials. Without it those routes do not exist.
-	AdapterCredentials *auth.AdapterCredentialService
 	// SABnzbd serves the SABnzbd API emulation at /sabnzbd/api for every
-	// method. It authenticates its own requests with adapter credentials,
+	// method. It authenticates its own requests with the app key,
 	// so it sits outside the UI authentication and CSRF, and inside the
 	// setup gate and the request ID, panic recovery and security header
 	// middleware. Without it the path is a 404.
 	SABnzbd http.Handler
 	// QBit serves the qBittorrent WebUI API v2 emulation at /api/v2/ for
-	// every method. It has its own SID sessions and adapter credentials, so
+	// every method. It has its own SID sessions (opened with the app key), so
 	// like SABnzbd it sits outside the UI authentication and CSRF, and
 	// inside the setup gate and the request ID, panic recovery and security
 	// header middleware. Without it the path is a 404.
@@ -90,7 +89,7 @@ type Server struct {
 // New builds the Server and its routes.
 func New(cfg Config) (*Server, error) {
 	if cfg.Downloads == nil || cfg.Adder == nil || cfg.Categories == nil || cfg.Servers == nil || cfg.Settings == nil || cfg.Setup == nil ||
-		cfg.Sessions == nil || cfg.UIAuth == nil || cfg.APIKeys == nil || cfg.Bus == nil {
+		cfg.Sessions == nil || cfg.UIAuth == nil || cfg.AppKey == nil || cfg.Bus == nil {
 		return nil, errors.New("api: Config is missing a service")
 	}
 	if cfg.Logger == nil {

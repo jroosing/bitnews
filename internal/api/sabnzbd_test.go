@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,48 +18,33 @@ import (
 func withSABnzbd() envOption {
 	return withConfig(func(c *api.Config) {
 		c.SABnzbd = sabnzbd.New(sabnzbd.Deps{
-			Credentials: c.AdapterCredentials, Downloads: c.Downloads, Adder: c.Adder,
+			AppKey: c.AppKey, Downloads: c.Downloads, Adder: c.Adder,
 			Categories: c.Categories, Settings: c.Settings, Logger: c.Logger,
 		})
 	})
 }
 
-// sabKey creates an adapter_sab credential through the API, as the UI does.
-func (e *env) sabKey(sess session) (key, id string) {
-	e.t.Helper()
-	rec := e.do("POST", "/api/v1/adapter-credentials", `{"kind":"adapter_sab","name":"Sonarr"}`, sess.mods()...)
-	require.Equal(e.t, http.StatusCreated, rec.Code, rec.Body.String())
-	var c adapterCredJSON
-	decode(e.t, rec, &c)
-	return c.Key, c.ID
-}
-
-func TestSABnzbdRouteServesAdapterCredentialsOnly(t *testing.T) {
+func TestSABnzbdRouteServesTheAppKey(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withSABnzbd())
-	sess := e.login()
-	key, _ := e.sabKey(sess)
 
-	ok := e.do("GET", "/sabnzbd/api?mode=get_cats&output=json&apikey="+key, "")
+	ok := e.do("GET", "/sabnzbd/api?mode=get_cats&output=json&apikey="+e.apiKey(), "")
 
 	require.Equal(t, http.StatusOK, ok.Code)
 	assert.JSONEq(t, `{"categories":["*"]}`, ok.Body.String())
 }
 
-func TestAnAPIKeyAndASessionAreRefusedOnTheSABnzbdRoute(t *testing.T) {
+func TestOnlyTheKeyAsAParameterOpensTheSABnzbdRoute(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withSABnzbd())
 	sess := e.login()
-	apiKey := e.newKey("write")
-	incorrect := `{"status":false,"error":"API Key Incorrect"}`
+	key := e.apiKey()
 	required := `{"status":false,"error":"API Key Required"}`
 
-	asParam := e.do("GET", "/sabnzbd/api?mode=queue&apikey="+apiKey, "")
-	asBearer := e.do("GET", "/sabnzbd/api?mode=queue", "", withBearer(apiKey))
+	asBearer := e.do("GET", "/sabnzbd/api?mode=queue", "", withBearer(key))
 	asSession := e.do("GET", "/sabnzbd/api?mode=queue", "", withCookie(sess.cookie))
 	asSessionPost := e.do("POST", "/sabnzbd/api?mode=queue", "", sess.mods()...)
 
-	assert.JSONEq(t, incorrect, asParam.Body.String(), "an own-API key is not an adapter credential")
 	assert.JSONEq(t, required, asBearer.Body.String(), "headers are not read: SAB takes the apikey parameter")
 	assert.JSONEq(t, required, asSession.Body.String(), "the session cookie means nothing to an adapter")
 	assert.JSONEq(t, required, asSessionPost.Body.String())
@@ -76,50 +62,26 @@ func TestDisabledAuthAndLANBypassNeverReachTheSABnzbdRoute(t *testing.T) {
 	assert.JSONEq(t, `{"status":false,"error":"API Key Required"}`, rec.Body.String())
 }
 
-func TestAnAdapterCredentialIsRefusedOnTheOwnAPI(t *testing.T) {
+func TestTheKeyAsAQueryParameterOnTheOwnAPIDoesNothing(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withSABnzbd())
-	sess := e.login()
-	key, _ := e.sabKey(sess)
-	qbit := e.do("POST", "/api/v1/adapter-credentials", `{"kind":"adapter_qbit","name":"Radarr"}`, sess.mods()...)
-	var q adapterCredJSON
-	decode(t, qbit, &q)
 
-	for _, k := range []string{key, q.Key} {
-		for _, path := range []string{"/api/v1/downloads", "/api/v1/settings", "/api/v1/version", "/api/v1/categories", "/api/v1/events"} {
-			asBearer := e.do("GET", path, "", withBearer(k))
-			asHeader := e.do("GET", path, "", withHeader("X-Api-Key", k))
-
-			assert.Equal(t, http.StatusUnauthorized, asBearer.Code, path)
-			assert.Equal(t, http.StatusUnauthorized, asHeader.Code, path)
-		}
-		write := e.do("POST", "/api/v1/categories", `{"name":"x"}`, withBearer(k))
-		assert.Equal(t, http.StatusUnauthorized, write.Code)
-		assert.Equal(t, http.StatusUnauthorized, e.do("POST", "/api/v1/api-keys", `{"name":"x","scope":"write"}`, withBearer(k)).Code)
-	}
-}
-
-func TestAnAdapterCredentialAsAQueryParameterOnTheOwnAPIDoesNothing(t *testing.T) {
-	t.Parallel()
-	e := newEnv(t, withSABnzbd())
-	key, _ := e.sabKey(e.login())
-
-	rec := e.do("GET", "/api/v1/downloads?apikey="+key, "")
+	rec := e.do("GET", "/api/v1/downloads?apikey="+e.apiKey(), "")
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestRevokingAnAdapterCredentialStopsTheSABnzbdRouteAtOnce(t *testing.T) {
+func TestRefreshingTheKeyStopsTheSABnzbdRouteAtOnce(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withSABnzbd())
-	sess := e.login()
-	key, id := e.sabKey(sess)
-	path := "/sabnzbd/api?mode=get_cats&apikey=" + key
-	require.Contains(t, e.do("GET", path, "").Body.String(), `"categories"`)
+	old := e.apiKey()
+	require.Contains(t, e.do("GET", "/sabnzbd/api?mode=get_cats&apikey="+old, "").Body.String(), `"categories"`)
 
-	require.Equal(t, http.StatusNoContent, e.do("DELETE", "/api/v1/adapter-credentials/"+id, "", sess.mods()...).Code)
+	fresh, err := e.appKey.Refresh(context.Background())
+	require.NoError(t, err)
 
-	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, e.do("GET", path, "").Body.String())
+	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, e.do("GET", "/sabnzbd/api?mode=get_cats&apikey="+old, "").Body.String())
+	assert.Contains(t, e.do("GET", "/sabnzbd/api?mode=get_cats&apikey="+fresh.Reveal(), "").Body.String(), `"categories"`)
 }
 
 func TestTheSABnzbdRouteIsBehindTheSetupGate(t *testing.T) {
@@ -135,7 +97,7 @@ func TestTheSABnzbdRouteIsBehindTheSetupGate(t *testing.T) {
 func TestTheSABnzbdRouteGetsRequestIDsAndSecurityHeadersButNoCSRF(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withSABnzbd())
-	key, _ := e.sabKey(e.login())
+	key := e.apiKey()
 
 	// A POST with a key and no CSRF token or Origin: keys are not cookies.
 	rec := e.do("POST", "/sabnzbd/api?mode=get_cats&apikey="+key, "", withHeader("Origin", "https://evil.example"))
@@ -175,7 +137,7 @@ func TestAddURLThroughTheFullStackLeaksNeitherTheIndexerKeyNorTheAdapterKey(t *t
 	t.Parallel()
 	e, _ := newAddEnv(t, withSABnzbd())
 	ix := newIndexer(t, serveNZB(nzbXML(metaName)))
-	key, _ := e.sabKey(e.login())
+	key := e.apiKey()
 	indexerURL := ix.URL + "/getnzb?apikey=" + urlSecret
 
 	rec := e.do("GET", "/sabnzbd/api?mode=addurl&output=json&cat=tv&name="+url.QueryEscape(indexerURL)+"&apikey="+key, "")

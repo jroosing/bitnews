@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
@@ -85,6 +86,64 @@ func TestEveryDataRootMustBeAbsolute(t *testing.T) {
 				t.Errorf("%s root %q: got %v, want ErrInvalidSettings", name, bad, err)
 			}
 		}
+	}
+}
+
+func TestDataRootsMustBeClean(t *testing.T) {
+	for _, bad := range []string{"/data/../etc", "/data/usenet/", "/data//usenet", "/data/./usenet", "/.."} {
+		s := core.DefaultSettings()
+		s.Paths.Usenet.Complete = bad
+		err := s.Validate()
+		if !errors.Is(err, core.ErrInvalidSettings) {
+			t.Errorf("root %q: got %v, want ErrInvalidSettings", bad, err)
+		} else if !strings.Contains(err.Error(), "usenet complete") {
+			t.Errorf("root %q: error %q does not name the field", bad, err)
+		}
+	}
+}
+
+func TestAMissingButWellFormedRootIsValid(t *testing.T) {
+	s := core.DefaultSettings()
+	s.Paths.Usenet.Incomplete = "/does/not/exist/yet/incomplete"
+	if err := s.Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+}
+
+func TestRootsMustNotNest(t *testing.T) {
+	for name, edit := range map[string]func(*core.Paths){
+		"complete inside incomplete":         func(p *core.Paths) { p.Usenet.Complete = "/data/usenet/incomplete/done" },
+		"incomplete inside complete":         func(p *core.Paths) { p.Usenet.Incomplete = "/data/usenet/complete/tmp" },
+		"torrent complete inside incomplete": func(p *core.Paths) { p.Torrent.Incomplete = "/t"; p.Torrent.Complete = "/t/done" },
+		"usenet root inside torrent root":    func(p *core.Paths) { p.Usenet.Complete = "/data/torrents/usenet" },
+		"torrent root inside usenet root":    func(p *core.Paths) { p.Torrent.Incomplete = "/data/usenet/complete/torrents" },
+	} {
+		s := core.DefaultSettings()
+		edit(&s.Paths)
+		if err := s.Validate(); !errors.Is(err, core.ErrInvalidSettings) {
+			t.Errorf("%s: got %v, want ErrInvalidSettings", name, err)
+		}
+	}
+}
+
+func TestEqualRootsAreNotNested(t *testing.T) {
+	s := core.DefaultSettings()
+	s.Paths.Usenet.Incomplete = "/data/usenet"
+	s.Paths.Usenet.Complete = "/data/usenet"
+	s.Paths.Torrent.Complete = "/data/usenet"
+	s.Paths.Torrent.Incomplete = "/data/usenet"
+	if err := s.Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+}
+
+// A sibling that merely shares a name prefix is not nested.
+func TestSiblingRootsWithACommonPrefixAreNotNested(t *testing.T) {
+	s := core.DefaultSettings()
+	s.Paths.Usenet.Incomplete = "/data/usenet"
+	s.Paths.Usenet.Complete = "/data/usenet-done"
+	if err := s.Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
 	}
 }
 

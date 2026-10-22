@@ -59,11 +59,11 @@ type SettingsReader interface {
 	Current() core.Settings
 }
 
-// Deps is everything the adapter needs. Credentials, Downloads, Categories,
+// Deps is everything the adapter needs. AppKey, Downloads, Categories,
 // Settings, Torrents, Adder and ShareLimits are required; the rest are
 // optional.
 type Deps struct {
-	Credentials *auth.AdapterCredentialService
+	AppKey      *auth.AppKeyService
 	Downloads   *app.DownloadService
 	Categories  *app.CategoryService
 	Settings    SettingsReader
@@ -97,7 +97,7 @@ type Deps struct {
 // New returns the handler for /api/v2/. It panics if a required dependency is
 // missing, since that is a wiring bug found at startup.
 func New(d Deps) http.Handler {
-	if d.Credentials == nil || d.Downloads == nil || d.Categories == nil || d.Settings == nil ||
+	if d.AppKey == nil || d.Downloads == nil || d.Categories == nil || d.Settings == nil ||
 		d.Torrents == nil || d.Adder == nil || d.ShareLimits == nil {
 		panic("qbit: Deps is missing a required service")
 	}
@@ -155,9 +155,7 @@ type call struct {
 	params url.Values
 	// uploads are the .torrent parts of torrents/add.
 	uploads [][]byte
-	// credential is the adapter credential of the session.
-	credential core.ID
-	sid        string
+	sid     string
 }
 
 func (c *call) ctx() context.Context { return c.r.Context() }

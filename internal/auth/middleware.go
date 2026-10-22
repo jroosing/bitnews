@@ -29,8 +29,8 @@ const SessionCookieName = "bitnews_session"
 // instance under the attacker's own name.
 //
 // DISABLE AUTH AND LAN BYPASS ARE UI-ONLY. Mount UIAuth on UI routes and
-// nowhere else. Routes that authenticate with API keys (RequireScope),
-// adapter credentials (/sabnzbd/api, qBit) and first-run setup must never sit
+// nowhere else. Routes that authenticate with the app key (KeyOr),
+// the adapters (/sabnzbd/api, qBit) and first-run setup must never sit
 // behind it, so those can never be reached without their credential. The
 // settings are read through a function on every request, so a change applies
 // at once.

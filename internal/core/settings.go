@@ -102,20 +102,61 @@ func (s Settings) Validate() error {
 	if (s.Auth.DisableAuth || len(s.Auth.LANBypassCIDRs) > 0) && len(s.Auth.AllowedHosts) == 0 {
 		problems = append(problems, errors.New("disable auth and lan bypass require at least one allowed host"))
 	}
-	for _, root := range []struct{ name, path string }{
-		{"usenet incomplete", s.Paths.Usenet.Incomplete},
-		{"usenet complete", s.Paths.Usenet.Complete},
-		{"torrent incomplete", s.Paths.Torrent.Incomplete},
-		{"torrent complete", s.Paths.Torrent.Complete},
-	} {
-		if !filepath.IsAbs(root.path) {
-			problems = append(problems, fmt.Errorf("%s root %q is not an absolute path", root.name, root.path))
-		}
-	}
+	problems = append(problems, s.Paths.validate()...)
 	problems = append(problems, s.Network.validate()...)
 	problems = append(problems, s.Seeding.validate()...)
 	if len(problems) > 0 {
 		return fmt.Errorf("core: %w: %w", ErrInvalidSettings, errors.Join(problems...))
 	}
 	return nil
+}
+
+// validate checks the shape of the four data roots and nothing else: each is
+// absolute and clean (no "..", no trailing or doubled separators), and no root
+// lies inside another, which would let a finished Download be picked up again
+// as incomplete data or its move target contain its own source. Equal roots are
+// fine. Whether a root exists or is writable is the user's business and shows
+// up when the first Download needs it.
+func (p Paths) validate() []error {
+	roots := []struct{ name, path string }{
+		{"usenet incomplete", p.Usenet.Incomplete},
+		{"usenet complete", p.Usenet.Complete},
+		{"torrent incomplete", p.Torrent.Incomplete},
+		{"torrent complete", p.Torrent.Complete},
+	}
+	var problems []error
+	var shaped []struct{ name, path string }
+	for _, root := range roots {
+		switch {
+		case !filepath.IsAbs(root.path):
+			problems = append(problems, fmt.Errorf("%s root %q is not an absolute path", root.name, root.path))
+		case filepath.Clean(root.path) != root.path:
+			problems = append(problems, fmt.Errorf("%s root %q is not a clean path (no \"..\", \".\" or doubled and trailing separators)", root.name, root.path))
+		default:
+			shaped = append(shaped, root)
+		}
+	}
+	for i, a := range shaped {
+		for _, b := range shaped[i+1:] {
+			switch {
+			case isWithin(a.path, b.path):
+				problems = append(problems, fmt.Errorf("%s root %q lies inside the %s root %q", b.name, b.path, a.name, a.path))
+			case isWithin(b.path, a.path):
+				problems = append(problems, fmt.Errorf("%s root %q lies inside the %s root %q", a.name, a.path, b.name, b.path))
+			}
+		}
+	}
+	return problems
+}
+
+// isWithin reports whether child is strictly below parent. Both are clean
+// absolute paths.
+func isWithin(parent, child string) bool {
+	if parent == child {
+		return false
+	}
+	if parent == string(filepath.Separator) {
+		return true
+	}
+	return strings.HasPrefix(child, parent+string(filepath.Separator))
 }

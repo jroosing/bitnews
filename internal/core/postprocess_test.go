@@ -315,6 +315,30 @@ func TestEachSentinelMapsToItsFailureReason(t *testing.T) {
 	}
 }
 
+// folderError stands for fsutil's permission error: it vouches for its own
+// text, which names a configured folder, so the detail keeps that path.
+type folderError struct{}
+
+func (folderError) Error() string { return "mkdir /srv/complete/Secret.Name: permission denied" }
+func (folderError) FailureDetail() string {
+	return `cannot write to folder "/srv/complete": permission denied for uid 1000`
+}
+
+func TestAnErrorThatVouchesForItsDetailKeepsTheFolderPath(t *testing.T) {
+	h := newPPHarness(t)
+	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+	h.unpacker.unpackFn = func(context.Context, string, string, core.UnpackOptions) (core.UnpackResult, error) {
+		return core.UnpackResult{}, fmt.Errorf("move: %w", folderError{})
+	}
+	d := h.add("x", core.StateFetched, core.SourceNZB)
+
+	require.NoError(t, h.pp.Process(context.Background(), d.ID))
+
+	got := h.get(d.ID)
+	assert.Equal(t, core.StateFailed, got.State)
+	assert.Equal(t, `cannot write to folder "/srv/complete": permission denied for uid 1000`, got.FailureDetail)
+}
+
 func TestUnknownErrorDetailIsRedactedAndTruncated(t *testing.T) {
 	h := newPPHarness(t)
 	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}

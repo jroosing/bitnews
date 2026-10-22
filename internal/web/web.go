@@ -34,9 +34,8 @@ type Deps struct {
 	Bus        *core.Bus
 	// Adder adds NZBs and torrents (the "Add download" dialog).
 	Adder *app.AddService
-	// APIKeys and AdapterCredentials back the Security settings.
-	APIKeys            *auth.APIKeyService
-	AdapterCredentials *auth.AdapterCredentialService
+	// AppKey is the one API key of the app, shown on Settings → Security.
+	AppKey *auth.AppKeyService
 	// Runtime reports what the runners are doing right now (speeds, queue
 	// state, post-processing stage). Torrents reports torrent-only facts.
 	// Both are filled in by the daemon; see sources.go. They may be nil in

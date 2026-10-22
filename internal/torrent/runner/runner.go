@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 )
 
 // Runner runs the torrent Queue. Create it with New and call Run once.
@@ -59,10 +60,7 @@ func New(cfg Config) (*Runner, error) {
 		r.now = time.Now
 	}
 	if r.free == nil {
-		r.free = defaultFreeSpace
-	}
-	if r.free == nil {
-		r.log.Warn("torrent disk guard disabled: no free-space provider")
+		r.free = fsutil.FreeBytes
 	}
 	r.cfg.PollInterval = orDefault(cfg.PollInterval, defaultPollInterval)
 	r.cfg.SampleInterval = orDefault(cfg.SampleInterval, defaultSampleInterval)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 )
 
 // tor is the runner's record of one torrent that is in the engine.
@@ -152,7 +153,7 @@ func (r *Runner) ensureRegistered(ctx context.Context, d core.Download, running 
 	} else {
 		spec.Magnet = src.Magnet.Reveal()
 	}
-	if err := os.MkdirAll(dir, 0o777); err != nil {
+	if err := fsutil.MkdirAll(dir, 0o777); err != nil {
 		return nil, fmt.Errorf("create the download directory: %w", err)
 	}
 	h, err := r.engine.Add(ctx, spec)

@@ -14,32 +14,25 @@ import (
 
 // TokenKind says what a generated token authenticates. Every kind is the same
 // mechanism: 256 random bits, only the SHA-256 hash stored, constant-time
-// compare. The kind decides the text prefix and, in the code that checks the
-// token, the routes it is valid on. Adapter credentials (M4/M5) use their own
-// kinds and are accepted on adapter routes only, never on the own API.
+// compare. The kind decides the text prefix. The app key (ADR-0006) is the one
+// kind that is not stored as a hash: it is sealed, so Settings can show it.
 type TokenKind string
 
 // The token kinds.
 const (
-	KindSession     TokenKind = "session"
-	KindAPI         TokenKind = "api"
-	KindAdapterSAB  TokenKind = "adapter_sab"
-	KindAdapterQBit TokenKind = "adapter_qbit"
+	KindSession TokenKind = "session"
+	KindAppKey  TokenKind = "app_key"
 )
 
-var allKinds = []TokenKind{KindSession, KindAPI, KindAdapterSAB, KindAdapterQBit}
+var allKinds = []TokenKind{KindSession, KindAppKey}
 
 // Prefix is the fixed text a token of this kind starts with, so a credential
 // pasted in the wrong place is recognisable. Session tokens have none. It is
 // empty for an unknown kind.
 func (k TokenKind) Prefix() string {
 	switch k {
-	case KindAPI:
-		return "bn_"
-	case KindAdapterSAB:
-		return "bns_"
-	case KindAdapterQBit:
-		return "bnq_"
+	case KindAppKey:
+		return "bitnews_"
 	}
 	return ""
 }

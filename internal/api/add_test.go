@@ -110,7 +110,7 @@ func leftovers(t *testing.T, root string) []string {
 func TestUploadCreatesAQueuedNZBDownloadAndStoresTheNZB(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	events := e.subscribe()
 	doc := nzbXML(metaName)
 
@@ -153,7 +153,7 @@ func TestUploadCreatesAQueuedNZBDownloadAndStoresTheNZB(t *testing.T) {
 func TestUploadHonorsFormFieldsInAnyOrder(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	cat := core.Category{ID: core.NewID(), Name: "tv"}
 	require.NoError(t, e.cats.Create(context.Background(), cat))
 	body, ct := multipartBody(t,
@@ -178,7 +178,7 @@ func TestUploadHonorsFormFieldsInAnyOrder(t *testing.T) {
 func TestUploadNameFallsBackFromRequestToMetaToFileNameToFirstFileToID(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	noFiles := func(head string) string { return nzbXML(head) }
 
 	byRequest := e.addedDownload(e.upload(key, noFiles(metaName), formPart{"name", "", "Requested"}))
@@ -197,7 +197,7 @@ func TestUploadNameFallsBackFromRequestToMetaToFileNameToFirstFileToID(t *testin
 func TestUploadNameUsesFirstFileGuessThenIDWhenNothingElseIsGiven(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	// No file name on the part: a plain form field named nzb is not accepted
 	// as a file, so use a part with a blank-ish file name.
 	body, ct := multipartBody(t, formPart{"nzb", ".nzb", nzbXML("")})
@@ -216,7 +216,7 @@ func TestUploadNameUsesFirstFileGuessThenIDWhenNothingElseIsGiven(t *testing.T) 
 func TestUploadDisplayNameIsSanitizedAndNeverPartOfThePath(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	hostile := "../../etc/pass\x00wd\u202e\n" + strings.Repeat("x", 400)
 
 	got := e.addedDownload(e.upload(key, nzbXML(""), formPart{"name", "", hostile}))
@@ -248,7 +248,7 @@ func rawSourcePassword(t *testing.T, e *env, id string) (raw string, isNull bool
 func TestUploadPasswordPrecedenceIsRequestThenMetaThenNameSuffix(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	metaPW := `<meta type="password">meta-pw</meta>`
 	check := func(rec *httptest.ResponseRecorder, wantName, wantPW string) {
 		t.Helper()
@@ -275,7 +275,7 @@ func TestUploadPasswordPrecedenceIsRequestThenMetaThenNameSuffix(t *testing.T) {
 func TestUploadResolvesTheMetaCategoryByNameAndIgnoresUnknownOnes(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	cat := core.Category{ID: core.NewID(), Name: "tv"}
 	require.NoError(t, e.cats.Create(context.Background(), cat))
 
@@ -290,7 +290,7 @@ func TestUploadResolvesTheMetaCategoryByNameAndIgnoresUnknownOnes(t *testing.T) 
 func TestUploadQueuePositionGoesToTheEndOfTheNZBQueue(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	var positions []int
 	for range 3 {
@@ -303,7 +303,7 @@ func TestUploadQueuePositionGoesToTheEndOfTheNZBQueue(t *testing.T) {
 func TestUploadRejectsInvalidFieldsWithoutLeftovers(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for name, tc := range map[string]struct {
 		extra  []formPart
 		status int
@@ -332,7 +332,7 @@ func TestUploadRejectsInvalidFieldsWithoutLeftovers(t *testing.T) {
 func TestUploadOfAnInvalidNZBIs400AndLeavesNothing(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for name, doc := range map[string]string{
 		"not xml":    "this is not an nzb",
 		"empty":      "",
@@ -352,7 +352,7 @@ func TestUploadOfAnInvalidNZBIs400AndLeavesNothing(t *testing.T) {
 func TestUploadWithoutAnNZBPartIs400(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	body, ct := multipartBody(t, formPart{"name", "", "x"})
 
 	rec := e.do("POST", "/api/v1/downloads", body, withBearer(key), withHeader("Content-Type", ct))
@@ -365,7 +365,7 @@ func TestUploadWithoutAnNZBPartIs400(t *testing.T) {
 func TestUploadOverTheNZBLimitIs413AndLeavesNothing(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t, withAddOptions(app.WithMaxNZBBytes(1024)))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.upload(key, nzbXML("")+strings.Repeat(" ", 2048))
 
@@ -386,7 +386,7 @@ func (spaces) Read(p []byte) (int, error) {
 func TestUploadOf64MiBPlusIsRefusedWith413WithoutBufferingIt(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	var head bytes.Buffer
 	w := multipart.NewWriter(&head)
 	fw, err := w.CreateFormFile("nzb", "big.nzb")
@@ -404,7 +404,7 @@ func TestUploadOf64MiBPlusIsRefusedWith413WithoutBufferingIt(t *testing.T) {
 func TestAddRejectsOtherContentTypesWith415(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for _, ct := range []string{"text/plain", "application/x-nzb", "application/x-www-form-urlencoded", ""} {
 		rec := e.do("POST", "/api/v1/downloads", "<nzb/>", withBearer(key), withHeader("Content-Type", ct))
 
@@ -414,21 +414,17 @@ func TestAddRejectsOtherContentTypesWith415(t *testing.T) {
 	assert.Empty(t, leftovers(t, root))
 }
 
-func TestAddNeedsAWriteKeyOrASessionWithCSRF(t *testing.T) {
+func TestAddNeedsTheKeyOrASessionWithCSRF(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	rkey := e.newKey(core.APIKeyScopeRead)
 	sess := e.login()
 	body, ct := multipartBody(t, formPart{"nzb", "x.nzb", nzbXML("")})
 	ctMod := withHeader("Content-Type", ct)
 
-	readKey := e.do("POST", "/api/v1/downloads", body, withBearer(rkey), ctMod)
 	anonymous := e.do("POST", "/api/v1/downloads", body, ctMod)
 	noToken := e.do("POST", "/api/v1/downloads", body, withCookie(sess.cookie), ctMod)
 	withToken := e.do("POST", "/api/v1/downloads", body, append(sess.mods(), ctMod)...)
 
-	assert.Equal(t, http.StatusForbidden, readKey.Code)
-	assert.Equal(t, "insufficient_scope", errorOf(t, readKey))
 	assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
 	assert.Equal(t, http.StatusForbidden, noToken.Code)
 	assert.Equal(t, "csrf_token_invalid", errorOf(t, noToken))

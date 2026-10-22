@@ -71,7 +71,7 @@ func TestListDownloadsRequiresAuthenticationAndAcceptsSessionOrKey(t *testing.T)
 
 	anonymous := e.do("GET", "/api/v1/downloads", "")
 	viaSession := e.do("GET", "/api/v1/downloads", "", withCookie(sess.cookie))
-	viaKey := e.do("GET", "/api/v1/downloads", "", withBearer(e.newKey(core.APIKeyScopeRead)))
+	viaKey := e.do("GET", "/api/v1/downloads", "", withBearer(e.apiKey()))
 	viaBadKey := e.do("GET", "/api/v1/downloads", "", withBearer("bn_nope"))
 
 	assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
@@ -83,7 +83,7 @@ func TestListDownloadsRequiresAuthenticationAndAcceptsSessionOrKey(t *testing.T)
 func TestListDownloadsReturnsDownloadJSONAndNullNextOnTheLastPage(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeRead)
+	key := e.apiKey()
 	d := e.addDownload("movie", 0)
 
 	rec := e.do("GET", "/api/v1/downloads", "", withBearer(key))
@@ -109,7 +109,7 @@ func TestListDownloadsOfNothingIsAnEmptyArray(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 
-	rec := e.do("GET", "/api/v1/downloads", "", withBearer(e.newKey(core.APIKeyScopeRead)))
+	rec := e.do("GET", "/api/v1/downloads", "", withBearer(e.apiKey()))
 
 	assert.JSONEq(t, `{"items":[],"next":null}`, rec.Body.String())
 }
@@ -117,7 +117,7 @@ func TestListDownloadsOfNothingIsAnEmptyArray(t *testing.T) {
 func TestListDownloadsFiltersAndPages(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeRead)
+	key := e.apiKey()
 	cat := core.Category{ID: core.NewID(), Name: "tv"}
 	require.NoError(t, e.cats.Create(context.Background(), cat))
 	a := e.addDownload("a", 0)
@@ -150,7 +150,7 @@ func TestListDownloadsFiltersAndPages(t *testing.T) {
 func TestListDownloadsRejectsBadQueryParameters(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeRead)
+	key := e.apiKey()
 	for query, code := range map[string]string{
 		"state=bogus":  "invalid_state",
 		"kind=bogus":   "invalid_kind",
@@ -171,7 +171,7 @@ func TestListDownloadsRejectsBadQueryParameters(t *testing.T) {
 func TestGetDownloadReturnsItOr404(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeRead)
+	key := e.apiKey()
 	d := e.addDownload("movie", 0)
 
 	found := e.do("GET", "/api/v1/downloads/"+string(d.ID), "", withBearer(key))
@@ -188,7 +188,7 @@ func TestGetDownloadReturnsItOr404(t *testing.T) {
 func TestPauseAndResumeToggleThePausedFlagAndPublishEvents(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	d := e.addDownload("movie", 0)
 	events := e.subscribe()
 
@@ -214,18 +214,17 @@ func TestPauseOfAFetchedDownloadIs409(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	rec := e.do("POST", "/api/v1/downloads/"+string(d.ID)+"/pause", "", withBearer(e.newKey(core.APIKeyScopeWrite)))
+	rec := e.do("POST", "/api/v1/downloads/"+string(d.ID)+"/pause", "", withBearer(e.apiKey()))
 
 	require.Equal(t, http.StatusConflict, rec.Code)
 	assert.Equal(t, "not_pausable", errorOf(t, rec))
 }
 
-func TestWriteRoutesRefuseAReadKeyAndUnauthenticatedCallers(t *testing.T) {
+func TestWriteRoutesRefuseUnauthenticatedCallersAndAWrongKey(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	d := e.addDownload("movie", 0)
 	id := string(d.ID)
-	readKey := e.newKey(core.APIKeyScopeRead)
 	routes := []struct{ method, path, body string }{
 		{"POST", "/api/v1/downloads/" + id + "/pause", ""},
 		{"POST", "/api/v1/downloads/" + id + "/resume", ""},
@@ -238,11 +237,10 @@ func TestWriteRoutesRefuseAReadKeyAndUnauthenticatedCallers(t *testing.T) {
 	}
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
-			withReadKey := e.do(rt.method, rt.path, rt.body, withBearer(readKey))
+			wrongKey := e.do(rt.method, rt.path, rt.body, withBearer("bitnews_wrong"))
 			anonymous := e.do(rt.method, rt.path, rt.body)
 
-			require.Equal(t, http.StatusForbidden, withReadKey.Code)
-			assert.Equal(t, "insufficient_scope", errorOf(t, withReadKey))
+			assert.Equal(t, http.StatusUnauthorized, wrongKey.Code)
 			assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
 		})
 	}
@@ -271,7 +269,7 @@ func patchPath(d core.Download) string { return "/api/v1/downloads/" + string(d.
 func TestPatchChangesPriorityAndReturnsTheDownload(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	d := e.addDownload("movie", 0)
 	events := e.subscribe()
 
@@ -287,7 +285,7 @@ func TestPatchChangesPriorityAndReturnsTheDownload(t *testing.T) {
 func TestPatchSetsAndClearsTheCategory(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	cat := core.Category{ID: core.NewID(), Name: "tv"}
 	require.NoError(t, e.cats.Create(context.Background(), cat))
 	d := e.addDownload("movie", 0)
@@ -309,7 +307,7 @@ func TestPatchSetsAndClearsTheCategory(t *testing.T) {
 func TestPatchMovesTheDownloadWithinItsQueue(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	e.addDownload("a", 0)
 	b := e.addDownload("b", time.Second)
 
@@ -324,7 +322,7 @@ func TestPatchMovesTheDownloadWithinItsQueue(t *testing.T) {
 func TestPatchRejectsInvalidChanges(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	d := e.addDownload("movie", 0)
 	for name, tc := range map[string]struct{ body, code string }{
 		"state transitions are not allowed": {`{"state":"ready"}`, "invalid_json"},
@@ -353,7 +351,7 @@ func TestPatchOfUnknownDownloadIs404(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 
-	rec := e.do("PATCH", "/api/v1/downloads/nope", `{"priority":"high"}`, withBearer(e.newKey(core.APIKeyScopeWrite)))
+	rec := e.do("PATCH", "/api/v1/downloads/nope", `{"priority":"high"}`, withBearer(e.apiKey()))
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
@@ -369,7 +367,7 @@ func TestDeleteRemovesTheRowAndPublishesRemovedWithoutDeletingData(t *testing.T)
 	t.Parallel()
 	remover := &fakeRemover{}
 	e := newEnv(t, withDataRemover(remover))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	d := e.addDownload("movie", 0)
 	events := e.subscribe()
 
@@ -389,7 +387,7 @@ func TestDeleteWithDeleteDataTrueAsksTheDataRemover(t *testing.T) {
 	e := newEnv(t, withDataRemover(remover))
 	d := e.addDownload("movie", 0)
 
-	rec := e.do("DELETE", patchPath(d)+"?delete_data=true", "", withBearer(e.newKey(core.APIKeyScopeWrite)))
+	rec := e.do("DELETE", patchPath(d)+"?delete_data=true", "", withBearer(e.apiKey()))
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, []core.ID{d.ID}, remover.removed)
@@ -398,7 +396,7 @@ func TestDeleteWithDeleteDataTrueAsksTheDataRemover(t *testing.T) {
 func TestDeleteRejectsBadDeleteDataAndUnknownDownloads(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	d := e.addDownload("movie", 0)
 
 	bad := e.do("DELETE", patchPath(d)+"?delete_data=maybe", "", withBearer(key))

@@ -20,7 +20,7 @@ func TestGetSettingsReturnsDefaultsWithEmptyArraysNotNull(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 
-	rec := e.do("GET", "/api/v1/settings", "", withBearer(e.newKey(core.APIKeyScopeRead)))
+	rec := e.do("GET", "/api/v1/settings", "", withBearer(e.apiKey()))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.JSONEq(t, `{"queues":{"usenet":1,"torrent":5},
@@ -34,11 +34,11 @@ func TestGetSettingsReturnsDefaultsWithEmptyArraysNotNull(t *testing.T) {
 func TestPutSettingsStoresThemPublishesSettingsChangedAndGetReturnsThem(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	wkey, rkey := e.newKey(core.APIKeyScopeWrite), e.newKey(core.APIKeyScopeRead)
+	key := e.apiKey()
 	events := e.subscribe()
 
-	put := e.do("PUT", "/api/v1/settings", settingsJSON, withBearer(wkey))
-	get := e.do("GET", "/api/v1/settings", "", withBearer(rkey))
+	put := e.do("PUT", "/api/v1/settings", settingsJSON, withBearer(key))
+	get := e.do("GET", "/api/v1/settings", "", withBearer(key))
 
 	require.Equal(t, http.StatusOK, put.Code, put.Body.String())
 	assert.JSONEq(t, settingsJSON, put.Body.String())
@@ -49,7 +49,7 @@ func TestPutSettingsStoresThemPublishesSettingsChangedAndGetReturnsThem(t *testi
 func TestPutSettingsRejectsInvalidSettingsListingTheProblems(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for name, tc := range map[string]struct{ body, code, contains string }{
 		"negative limit": {`{"queues":{"usenet":-1,"torrent":5},"auth":{},"paths":{"usenet":{"incomplete":"/a","complete":"/b"},"torrent":{"incomplete":"/c","complete":"/d"}}}`,
 			"invalid_settings", "usenet queue limit"},
@@ -74,7 +74,7 @@ func TestPutSettingsRejectsInvalidSettingsListingTheProblems(t *testing.T) {
 func TestPutSettingsThatChangeAuthRequireASessionNotAnAPIKey(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	sess := e.login()
 	openAuth := `{"queues":{"usenet":1,"torrent":5},
 "auth":{"disable_auth":true,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":["example.com"]},

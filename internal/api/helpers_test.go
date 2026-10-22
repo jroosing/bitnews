@@ -96,8 +96,7 @@ type env struct {
 	prober    *fakeProber
 	settings  *app.SettingsService
 	setup     *auth.Setup
-	apiKeys   *auth.APIKeyService
-	adapters  *auth.AdapterCredentialService
+	appKey    *auth.AppKeyService
 	server    *api.Server
 	cfg       api.Config
 }
@@ -155,10 +154,8 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	uiAuth, err := auth.NewUIAuth(sessions, e.settings.Current)
 	require.NoError(t, err)
-	e.apiKeys = auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger))
-
-	e.adapters = auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db),
-		auth.WithAdapterClock(e.clock.Now), auth.WithAdapterLogger(logger))
+	e.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, e.key), auth.WithAppKeyLogger(logger))
+	require.NoError(t, err)
 
 	appOpts := []app.Option{app.WithClock(e.clock.Now)}
 	if ec.remover != nil {
@@ -169,20 +166,19 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	e.torrents = store.NewTorrentSourceRepo(db, e.key)
 	addOpts := append([]app.Option{app.WithLogger(logger), app.WithTorrentSources(e.torrents)}, appOpts...)
 	e.cfg = api.Config{
-		Logger:             logger,
-		Version:            api.Version{Version: "1.2.3", Commit: "abc1234", GoVersion: "go9.99"},
-		Downloads:          downloadSvc,
-		Adder:              app.NewAddService(downloadSvc, e.sources, e.settings, append(addOpts, ec.addOpts...)...),
-		Categories:         app.NewCategoryService(e.cats, e.downloads, e.bus, appOpts...),
-		Servers:            app.NewServerService(e.servers, e.bus, e.prober, appOpts...),
-		Settings:           e.settings,
-		Setup:              e.setup,
-		Sessions:           sessions,
-		UIAuth:             uiAuth,
-		APIKeys:            e.apiKeys,
-		AdapterCredentials: e.adapters,
-		Bus:                e.bus,
-		InstanceID:         "instance-1",
+		Logger:     logger,
+		Version:    api.Version{Version: "1.2.3", Commit: "abc1234", GoVersion: "go9.99"},
+		Downloads:  downloadSvc,
+		Adder:      app.NewAddService(downloadSvc, e.sources, e.settings, append(addOpts, ec.addOpts...)...),
+		Categories: app.NewCategoryService(e.cats, e.downloads, e.bus, appOpts...),
+		Servers:    app.NewServerService(e.servers, e.bus, e.prober, appOpts...),
+		Settings:   e.settings,
+		Setup:      e.setup,
+		Sessions:   sessions,
+		UIAuth:     uiAuth,
+		AppKey:     e.appKey,
+		Bus:        e.bus,
+		InstanceID: "instance-1",
 	}
 	if ec.mutate != nil {
 		ec.mutate(&e.cfg)
@@ -251,13 +247,8 @@ func (e *env) login() session {
 	return session{}
 }
 
-// newKey creates an API key with the scope and returns its plaintext.
-func (e *env) newKey(scope core.APIKeyScope) string {
-	e.t.Helper()
-	key, _, err := e.apiKeys.Create(context.Background(), "test", scope)
-	require.NoError(e.t, err)
-	return key
-}
+// apiKey returns the app key's plaintext.
+func (e *env) apiKey() string { return e.appKey.Current().Reveal() }
 
 // addDownload stores a Queued NZB Download added at epoch+offset.
 func (e *env) addDownload(name string, offset time.Duration) core.Download {

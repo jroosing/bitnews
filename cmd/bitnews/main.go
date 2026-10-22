@@ -18,7 +18,6 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/api"
 	"gitlab.com/kyura4k/gitnews/internal/bootstrap"
 	"gitlab.com/kyura4k/gitnews/internal/daemon"
-	"gitlab.com/kyura4k/gitnews/internal/privdrop"
 	"gitlab.com/kyura4k/gitnews/internal/store"
 )
 
@@ -38,7 +37,7 @@ const (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := run(ctx, os.Args[1:], os.LookupEnv, privdrop.OS(), os.Stdout, os.Stderr, listenAndServe)
+	code := run(ctx, os.Args[1:], os.LookupEnv, setUmask, os.Stdout, os.Stderr, listenAndServe)
 	stop()
 	os.Exit(code)
 }
@@ -59,10 +58,9 @@ func listenAndServe(ctx context.Context, srv *http.Server, log *slog.Logger) err
 
 // run is main without the process globals, so it can be tested. It runs
 // until ctx ends. It returns the exit code: 0 on success, 1 for a startup or
-// runtime failure (such as a failed privilege drop), 2 for invalid flags or
-// environment. sys is the process-wide state the privilege drop changes;
-// tests pass a fake.
-func run(ctx context.Context, args []string, getenv func(string) (string, bool), sys privdrop.Syscalls, stdout, stderr io.Writer, serve serveFunc) int {
+// runtime failure, 2 for invalid flags or environment. umask applies the file
+// mode creation mask process-wide; tests pass a recorder.
+func run(ctx context.Context, args []string, getenv func(string) (string, bool), umask func(mask int), stdout, stderr io.Writer, serve serveFunc) int {
 	if len(args) > 0 && args[0] == "healthcheck" {
 		return healthcheck(ctx, getenv, stdout, stderr)
 	}
@@ -80,13 +78,11 @@ func run(ctx context.Context, args []string, getenv func(string) (string, bool),
 		return 2
 	}
 
-	// Startup order step 2: nothing may be opened or parsed before the
-	// process has dropped root.
+	// Startup order step 2: the umask is set before any file is created.
+	// bitnews runs as whoever started it (ADR-0006), so there is no
+	// identity to change.
 	log := bootstrap.NewLogger(stderr, cfg)
-	if err := privdrop.Apply(privdrop.Options{RunAs: cfg.RunAs, Umask: cfg.Umask}, sys, log); err != nil {
-		fmt.Fprintf(stderr, "bitnews: %v\n", err)
-		return 1
-	}
+	umask(int(cfg.Umask))
 
 	log.Info("starting bitnews",
 		"version", version,

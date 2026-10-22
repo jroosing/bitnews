@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -212,4 +213,25 @@ func TestAddQueuePositionsCountDownloadsStillBeingAdded(t *testing.T) {
 	}
 
 	assert.Equal(t, []int{0, 1, 2}, positions)
+}
+
+func TestStageIntoAnUnwritableFolderIsRefusedNamingTheFolderAndTheUser(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	ctx := context.Background()
+	s := newStack(t)
+	root := filepath.Join(t.TempDir(), "incomplete")
+	require.NoError(t, os.Mkdir(root, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
+	svc := app.NewAddService(app.NewDownloadService(s.downloads, s.cats, s.bus), failingSources{}, settingsAt{root})
+
+	_, err := svc.Stage(ctx, strings.NewReader(tinyNZB))
+
+	var ae *app.Error
+	require.ErrorAs(t, err, &ae)
+	assert.Equal(t, "folder_not_writable", ae.Code)
+	assert.ErrorIs(t, err, app.ErrUnavailable)
+	assert.Contains(t, ae.Message, root)
+	assert.Contains(t, ae.Message, fmt.Sprintf("uid %d", os.Geteuid()))
 }

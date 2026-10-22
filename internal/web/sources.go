@@ -4,10 +4,10 @@ package web
 // does not live in a Download row: transfer speeds, whether a Queue is
 // paused, and the post-processing stage. The queue page owns this interface
 // and extends it; internal/daemon implements it (web_runtime.go).
-type RuntimeSource interface{}
+type RuntimeSource any
 
 // TorrentSource is what the UI asks about torrents beyond their Download row:
 // info hash, ratio, peers, seeding time and Share Limit. The detail page owns
 // this interface and extends it; internal/daemon implements it
 // (web_torrents.go).
-type TorrentSource interface{}
+type TorrentSource any

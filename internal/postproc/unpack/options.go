@@ -3,6 +3,8 @@ package unpack
 import (
 	"io"
 	"log/slog"
+
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 )
 
 // Default limits.
@@ -52,7 +54,7 @@ func newConfig(opts []Option) *config {
 		maxDict:    DefaultMaxDictionary,
 		maxHeadMem: DefaultMaxHeaderMemory,
 		maxHeader:  maxHeaderBytes,
-		freeSpace:  freeSpace,
+		freeSpace:  fsutil.FreeBytes,
 		logger:     slog.Default(),
 		bombMin:    bombMinBytes,
 		bombRatio:  bombRatio,
@@ -107,8 +109,7 @@ func WithReplace() Option { return func(c *config) { c.replace = true } }
 // discards them.
 func WithLogger(l *slog.Logger) Option { return func(c *config) { c.logger = l } }
 
-// WithFreeSpace replaces the free disk space probe, which defaults to statfs on
-// Unix. A probe that fails disables the disk check with a warning.
+// WithFreeSpace replaces the free disk space probe, which defaults to fsutil.FreeBytes. A probe that fails disables the disk check with a warning.
 func WithFreeSpace(fn func(path string) (uint64, error)) Option {
 	return func(c *config) { c.freeSpace = fn }
 }

@@ -14,6 +14,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/adapter/qbit"
 	"gitlab.com/kyura4k/gitnews/internal/adapter/sabnzbd"
 	"gitlab.com/kyura4k/gitnews/internal/api"
+	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
@@ -40,7 +41,7 @@ func withQBit(eng *nullEngine) envOption {
 
 func mountQBit(c *api.Config, eng *nullEngine) {
 	c.QBit = qbit.New(qbit.Deps{
-		Credentials: c.AdapterCredentials, Downloads: c.Downloads, Categories: c.Categories, Settings: c.Settings,
+		AppKey: c.AppKey, Downloads: c.Downloads, Categories: c.Categories, Settings: c.Settings,
 		Torrents: eng, Adder: eng, ShareLimits: eng, Logger: c.Logger,
 	})
 }
@@ -50,38 +51,35 @@ func withQBitAndSABnzbd(eng *nullEngine) envOption {
 	return withConfig(func(c *api.Config) {
 		mountQBit(c, eng)
 		c.SABnzbd = sabnzbd.New(sabnzbd.Deps{
-			Credentials: c.AdapterCredentials, Downloads: c.Downloads, Adder: c.Adder,
+			AppKey: c.AppKey, Downloads: c.Downloads, Adder: c.Adder,
 			Categories: c.Categories, Settings: c.Settings, Logger: c.Logger,
 		})
 	})
 }
 
-// qbitLogin creates an adapter_qbit credential through the API, as the UI
-// does, and logs in with it. It returns the SID cookie and the credential.
-func (e *env) qbitLogin(sess session) (sid *http.Cookie, user, pass string) {
+// qbitLogin logs in to the qBittorrent adapter with the app key, as a media
+// manager does. It returns the SID cookie and the login.
+func (e *env) qbitLogin() (sid *http.Cookie, user, pass string) {
 	e.t.Helper()
-	rec := e.do("POST", "/api/v1/adapter-credentials", `{"kind":"adapter_qbit","name":"Radarr","username":"radarr"}`, sess.mods()...)
-	require.Equal(e.t, http.StatusCreated, rec.Code, rec.Body.String())
-	var c adapterCredJSON
-	decode(e.t, rec, &c)
-	r := httptest.NewRequest("POST", "/api/v2/auth/login", strings.NewReader(url.Values{"username": {c.Username}, "password": {c.Key}}.Encode()))
+	user, pass = auth.QBitUsername, e.apiKey()
+	r := httptest.NewRequest("POST", "/api/v2/auth/login", strings.NewReader(url.Values{"username": {user}, "password": {pass}}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	out := httptest.NewRecorder()
 	e.server.Handler().ServeHTTP(out, r)
 	require.Equal(e.t, "Ok.", out.Body.String())
 	for _, ck := range out.Result().Cookies() {
 		if ck.Name == "SID" {
-			return &http.Cookie{Name: ck.Name, Value: ck.Value}, c.Username, c.Key
+			return &http.Cookie{Name: ck.Name, Value: ck.Value}, user, pass
 		}
 	}
 	e.t.Fatal("no SID cookie")
 	return nil, "", ""
 }
 
-func TestQBitRouteServesTheSIDSessionOfAnAdapterCredential(t *testing.T) {
+func TestQBitRouteServesTheSIDSessionOfTheAppKey(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBit(&nullEngine{}))
-	sid, _, _ := e.qbitLogin(e.login())
+	sid, _, _ := e.qbitLogin()
 
 	ok := e.do("GET", "/api/v2/app/webapiVersion", "", withCookie(sid))
 	none := e.do("GET", "/api/v2/app/webapiVersion", "")
@@ -95,7 +93,7 @@ func TestQBitRouteServesTheSIDSessionOfAnAdapterCredential(t *testing.T) {
 func TestTheQBitRouteAcceptsEveryMethodAndNeedsASession(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBit(&nullEngine{}))
-	sid, _, _ := e.qbitLogin(e.login())
+	sid, _, _ := e.qbitLogin()
 
 	for _, method := range []string{"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"} {
 		assert.Equal(t, http.StatusForbidden, e.do(method, "/api/v2/app/version", "").Code, method+" without a session reaches the adapter")
@@ -127,7 +125,7 @@ func TestTheQBitRouteIsBehindTheSetupGate(t *testing.T) {
 func TestTheQBitRouteGetsRequestIDsAndSecurityHeadersButNoUICSRF(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBit(&nullEngine{}))
-	sid, _, _ := e.qbitLogin(e.login())
+	sid, _, _ := e.qbitLogin()
 
 	// A POST with the SID and no UI CSRF token: the adapter has its own rule.
 	rec := e.do("POST", "/api/v2/torrents/createCategory", "category=tv", withCookie(sid),
@@ -142,7 +140,7 @@ func TestTheQBitRouteGetsRequestIDsAndSecurityHeadersButNoUICSRF(t *testing.T) {
 func TestTheQBitCSRFRuleStillAppliesBehindTheStack(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBit(&nullEngine{}))
-	sid, _, _ := e.qbitLogin(e.login())
+	sid, _, _ := e.qbitLogin()
 
 	rec := e.do("POST", "/api/v2/torrents/createCategory", "category=tv", withCookie(sid),
 		withHeader("Content-Type", "application/x-www-form-urlencoded"), withHeader("Origin", "https://evil.example"))
@@ -150,44 +148,43 @@ func TestTheQBitCSRFRuleStillAppliesBehindTheStack(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestAQBitCredentialAndItsSIDAreRefusedOnTheOwnAPIAndSABnzbd(t *testing.T) {
+func TestTheSIDIsRefusedOnTheOwnAPIAndSABnzbd(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBitAndSABnzbd(&nullEngine{}))
-	sid, _, pass := e.qbitLogin(e.login())
+	sid, _, _ := e.qbitLogin()
 
 	for _, path := range []string{"/api/v1/downloads", "/api/v1/settings", "/api/v1/categories", "/api/v1/version", "/api/v1/events"} {
-		assert.Equal(t, http.StatusUnauthorized, e.do("GET", path, "", withBearer(pass)).Code, path+" with the password")
-		assert.Equal(t, http.StatusUnauthorized, e.do("GET", path, "", withHeader("X-Api-Key", pass)).Code, path)
 		assert.Equal(t, http.StatusUnauthorized, e.do("GET", path, "", withCookie(sid)).Code, path+" with the SID")
 		assert.Equal(t, http.StatusUnauthorized, e.do("GET", path, "", withCookie(&http.Cookie{Name: "bitnews_session", Value: sid.Value})).Code, path)
 	}
-	incorrect := `{"status":false,"error":"API Key Incorrect"}`
-	required := `{"status":false,"error":"API Key Required"}`
-	assert.JSONEq(t, incorrect, e.do("GET", "/sabnzbd/api?mode=queue&apikey="+pass, "").Body.String(), "the qBit password is no SAB key")
-	assert.JSONEq(t, incorrect, e.do("GET", "/sabnzbd/api?mode=queue&apikey="+sid.Value, "").Body.String(), "the SID is no SAB key")
-	assert.JSONEq(t, required, e.do("GET", "/sabnzbd/api?mode=queue", "", withCookie(sid)).Body.String(), "the SID cookie means nothing to SAB")
+	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, e.do("GET", "/sabnzbd/api?mode=queue&apikey="+sid.Value, "").Body.String(), "the SID is no SAB key")
+	assert.JSONEq(t, `{"status":false,"error":"API Key Required"}`, e.do("GET", "/sabnzbd/api?mode=queue", "", withCookie(sid)).Body.String(), "the SID cookie means nothing to SAB")
 }
 
-func TestTheOtherDirectionASABKeyAndAUISessionAreNoQBitLogin(t *testing.T) {
+func TestOneKeyOpensTheOwnAPISABnzbdAndQBitAndNothingElseDoes(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBitAndSABnzbd(&nullEngine{}))
 	sess := e.login()
-	sabKey, _ := e.sabKey(sess)
-	apiKey := e.newKey("write")
-
+	key := e.apiKey()
 	login := func(user, pass string) string {
 		return e.do("POST", "/api/v2/auth/login", url.Values{"username": {user}, "password": {pass}}.Encode(),
 			withHeader("Content-Type", "application/x-www-form-urlencoded")).Body.String()
 	}
 
-	assert.Equal(t, "Fails.", login("radarr", sabKey))
+	assert.Equal(t, http.StatusOK, e.do("GET", "/api/v1/downloads", "", withBearer(key)).Code)
+	assert.Contains(t, e.do("GET", "/sabnzbd/api?mode=get_cats&apikey="+key, "").Body.String(), `"categories"`)
+	assert.Equal(t, "Ok.", login("bitnews", key))
+
+	assert.Equal(t, "Fails.", login("radarr", key), "the username is fixed")
 	assert.Equal(t, "Fails.", login("admin", adminPassword), "the UI account is no qBit account")
-	assert.Equal(t, "Fails.", login("radarr", apiKey))
-	for _, c := range []string{sess.cookie.Value, apiKey, sabKey} {
+	assert.Equal(t, "Fails.", login("bitnews", sess.cookie.Value), "a session token is no key")
+	for _, c := range []string{sess.cookie.Value, key} {
 		assert.Equal(t, http.StatusForbidden, e.do("GET", "/api/v2/app/version", "", withCookie(&http.Cookie{Name: "SID", Value: c})).Code)
 		assert.Equal(t, http.StatusForbidden, e.do("GET", "/api/v2/app/version", "", withBearer(c)).Code)
 	}
 	assert.Equal(t, http.StatusForbidden, e.do("GET", "/api/v2/app/version", "", withCookie(sess.cookie)).Code, "the UI session cookie")
+	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`,
+		e.do("GET", "/sabnzbd/api?mode=queue&apikey="+sess.cookie.Value, "").Body.String())
 }
 
 func TestDisabledAuthAndLANBypassNeverReachTheQBitRoute(t *testing.T) {
@@ -202,20 +199,14 @@ func TestDisabledAuthAndLANBypassNeverReachTheQBitRoute(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
-func TestRevokingTheQBitCredentialKillsItsSessionAtOnce(t *testing.T) {
+func TestRefreshingTheKeyKillsTheQBitSessionAtOnce(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBit(&nullEngine{}))
-	sess := e.login()
-	sid, _, _ := e.qbitLogin(sess)
-	rec := e.do("GET", "/api/v1/adapter-credentials", "", sess.mods()...)
-	var list struct {
-		Items []adapterCredJSON `json:"items"`
-	}
-	decode(t, rec, &list)
-	require.Len(t, list.Items, 1)
+	sid, _, _ := e.qbitLogin()
 	require.Equal(t, http.StatusOK, e.do("GET", "/api/v2/app/version", "", withCookie(sid)).Code)
 
-	require.Equal(t, http.StatusNoContent, e.do("DELETE", "/api/v1/adapter-credentials/"+list.Items[0].ID, "", sess.mods()...).Code)
+	_, err := e.appKey.Refresh(context.Background())
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusForbidden, e.do("GET", "/api/v2/app/version", "", withCookie(sid)).Code)
 }
@@ -224,7 +215,7 @@ func TestTheAccessLogOfQBitHoldsThePathAndNothingElse(t *testing.T) {
 	t.Parallel()
 	eng := &nullEngine{}
 	e := newEnv(t, withQBit(eng))
-	sid, user, pass := e.qbitLogin(e.login())
+	sid, user, pass := e.qbitLogin()
 	passkey := "P4SSKEY-9f8e7d"
 	magnet := "magnet:?xt=urn:btih:c9e15763f722f23e98a29decdfae341b98d53056&tr=https%3A%2F%2Ftr.example%2Fannounce%3Fpasskey%3D" + passkey
 

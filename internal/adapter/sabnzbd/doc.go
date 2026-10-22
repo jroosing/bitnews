@@ -3,8 +3,8 @@
 // mounted at /sabnzbd/api by the daemon; see docs/milestones/m4-sabnzbd-adapter.md
 // for the modes, the status mapping and the response shapes.
 //
-// The adapter does its own authentication: the apikey parameter must be an
-// adapter_sab credential (auth.AdapterCredentialService). It is never behind
+// The adapter does its own authentication: the apikey parameter must be the app
+// key (auth.AppKeyService, ADR-0006). It is never behind
 // the UI authentication, so disable-auth and LAN bypass cannot reach it.
 // Errors use SAB's own shape, {"status": false, "error": "..."}, with HTTP
 // 200, and every response is JSON whatever the output parameter says.

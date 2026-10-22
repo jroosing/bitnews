@@ -61,7 +61,7 @@ Domain terms (**Download**, **Source**, **Fetched**, **Ready**, …) are defined
 
 ```
 gitlab.com/kyura4k/gitnews   (Go module; GitLab project is kyura4k/bitnews)
-cmd/bitnews/            bootstrap flags/env, PUID/PGID privilege drop, opens the DB
+cmd/bitnews/            bootstrap flags/env, applies the umask, opens the DB
 internal/daemon/        composition root: wires stores, services, API, runner, post-processing
 internal/core/          domain model, lifecycle, scheduler, event bus, ports
 internal/usenet/nzb/    NZB parser
@@ -75,7 +75,7 @@ internal/auth/          sessions, CSRF, argon2id, API keys, LAN bypass
 internal/api/           own API v1 + SSE
 internal/adapter/qbit/  qBittorrent WebUI API v2 subset
 internal/adapter/sabnzbd/ SABnzbd API subset
-internal/fsutil/        safe join, same-filesystem check, umask, atomic move
+internal/fsutil/        safe join, free space, umask, move (rename, else copy)
 internal/web/           htmx + Tailwind + Alpine UI, templates and assets embedded (milestone 6, ADR-0005)
 ```
 
@@ -159,7 +159,7 @@ The defaults follow the TRaSH-guides layout:
 
 - The `incomplete` and `complete` roots are set per protocol in the UI. Each **Category** can optionally override its dir, which otherwise defaults to `<complete root>/<category>`.
 - Path changes affect only new Downloads.
-- Moving into `complete` is a `rename` on the same filesystem. When saving the settings, the UI warns if the roots are on different filesystems.
+- Moving into `complete` is a `rename`, or a copy then remove when the roots are on different filesystems. bitnews does not check or warn about filesystems: keeping `complete` and the library on one filesystem, so that Sonarr and Radarr can hardlink, is the user's job. Saved paths are checked for shape only (absolute, clean, not nested); missing directories are created at first use.
 - Files are never modified after Ready, because hardlinks share their data with the library.
 - The umask is set with the `UMASK` bootstrap env (default `002`), because it has to apply before any file is created. bitnews and the media managers should share a group.
 
@@ -191,8 +191,8 @@ The defaults follow the TRaSH-guides layout:
 ## Deployment
 
 - **Binary:** a static `bitnews` for linux amd64/arm64 (darwin for development).
-- **Bootstrap config (flags/env only):** `--config-dir`, optional `--key-file`, listen address (default `:9494`), `PUID`/`PGID`, `UMASK`. Everything else is configured through the UI/API and stored in the DB. The full table is in [M1](milestones/m1-foundation.md#bootstrap-configuration).
-- **Privileges:** with `PUID`/`PGID` set, the binary drops to them (`setgroups`/`setgid`/`setuid`) before opening the DB, sockets or any input. Compose `user:` also works. Root is allowed and logs a startup warning.
+- **Bootstrap config (flags/env only):** `--config-dir`, optional `--key-file`, listen address (default `:9494`), `UMASK`. Everything else is configured through the UI/API and stored in the DB. The full table is in [M1](milestones/m1-foundation.md#bootstrap-configuration).
+- **Privileges:** bitnews runs as whoever starts it ([ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md)): Docker `user:`, systemd `User=`/`Group=`. There is no in-process privilege drop. It applies `UMASK` (default `002`) before creating any file, and running as root works without a warning.
 - **Docker:** distroless image, `/config` volume (database and key), `/data` mounted at the same path as in the media-manager containers. HTTPS is terminated by a reverse proxy (Caddy/Traefik/nginx).
 - **systemd / LXC:** a `bitnews` user, DB and key in `/var/lib/bitnews`, and hardening (`ProtectSystem=strict`, `NoNewPrivileges`, `ReadWritePaths=` for data dirs only).
 

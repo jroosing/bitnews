@@ -135,11 +135,11 @@ Semantic HTML, labels on every input, and keyboard-operable actions. The layout 
 **Goal:** Configure the per-protocol roots and Categories from the UI.
 
 **Work**
-- Per-protocol incomplete/complete roots with validation (exists, writable), and same-filesystem warnings on save that explain the hardlink impact.
+- Per-protocol incomplete/complete roots with shape-only validation (absolute, clean, not nested; see [M7-01](m7-simplification.md#m7-01-paths-are-the-users-responsibility)). No exists, writable or same-filesystem checks. The hint says to keep the complete directories and the library on one filesystem.
 - Category CRUD with an optional dir override. Note in the UI that a change only affects new Downloads.
 
 **Acceptance criteria**
-- [ ] Validation errors and cross-filesystem warnings render.
+- [ ] Validation errors render per field.
 - [ ] Changes persist and apply to the next Download.
 
 ### M6-06: Settings — Usenet Servers

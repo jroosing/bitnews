@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/adapter/qbit"
-	"gitlab.com/kyura4k/gitnews/internal/auth"
 )
 
 func (s *stack) loginAs(user, pass string) *httptest.ResponseRecorder {
@@ -50,10 +49,11 @@ func TestLoginWithAWrongPasswordOrUserAnswersFailsWithStatus200(t *testing.T) {
 	s := newStack(t)
 
 	for name, creds := range map[string][2]string{
-		"wrong password": {s.user, "bnq_wrong"},
-		"unknown user":   {"nobody", s.pass},
-		"empty":          {"", ""},
-		"a SAB key":      {s.user, "bns_" + strings.Repeat("a", 52)},
+		"wrong password":           {s.user, "bitnews_wrong"},
+		"unknown user":             {"nobody", s.pass},
+		"old username":             {"radarr", s.pass},
+		"empty":                    {"", ""},
+		"the username as password": {s.user, s.user},
 	} {
 		rec := s.loginAs(creds[0], creds[1])
 
@@ -65,25 +65,14 @@ func TestLoginWithAWrongPasswordOrUserAnswersFailsWithStatus200(t *testing.T) {
 	}
 }
 
-func TestASABKeyCannotLogInToQBit(t *testing.T) {
-	t.Parallel()
-	s := newStack(t)
-	sabKey, _, err := s.creds.Create(context.Background(), auth.KindAdapterSAB, "Sonarr", "")
-	require.NoError(t, err)
-
-	rec := s.loginAs("sonarr", sabKey)
-
-	assert.Equal(t, "Fails.", rec.Body.String())
-}
-
 func TestAfterFiveFailuresTheIPIsBannedEvenForTheRightPassword(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	for range 5 {
-		require.Equal(t, "Fails.", s.loginAs(s.user, "bnq_wrong").Body.String())
+		require.Equal(t, "Fails.", s.loginAs(s.user, "bitnews_wrong").Body.String())
 	}
 
-	wrong := s.loginAs(s.user, "bnq_wrong")
+	wrong := s.loginAs(s.user, "bitnews_wrong")
 	right := s.loginAs(s.user, s.pass)
 
 	for _, rec := range []*httptest.ResponseRecorder{wrong, right} {
@@ -99,7 +88,7 @@ func TestTheBanEndsAndOtherIPsAreNotBanned(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	for range 5 {
-		s.loginAs(s.user, "bnq_wrong")
+		s.loginAs(s.user, "bitnews_wrong")
 	}
 	other := formRequest("POST", "/api/v2/auth/login", url.Values{"username": {s.user}, "password": {s.pass}})
 	other.RemoteAddr = "192.0.2.77:4000"
@@ -114,7 +103,7 @@ func TestFailuresOfOneIPDoNotLockTheUsernameForTheOthers(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	for range 20 {
-		bad := formRequest("POST", "/api/v2/auth/login", url.Values{"username": {s.user}, "password": {"bnq_wrong"}})
+		bad := formRequest("POST", "/api/v2/auth/login", url.Values{"username": {s.user}, "password": {"bitnews_wrong"}})
 		bad.RemoteAddr = "198.51.100.9:1234"
 		s.serve(bad)
 	}
@@ -134,7 +123,7 @@ func TestTheLimiterBehindAProxyUsesTheForwardedClientIP(t *testing.T) {
 		return s.serve(r)
 	}
 	for range 5 {
-		attempt("203.0.113.5", "bnq_wrong")
+		attempt("203.0.113.5", "bitnews_wrong")
 	}
 
 	assert.Equal(t, http.StatusForbidden, attempt("203.0.113.5", s.pass).Code, "that client is banned")
@@ -214,19 +203,21 @@ func TestLogoutEndsTheSession(t *testing.T) {
 	assert.True(t, cleared, "the cookie is dropped")
 }
 
-func TestRevokingTheCredentialKillsItsSessionsAtOnce(t *testing.T) {
+func TestRefreshingTheKeyKillsEverySessionAtOnceAndOnlyTheNewKeyLogsIn(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	sid := s.login()
-	infos, err := s.creds.List(context.Background())
-	require.NoError(t, err)
-	require.Len(t, infos, 1)
+	sid, other := s.login(), s.login()
 	require.Equal(t, http.StatusOK, s.get(sid, "/api/v2/app/version").Code)
 
-	require.NoError(t, s.creds.Revoke(context.Background(), infos[0].ID))
+	fresh, err := s.appKey.Refresh(context.Background())
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusForbidden, s.get(sid, "/api/v2/app/version").Code)
-	assert.Equal(t, "Fails.", s.loginAs(s.user, s.pass).Body.String())
+	assert.Equal(t, http.StatusForbidden, s.get(other, "/api/v2/app/version").Code)
+	assert.Equal(t, "Fails.", s.loginAs(s.user, s.pass).Body.String(), "the old key")
+	fresh1 := s.loginAs(s.user, fresh.Reveal())
+	assert.Equal(t, "Ok.", fresh1.Body.String())
+	assert.Equal(t, http.StatusOK, s.get(sidOf(t, fresh1), "/api/v2/app/version").Code)
 }
 
 func TestTheSessionTableIsCapped(t *testing.T) {
@@ -367,16 +358,11 @@ func TestAnAllowedHostMayBeTheOrigin(t *testing.T) {
 	assert.Equal(t, http.StatusOK, s.serve(r).Code)
 }
 
-func TestSessionsAndCredentialsAreNotMixedUpBetweenAdapters(t *testing.T) {
+func TestTheKeyItselfIsNotASID(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	sab, _, err := s.creds.Create(context.Background(), auth.KindAdapterSAB, "Sonarr", "")
-	require.NoError(t, err)
 
-	// The SAB key as a cookie, the qBit password as a cookie: neither is a SID.
-	for _, v := range []string{sab, s.pass} {
-		assert.Equal(t, http.StatusForbidden, s.get(&http.Cookie{Name: "SID", Value: v}, "/api/v2/app/version").Code)
-	}
+	assert.Equal(t, http.StatusForbidden, s.get(&http.Cookie{Name: "SID", Value: s.pass}, "/api/v2/app/version").Code)
 }
 
 func TestAnUnknownEndpointOfASessionIs404AndAWrongMethodIs405(t *testing.T) {

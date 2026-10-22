@@ -39,12 +39,19 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT" \
         -o /out/bitnews ./cmd/bitnews
 
-# Final stage. This is deliberately NOT the :nonroot variant. The container
-# must start as root so that PUID/PGID work: bitnews calls setgroups, setgid
-# and setuid itself before it opens any file, socket or input (see
-# docs/deploy.md). Without PUID/PGID it keeps root and logs a warning.
+# /config skeleton, copied into the final stage because distroless has no
+# shell to mkdir with. The final stage copies it with mode 0777, so a fresh
+# named volume (which copies that directory's owner and mode on first use) can
+# be written by whatever uid `user:` / `--user` selects. Bind mounts are not
+# affected: they bring their own owner and mode.
+RUN mkdir -p /out/config
+
+# Final stage. bitnews runs as whoever starts it (ADR-0006): the default is
+# the distroless "nonroot" user (65532), and `user: "uid:gid"` in compose or
+# `docker run --user` overrides it. There is no privilege drop and no
+# capability to add back.
 # Pin to a digest here too for reproducible builds.
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian12:nonroot
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -55,16 +62,19 @@ LABEL org.opencontainers.image.title="bitnews" \
       org.opencontainers.image.revision="$COMMIT"
 
 COPY --from=build /out/bitnews /bitnews
+COPY --from=build --chown=65532:65532 --chmod=0777 /out/config /config
 
 # Bootstrap settings. The master key is generated on first start and stored in
 # /config next to the database (set BITNEWS_KEY_FILE to keep it elsewhere).
-# UMASK 002 follows the linuxserver convention (group-writable files).
+# UMASK 002 makes new files group-writable, so Sonarr and Radarr running as
+# another user in the same group can manage them.
 ENV BITNEWS_CONFIG_DIR=/config \
     BITNEWS_LISTEN=0.0.0.0:9494 \
     UMASK=002
 
 EXPOSE 9494
 VOLUME /config
+USER 65532:65532
 
 # Distroless has no shell, so the exec form is the only form that works.
 # "bitnews healthcheck" exits 0 when GET http://127.0.0.1:<port>/api/v1/health

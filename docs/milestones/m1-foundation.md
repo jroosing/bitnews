@@ -32,7 +32,7 @@ These are the only settings that do not live in the DB. Each can be given as a f
 | `--listen` | `BITNEWS_LISTEN` | `0.0.0.0:9494` | One port for the own API, adapters and UI. |
 | `--log-level` | `BITNEWS_LOG_LEVEL` | `info` | |
 | `--log-format` | `BITNEWS_LOG_FORMAT` | `text` | `text` or `json` |
-| — | `PUID` / `PGID` | unset | When running as root, drop to these. |
+| — | `PUID` / `PGID` | unset | When running as root, drop to these. (Removed: superseded by M7-03 / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).) |
 | — | `UMASK` | `002` | Applied process-wide at startup. This follows the linuxserver convention. |
 | — | `BITNEWS_ADMIN_PASSWORD_FILE` | unset | Optional bootstrap of the admin password. |
 
@@ -41,7 +41,7 @@ These are the only settings that do not live in the DB. Each can be given as a f
 ### Startup order
 
 1. Parse flags and env, then apply `UMASK`.
-2. If the uid is 0 and `PUID`/`PGID` are set, call `setgroups([PGID])`, then `setgid(PGID)`, then `setuid(PUID)`. Verify that `setuid(0)` now fails, and abort if it succeeds. If the uid is 0 and they are not set, log a warning and continue as root.
+2. (Removed: superseded by M7-03 / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).) If the uid is 0 and `PUID`/`PGID` are set, call `setgroups([PGID])`, then `setgid(PGID)`, then `setuid(PUID)`. Verify that `setuid(0)` now fails, and abort if it succeeds. If the uid is 0 and they are not set, log a warning and continue as root.
 3. Load or create the key file.
 4. Open the DB, which creates it with mode `0600` if missing, and run migrations.
 5. Wire up the services and start the HTTP server.
@@ -187,7 +187,7 @@ M1 routes (more are added in later milestones):
 
 - **Docker:**
   - Multi-stage build, ending in `gcr.io/distroless/static-debian12`.
-  - The image starts as root so that `PUID`/`PGID` can work; the binary then drops privileges. `user:` in compose also works.
+  - The image starts as root so that `PUID`/`PGID` can work; the binary then drops privileges. `user:` in compose also works. (Removed: superseded by M7-03 / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md); the image now runs as a non-root user.)
   - Volumes: `/config` (database and key), `/data`.
 - **compose:** `deploy/docker-compose.example.yml` with `PUID`/`PGID`/`UMASK`, the `/data` layout from TRaSH, and a commented gluetun variant.
 - **systemd:** `deploy/bitnews.service` runs as the `bitnews` user with `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`, `NoNewPrivileges=true`, and `ReadWritePaths=/var/lib/bitnews /data`. The key is generated in `/var/lib/bitnews`; `LoadCredential=` is an optional way to keep it apart.
@@ -238,6 +238,8 @@ M1 routes (more are added in later milestones):
 
 ### M1-03: Privilege drop, umask and root warning
 - **Labels:** area:deploy, ready-for-agent
+
+> **Note:** the privilege drop and the root warning are superseded by M7-03 / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md). Only the umask part remains.
 - **Depends on:** M1-02
 
 **Goal:** Follow the startup order from the M1 design. `PUID`/`PGID` drop root before any file or socket is opened.
@@ -442,6 +444,8 @@ M1 routes (more are added in later milestones):
 
 ### M1-15: Docker image, compose example and systemd unit
 - **Labels:** area:deploy, ready-for-agent
+
+> **Note:** the `PUID`/`PGID` parts are superseded by M7-03 / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).
 - **Depends on:** M1-03, M1-13
 
 **Goal:** Packaging that matches the deployment design, so bitnews runs both with and without Docker.

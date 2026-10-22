@@ -133,6 +133,8 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	uiAuth, err := auth.NewUIAuth(e.sessions, e.settings.Current)
 	require.NoError(t, err)
+	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, key), auth.WithAppKeyLogger(logger))
+	require.NoError(t, err)
 
 	appOpts := []app.Option{app.WithClock(e.clock.Now)}
 	downloadSvc := app.NewDownloadService(downloads, cats, bus, appOpts...)
@@ -142,7 +144,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	webUI, err := web.New(web.Deps{
 		Logger: logger, Version: "1.2.3",
 		Sessions: e.sessions, UIAuth: uiAuth, Setup: e.setup, Settings: e.settings,
-		Downloads: downloadSvc, Categories: catSvc, Servers: serverSvc, Bus: bus,
+		Downloads: downloadSvc, Categories: catSvc, Servers: serverSvc, Bus: bus, AppKey: appKey,
 	})
 	require.NoError(t, err)
 	srv, err := api.New(api.Config{
@@ -155,7 +157,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 		Setup:      e.setup,
 		Sessions:   e.sessions,
 		UIAuth:     uiAuth,
-		APIKeys:    auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger)),
+		AppKey:     appKey,
 		Bus:        bus,
 		Web:        webUI,
 	})

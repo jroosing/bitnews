@@ -153,7 +153,7 @@ func TestEventStreamStartsWithHelloCarryingTheInstanceID(t *testing.T) {
 	e := newEnv(t)
 	base, _ := start(t, e)
 
-	c := connectSSE(t, base, withBearer(e.newKey(core.APIKeyScopeRead)))
+	c := connectSSE(t, base, withBearer(e.apiKey()))
 
 	assert.Equal(t, http.StatusOK, c.resp.StatusCode)
 	assert.Equal(t, "text/event-stream", c.resp.Header.Get("Content-Type"))
@@ -180,7 +180,7 @@ func TestEventStreamAcceptsASessionCookie(t *testing.T) {
 func TestEventStreamDeliversEventsPublishedAfterConnecting(t *testing.T) {
 	e := newEnv(t)
 	base, _ := start(t, e)
-	c := connectSSE(t, base, withBearer(e.newKey(core.APIKeyScopeRead)))
+	c := connectSSE(t, base, withBearer(e.apiKey()))
 	hello, _ := c.next(t)
 	require.Equal(t, "hello", hello.Name)
 	d := core.Download{
@@ -235,7 +235,7 @@ func TestEventStreamDeliversEventsPublishedAfterConnecting(t *testing.T) {
 func TestEventStreamDeliversPostProcessingAndQueueEvents(t *testing.T) {
 	e := newEnv(t)
 	base, _ := start(t, e)
-	c := connectSSE(t, base, withBearer(e.newKey(core.APIKeyScopeRead)))
+	c := connectSSE(t, base, withBearer(e.apiKey()))
 	hello, _ := c.next(t)
 	require.Equal(t, "hello", hello.Name)
 
@@ -259,7 +259,7 @@ func TestEventStreamDoesNotReplayEventsFromBeforeConnectingOrHonourLastEventID(t
 	base, _ := start(t, e)
 	e.bus.Publish(core.Removed{ID: "old"})
 
-	c := connectSSE(t, base, withBearer(e.newKey(core.APIKeyScopeRead)), withHeader("Last-Event-ID", "5"))
+	c := connectSSE(t, base, withBearer(e.apiKey()), withHeader("Last-Event-ID", "5"))
 	hello, _ := c.next(t)
 	e.bus.Publish(core.Removed{ID: "new"})
 	next, _ := c.next(t)
@@ -272,7 +272,7 @@ func TestEventStreamSendsAPingCommentOnTheTickerEvery15Seconds(t *testing.T) {
 	ticker := newFakeTicker()
 	e := newEnv(t, withTicker(ticker))
 	base, _ := start(t, e)
-	c := connectSSE(t, base, withBearer(e.newKey(core.APIKeyScopeRead)))
+	c := connectSSE(t, base, withBearer(e.apiKey()))
 	hello, _ := c.next(t)
 	require.Equal(t, "hello", hello.Name)
 
@@ -292,7 +292,7 @@ func TestEventStreamSurvivesTheServersWriteTimeout(t *testing.T) {
 		s.ReadTimeout = 150 * time.Millisecond
 	})
 	_ = ln
-	c := connectSSE(t, "http://"+srv.Addr, withBearer(e.newKey(core.APIKeyScopeRead)))
+	c := connectSSE(t, "http://"+srv.Addr, withBearer(e.apiKey()))
 	hello, _ := c.next(t)
 	require.Equal(t, "hello", hello.Name)
 
@@ -354,7 +354,7 @@ func TestEventStreamEndsWithResyncWhenTheClientFallsTooFarBehind(t *testing.T) {
 	w := &blockingWriter{header: http.Header{}, gate: make(chan struct{}), entered: make(chan struct{})}
 	ctx := t.Context()
 	req := httptest.NewRequest("GET", "/api/v1/events", nil).WithContext(ctx)
-	req.Header.Set("Authorization", "Bearer "+e.newKey(core.APIKeyScopeRead))
+	req.Header.Set("Authorization", "Bearer "+e.apiKey())
 	done := make(chan struct{})
 	go func() {
 		e.server.Handler().ServeHTTP(w, req)
@@ -389,7 +389,7 @@ func streamHandlers() int {
 func TestDisconnectedClientReleasesItsStreamAndSubscription(t *testing.T) {
 	e := newEnv(t)
 	base, _ := start(t, e)
-	key := e.newKey(core.APIKeyScopeRead)
+	key := e.apiKey()
 	var clients []*sseClient
 	for range 5 {
 		c := connectSSE(t, base, withBearer(key))
@@ -411,7 +411,7 @@ func TestDisconnectedClientReleasesItsStreamAndSubscription(t *testing.T) {
 func TestShutdownEndsOpenEventStreams(t *testing.T) {
 	e := newEnv(t)
 	base, stop := start(t, e)
-	c := connectSSE(t, base, withBearer(e.newKey(core.APIKeyScopeRead)))
+	c := connectSSE(t, base, withBearer(e.apiKey()))
 	hello, _ := c.next(t)
 	require.Equal(t, "hello", hello.Name)
 

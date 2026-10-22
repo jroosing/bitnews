@@ -70,7 +70,7 @@ func TestAddByURLFetchesAndStoresTheNZB(t *testing.T) {
 	doc := nzbXML(metaName)
 	ix := newIndexer(t, serveNZB(doc))
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	events := e.subscribe()
 
 	rec := e.addURL(key, jsonURL(ix.URL+"/getnzb?apikey="+urlSecret, ""))
@@ -89,7 +89,7 @@ func TestAddByURLHonorsTheJSONFields(t *testing.T) {
 	t.Parallel()
 	ix := newIndexer(t, serveNZB(nzbXML("")))
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	cat := core.Category{ID: core.NewID(), Name: "movies"}
 	require.NoError(t, e.cats.Create(context.Background(), cat))
 
@@ -110,7 +110,7 @@ func TestAddByURLNeverPersistsTheURL(t *testing.T) {
 	t.Parallel()
 	ix := newIndexer(t, serveNZB(nzbXML("")))
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	got := e.addedDownload(e.addURL(key, jsonURL(ix.URL+"/getnzb?apikey="+urlSecret, "")))
 
@@ -149,7 +149,7 @@ func TestAddByURLSendsNoAmbientCredentialsAndABitnewsUserAgent(t *testing.T) {
 		serveNZB(nzbXML(""))(w, r)
 	})
 	e, _ := newAddEnv(t, withAddOptions(app.WithHTTPClient(&http.Client{Jar: jar})))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	sess := e.login()
 	body := jsonURL(ix.URL+"/start", "")
 
@@ -185,7 +185,7 @@ func TestAddByURLFollowsFiveRedirectsButNotSix(t *testing.T) {
 	t.Parallel()
 	ix := newIndexer(t, redirectChain(nzbXML("")))
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	five := e.addURL(key, jsonURL(ix.URL+"/hop/5", ""))
 	six := e.addURL(key, jsonURL(ix.URL+"/hop/6", ""))
@@ -206,7 +206,7 @@ func TestAddByURLRefusesRedirectsToOtherSchemes(t *testing.T) {
 			http.Redirect(w, r, target, http.StatusFound)
 		})
 		e, root := newAddEnv(t)
-		key := e.newKey(core.APIKeyScopeWrite)
+		key := e.apiKey()
 
 		rec := e.addURL(key, jsonURL(ix.URL, ""))
 
@@ -220,7 +220,7 @@ func TestAddByURLRefusesRedirectsToOtherSchemes(t *testing.T) {
 func TestAddByURLRejectsOtherSchemesAndBadURLsBeforeFetching(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	for _, u := range []string{"file:///etc/passwd", "ftp://example.com/a.nzb", "javascript:alert(1)", "example.com/a.nzb", "http://", "//example.com/a"} {
 		rec := e.addURL(key, jsonURL(u, ""))
 
@@ -237,7 +237,7 @@ func TestAddByURLChecksCategoryAndPriorityBeforeFetching(t *testing.T) {
 	t.Parallel()
 	ix := newIndexer(t, serveNZB(nzbXML("")))
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	cat := e.addURL(key, jsonURL(ix.URL, `,"category_id":"nope"`))
 	prio := e.addURL(key, jsonURL(ix.URL, `,"priority":"urgent"`))
@@ -261,7 +261,7 @@ func TestAddByURLTimesOut(t *testing.T) {
 	})
 	t.Cleanup(func() { close(release) })
 	e, root := newAddEnv(t, withAddOptions(app.WithFetchTimeout(150*time.Millisecond)))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	start := time.Now()
 	rec := e.addURL(key, jsonURL(ix.URL+"/slow?apikey="+urlSecret, ""))
@@ -282,7 +282,7 @@ func TestAddByURLTimeoutAppliesToTheBodyToo(t *testing.T) {
 		<-r.Context().Done() // a body that never finishes
 	})
 	e, root := newAddEnv(t, withAddOptions(app.WithFetchTimeout(150*time.Millisecond)))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.addURL(key, jsonURL(ix.URL, ""))
 
@@ -303,7 +303,7 @@ func TestAddByURLCapsAStreamingResponse(t *testing.T) {
 		}
 	})
 	e, root := newAddEnv(t, withAddOptions(app.WithMaxNZBBytes(8192)))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.addURL(key, jsonURL(ix.URL, ""))
 
@@ -320,7 +320,7 @@ func TestAddByURLRefusesAnAnnouncedOversizeResponseWithoutReadingIt(t *testing.T
 		_, _ = io.WriteString(w, "<nzb>")
 	})
 	e, root := newAddEnv(t, withAddOptions(app.WithMaxNZBBytes(8192)))
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.addURL(key, jsonURL(ix.URL, ""))
 
@@ -336,7 +336,7 @@ func TestAddByURLReportsANon200AsFetchFailedWithoutTheURL(t *testing.T) {
 			http.Error(w, "nope "+r.URL.String(), status)
 		})
 		e, root := newAddEnv(t)
-		key := e.newKey(core.APIKeyScopeWrite)
+		key := e.apiKey()
 
 		rec := e.addURL(key, jsonURL(ix.URL+"/getnzb?apikey="+urlSecret, ""))
 
@@ -357,7 +357,7 @@ func TestAddByURLRedactsTheAPIKeyInEveryLog(t *testing.T) {
 	closedURL := closed.URL
 	closed.Close()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	ok := e.addURL(key, jsonURL(ix.URL+"/getnzb?apikey="+urlSecret+"&t=get", ""))
 	refused := e.addURL(key, jsonURL(closedURL+"/getnzb?apikey="+urlSecret, ""))
@@ -382,7 +382,7 @@ func TestAddByURLOfANonNZBBodyIs400AndLeavesNothing(t *testing.T) {
 		_, _ = io.WriteString(w, "<html><body>Please log in</body></html>")
 	})
 	e, root := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.addURL(key, jsonURL(ix.URL, ""))
 
@@ -399,7 +399,7 @@ func TestAddByURLAllowsLoopbackAndPrivateTargets(t *testing.T) {
 	assert.True(t, strings.HasPrefix(ix.URL, "http://127.0.0.1:"))
 	e, _ := newAddEnv(t)
 
-	rec := e.addURL(e.newKey(core.APIKeyScopeWrite), jsonURL(ix.URL, ""))
+	rec := e.addURL(e.apiKey(), jsonURL(ix.URL, ""))
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
 }
@@ -407,7 +407,7 @@ func TestAddByURLAllowsLoopbackAndPrivateTargets(t *testing.T) {
 func TestAddByURLJSONBodyIsStrictAndSmall(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	extra := e.addURL(key, `{"url":"http://x","tls":false}`)
 	huge := e.addURL(key, `{"url":"http://x/`+strings.Repeat("a", 20<<10)+`"}`)

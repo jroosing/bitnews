@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -20,8 +19,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"gitlab.com/kyura4k/gitnews/internal/privdrop"
 )
 
 // env builds a getenv func backed by a map.
@@ -32,46 +29,14 @@ func env(vars map[string]string) func(string) (string, bool) {
 	}
 }
 
-// fakeSys is a privdrop.Syscalls that records calls and never touches the
-// real process. It behaves like an unprivileged process unless euid is 0.
-type fakeSys struct {
-	euid, egid int
-	calls      []string
-}
+// umaskRecorder is the umask seam of run: it records the masks it is asked
+// to apply and never touches the real process.
+type umaskRecorder struct{ masks []int }
 
-func (f *fakeSys) Geteuid() int { return f.euid }
-func (f *fakeSys) Getegid() int { return f.egid }
+func (u *umaskRecorder) set(mask int) { u.masks = append(u.masks, mask) }
 
-func (f *fakeSys) Umask(mask int) int {
-	f.calls = append(f.calls, fmt.Sprintf("Umask(%03o)", mask))
-	return 0
-}
-
-func (f *fakeSys) Setgroups(gids []int) error {
-	f.calls = append(f.calls, fmt.Sprintf("Setgroups(%v)", gids))
-	return nil
-}
-
-func (f *fakeSys) Setgid(gid int) error {
-	f.calls = append(f.calls, fmt.Sprintf("Setgid(%d)", gid))
-	if f.euid != 0 && gid != f.egid {
-		return errors.New("EPERM")
-	}
-	f.egid = gid
-	return nil
-}
-
-func (f *fakeSys) Setuid(uid int) error {
-	f.calls = append(f.calls, fmt.Sprintf("Setuid(%d)", uid))
-	if f.euid != 0 && uid != f.euid {
-		return errors.New("EPERM")
-	}
-	f.euid = uid
-	return nil
-}
-
-// unprivileged is the default test process: not root, nothing to drop.
-func unprivileged() *fakeSys { return &fakeSys{euid: 1000, egid: 1000} }
+// noUmask is for tests that do not care about the umask.
+func noUmask(int) {}
 
 // validEnv is a complete environment whose config dir and key file live in
 // the test's temp dir, so a run that gets as far as the store touches nothing
@@ -88,15 +53,15 @@ func validEnv(t *testing.T) map[string]string {
 }
 
 // runTest is run without a network: the server "runs" and exits at once.
-func runTest(args []string, getenv func(string) (string, bool), sys privdrop.Syscalls, stdout, stderr io.Writer) int {
-	return run(context.Background(), args, getenv, sys, stdout, stderr, func(context.Context, *http.Server, *slog.Logger) error { return nil })
+func runTest(args []string, getenv func(string) (string, bool), umask func(int), stdout, stderr io.Writer) int {
+	return run(context.Background(), args, getenv, umask, stdout, stderr, func(context.Context, *http.Server, *slog.Logger) error { return nil })
 }
 
 func TestVersionFlagPrintsVersionAndCommit(t *testing.T) {
 	version, commit = "1.2.3", "abc1234"
 	var out, errOut bytes.Buffer
 
-	code := runTest([]string{"--version"}, env(validEnv(t)), unprivileged(), &out, &errOut)
+	code := runTest([]string{"--version"}, env(validEnv(t)), noUmask, &out, &errOut)
 
 	require.Equal(t, 0, code)
 	for _, want := range []string{"bitnews", "1.2.3", "abc1234"} {
@@ -107,7 +72,7 @@ func TestVersionFlagPrintsVersionAndCommit(t *testing.T) {
 func TestVersionFlagIgnoresInvalidConfig(t *testing.T) {
 	var out, errOut bytes.Buffer
 
-	code := runTest([]string{"--version"}, env(map[string]string{"BITNEWS_LISTEN": "nope", "UMASK": "9"}), unprivileged(), &out, &errOut)
+	code := runTest([]string{"--version"}, env(map[string]string{"BITNEWS_LISTEN": "nope", "UMASK": "9"}), noUmask, &out, &errOut)
 
 	assert.Equal(t, 0, code)
 	assert.Empty(t, errOut.String())
@@ -118,7 +83,7 @@ func TestInvalidConfigPrintsErrorAndExitsTwo(t *testing.T) {
 	vars["BITNEWS_LISTEN"] = "no-port"
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
 
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errOut.String(), "BITNEWS_LISTEN")
@@ -128,7 +93,7 @@ func TestInvalidConfigPrintsErrorAndExitsTwo(t *testing.T) {
 func TestUnknownFlagPrintsErrorAndExitsTwo(t *testing.T) {
 	var out, errOut bytes.Buffer
 
-	code := runTest([]string{"--bogus"}, env(validEnv(t)), unprivileged(), &out, &errOut)
+	code := runTest([]string{"--bogus"}, env(validEnv(t)), noUmask, &out, &errOut)
 
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errOut.String(), "bogus")
@@ -137,10 +102,10 @@ func TestUnknownFlagPrintsErrorAndExitsTwo(t *testing.T) {
 func TestHelpPrintsUsageToStdoutAndExitsZero(t *testing.T) {
 	var out, errOut bytes.Buffer
 
-	code := runTest([]string{"--help"}, env(validEnv(t)), unprivileged(), &out, &errOut)
+	code := runTest([]string{"--help"}, env(validEnv(t)), noUmask, &out, &errOut)
 
 	assert.Equal(t, 0, code)
-	for _, want := range []string{"--config-dir", "BITNEWS_KEY_FILE", "PUID", "UMASK", "BITNEWS_ADMIN_PASSWORD_FILE"} {
+	for _, want := range []string{"--config-dir", "BITNEWS_KEY_FILE", "UMASK", "BITNEWS_ADMIN_PASSWORD_FILE"} {
 		assert.Contains(t, out.String(), want)
 	}
 }
@@ -150,7 +115,7 @@ func TestStartupIsLoggedInConfiguredFormat(t *testing.T) {
 	vars["BITNEWS_LOG_FORMAT"] = "json"
 	var out, errOut bytes.Buffer
 
-	code := runTest([]string{"--listen", "127.0.0.1:9000"}, env(vars), unprivileged(), &out, &errOut)
+	code := runTest([]string{"--listen", "127.0.0.1:9000"}, env(vars), noUmask, &out, &errOut)
 
 	require.Equal(t, 0, code, errOut.String())
 	var starting map[string]any
@@ -165,69 +130,64 @@ func TestStartupIsLoggedInConfiguredFormat(t *testing.T) {
 	assert.Equal(t, "127.0.0.1:9000", starting["listen"])
 }
 
-func TestPrivilegeDropFailureExitsOneBeforeStartingAnything(t *testing.T) {
+func TestPUIDAndPGIDAreIgnored(t *testing.T) {
+	// ADR-0006: the identity options are gone. Like any other unknown
+	// environment variable they are not looked at.
 	vars := validEnv(t)
 	vars["PUID"], vars["PGID"] = "1001", "1001"
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
-
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errOut.String(), "bitnews: ")
-	assert.Contains(t, errOut.String(), "PUID")
-	assert.NotContains(t, errOut.String(), "starting bitnews", "nothing starts after a failed drop")
-	assert.Empty(t, out.String())
-}
-
-func TestRootWithPUIDDropsBeforeStartingAndSucceeds(t *testing.T) {
-	vars := validEnv(t)
-	vars["PUID"], vars["PGID"] = "1001", "100"
-	vars["UMASK"] = "027"
-	sys := &fakeSys{}
-	var out, errOut bytes.Buffer
-
-	code := runTest(nil, env(vars), sys, &out, &errOut)
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
 
 	require.Equal(t, 0, code, errOut.String())
-	assert.Equal(t, []string{"Umask(027)", "Setgroups([100])", "Setgid(100)", "Setuid(1001)", "Setuid(0)", "Setgid(0)"}, sys.calls)
 	assert.Contains(t, errOut.String(), "starting bitnews")
 	assert.NotContains(t, errOut.String(), "running as root")
-}
-
-func TestRootWithoutPUIDWarnsOnceAndContinues(t *testing.T) {
-	var out, errOut bytes.Buffer
-
-	code := runTest(nil, env(validEnv(t)), &fakeSys{}, &out, &errOut)
-
-	require.Equal(t, 0, code, errOut.String())
-	assert.Equal(t, 1, strings.Count(errOut.String(), "running as root: a parser bug would run with root privileges"))
-	assert.Contains(t, errOut.String(), "starting bitnews")
 }
 
 func TestUmaskIsAppliedOnStartup(t *testing.T) {
 	vars := validEnv(t)
 	vars["UMASK"] = "077"
-	sys := unprivileged()
+	u := &umaskRecorder{}
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), sys, &out, &errOut)
+	code := runTest(nil, env(vars), u.set, &out, &errOut)
 
 	require.Equal(t, 0, code, errOut.String())
-	assert.Equal(t, []string{"Umask(077)"}, sys.calls)
+	assert.Equal(t, []int{0o077}, u.masks)
 }
 
-func TestVersionAndHelpNeverTouchPrivileges(t *testing.T) {
+func TestUmaskDefaultsTo002(t *testing.T) {
+	u := &umaskRecorder{}
+	var out, errOut bytes.Buffer
+
+	code := runTest(nil, env(validEnv(t)), u.set, &out, &errOut)
+
+	require.Equal(t, 0, code, errOut.String())
+	assert.Equal(t, []int{0o002}, u.masks)
+}
+
+func TestUmaskIsAppliedBeforeAnyFileIsCreated(t *testing.T) {
 	vars := validEnv(t)
-	vars["PUID"], vars["PGID"] = "1001", "1001"
+	var atUmask []bool
+	umask := func(int) { _, err := os.Stat(vars["BITNEWS_CONFIG_DIR"]); atUmask = append(atUmask, err == nil) }
+	var out, errOut bytes.Buffer
+
+	code := runTest(nil, env(vars), umask, &out, &errOut)
+
+	require.Equal(t, 0, code, errOut.String())
+	assert.Equal(t, []bool{false}, atUmask, "the config dir must not exist yet when the umask is set")
+}
+
+func TestVersionAndHelpNeverTouchTheUmask(t *testing.T) {
 	for _, flag := range []string{"--version", "--help"} {
 		t.Run(flag, func(t *testing.T) {
-			sys := unprivileged()
+			u := &umaskRecorder{}
 			var out, errOut bytes.Buffer
 
-			code := runTest([]string{flag}, env(vars), sys, &out, &errOut)
+			code := runTest([]string{flag}, env(validEnv(t)), u.set, &out, &errOut)
 
 			assert.Equal(t, 0, code)
-			assert.Empty(t, sys.calls)
+			assert.Empty(t, u.masks)
 		})
 	}
 }
@@ -254,7 +214,7 @@ func TestStartupCreatesTheKeyAndTheDatabaseWithPrivateModes(t *testing.T) {
 	vars := validEnv(t)
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
 
 	require.Equal(t, 0, code, errOut.String())
 	for _, path := range []string{vars["BITNEWS_KEY_FILE"], filepath.Join(vars["BITNEWS_CONFIG_DIR"], "bitnews.db")} {
@@ -264,24 +224,12 @@ func TestStartupCreatesTheKeyAndTheDatabaseWithPrivateModes(t *testing.T) {
 	}
 }
 
-func TestFailedPrivilegeDropTouchesNeitherKeyNorDatabase(t *testing.T) {
-	vars := validEnv(t)
-	vars["PUID"], vars["PGID"] = "1001", "1001"
-	var out, errOut bytes.Buffer
-
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
-
-	require.Equal(t, 1, code)
-	assert.NoFileExists(t, vars["BITNEWS_KEY_FILE"])
-	assert.NoDirExists(t, vars["BITNEWS_CONFIG_DIR"])
-}
-
 func TestInvalidConfigTouchesNeitherKeyNorDatabase(t *testing.T) {
 	vars := validEnv(t)
 	vars["BITNEWS_LISTEN"] = "no-port"
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
 
 	require.Equal(t, 2, code)
 	assert.NoFileExists(t, vars["BITNEWS_KEY_FILE"])
@@ -291,7 +239,7 @@ func TestInvalidConfigTouchesNeitherKeyNorDatabase(t *testing.T) {
 func TestStartupWithoutAdminPasswordFileLogsTheSetupToken(t *testing.T) {
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(validEnv(t)), unprivileged(), &out, &errOut)
+	code := runTest(nil, env(validEnv(t)), noUmask, &out, &errOut)
 
 	require.Equal(t, 0, code, errOut.String())
 	assert.Regexp(t, `first-run setup required.*setup_token=\S+`, errOut.String())
@@ -304,7 +252,7 @@ func TestAdminPasswordFileCreatesTheAdminBeforeSetupIsDecided(t *testing.T) {
 	vars["BITNEWS_ADMIN_PASSWORD_FILE"] = pwFile
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
 
 	require.Equal(t, 0, code, errOut.String())
 	assert.Contains(t, errOut.String(), "admin account created from the admin password file")
@@ -317,7 +265,7 @@ func TestUnusableAdminPasswordFileExitsOne(t *testing.T) {
 	vars["BITNEWS_ADMIN_PASSWORD_FILE"] = filepath.Join(t.TempDir(), "missing")
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errOut.String(), "bitnews: ")
@@ -328,7 +276,7 @@ func TestUnopenableDatabaseExitsOne(t *testing.T) {
 	require.NoError(t, os.WriteFile(vars["BITNEWS_CONFIG_DIR"], nil, 0o600)) // a file where the directory should be
 	var out, errOut bytes.Buffer
 
-	code := runTest(nil, env(vars), unprivileged(), &out, &errOut)
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errOut.String(), "bitnews: ")
@@ -337,7 +285,7 @@ func TestUnopenableDatabaseExitsOne(t *testing.T) {
 func TestServerFailureExitsOne(t *testing.T) {
 	var out, errOut bytes.Buffer
 
-	code := run(context.Background(), nil, env(validEnv(t)), unprivileged(), &out, &errOut,
+	code := run(context.Background(), nil, env(validEnv(t)), noUmask, &out, &errOut,
 		func(context.Context, *http.Server, *slog.Logger) error { return errors.New("boom") })
 
 	assert.Equal(t, 1, code)
@@ -350,7 +298,7 @@ func TestServerGetsTheHardenedHTTPServerOnTheConfiguredAddress(t *testing.T) {
 	var got *http.Server
 	var out, errOut bytes.Buffer
 
-	code := run(context.Background(), nil, env(vars), unprivileged(), &out, &errOut,
+	code := run(context.Background(), nil, env(vars), noUmask, &out, &errOut,
 		func(_ context.Context, srv *http.Server, _ *slog.Logger) error { got = srv; return nil })
 
 	require.Equal(t, 0, code, errOut.String())
@@ -368,7 +316,7 @@ func TestRunServesOnARealListenerAndShutsDownGracefullyWhenTheContextEnds(t *tes
 	var out io.Writer = &bytes.Buffer{}
 	errOut := &syncBuffer{}
 	exit := make(chan int, 1)
-	go func() { exit <- run(ctx, nil, env(vars), unprivileged(), out, errOut, listenAndServe) }()
+	go func() { exit <- run(ctx, nil, env(vars), noUmask, out, errOut, listenAndServe) }()
 
 	var addr string
 	require.Eventually(t, func() bool {

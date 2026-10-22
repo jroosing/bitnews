@@ -21,8 +21,8 @@ const (
 	// PrincipalAuthDisabled is an unauthenticated UI request while the
 	// disable_auth setting is on.
 	PrincipalAuthDisabled PrincipalKind = "disabled"
-	// PrincipalAPIKey is an own-API key (Authorization: Bearer or
-	// X-Api-Key).
+	// PrincipalAPIKey is the app key on the own API (Authorization: Bearer
+	// or X-Api-Key). It has full access.
 	PrincipalAPIKey PrincipalKind = "api_key"
 )
 
@@ -33,9 +33,6 @@ type Principal struct {
 	// UserID and Username are set for PrincipalSession only.
 	UserID   core.ID
 	Username string
-	// Scope and KeyID are set for PrincipalAPIKey only.
-	Scope core.APIKeyScope
-	KeyID core.ID
 
 	// csrf is the CSRF token the request must present when Kind is
 	// ambient. It is unexported so a logged Principal does not leak it.
