@@ -133,6 +133,13 @@ A pure function: `Select(queue []Download, limits) (activate, deactivate []ID)`.
   - CSRF stays enforced.
 - **API keys:** the format is `bn_` + base32(32 bytes). Each key has a name, a scope (`read` | `write`), `created_at` and `last_used_at`. The plaintext is shown once, at creation.
 - **Adapter credentials** (M4/M5) reuse the token mechanism but are only valid on adapter routes.
+- **Implementation notes (M1-11, M1-12):**
+  - The CSRF token is derived from the session token (`HMAC-SHA256(sessionToken, "bitnews-csrf-v1")`), so no schema change is needed. Requests under bypass or disabled auth have no session and use one random per-process token; CSRF and Origin checks still apply to them.
+  - Token kinds are `session`, `api` (`bn_`), `adapter_sab` (`bns_`) and `adapter_qbit` (`bnq_`).
+  - `SessionOnly` rejects API-key, bypass and disabled-auth principals, so only a logged-in session can manage API keys.
+  - A login attempt is rate limited per IP (IPv6 by /64) and per username. A failing username can therefore lock the admin's login for up to 15 minutes; existing sessions are unaffected.
+  - `core.UserRepo` gained `UpdatePasswordHash` (rehash after login) and `core.SessionRepo` gained `DeleteExpired`. M1-13 must call `RunCleanup` for sessions.
+  - The Origin check ignores ports.
 
 ### HTTP server and own API v1
 

@@ -95,6 +95,7 @@ By the end of M3, a Fetched Usenet Download runs through Verify → Repair (when
 - Check feasibility first: the number of available recovery slices must be at least the number of damaged ones. If enough exist only in deferred volumes, M3-07 fetches them first. Otherwise the Download is Failed (`repair_insufficient`).
 - Write the reconstructed slices in place, at their offsets in the target files. Missing files are created with their FileDesc length.
 - Run Verify again afterwards. Any remaining damage means Failed.
+- Implementation notes (M3-05): `Repair(ctx, dir, set, verifyResult, opts...)` returns `*InsufficientError{Needed, Available}` (matches `ErrInsufficientRecovery`) before changing anything, so the orchestrator can fetch deferred volumes (M3-07) or fail with `repair_insufficient`. `Available` counts only readable recovery slices. Memory is about `(k+1) x chunk`, with the chunk halved down to 4 KiB under a configurable memory limit (default 256 MiB). Reed-Solomon correctness is so far proven only against our own test encoder, not against `par2cmdline` output (M3-06).
 - Contract with Verify (M3-03):
   - A file with intact slices but the wrong length (for example trailing bytes) comes back `Damaged` with an empty slice list and needs 0 recovery slices. Repair must truncate it.
   - A missing zero-length file comes back `Missing` with 0 damaged slices. Repair must create it.

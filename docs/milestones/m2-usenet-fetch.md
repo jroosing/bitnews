@@ -105,6 +105,11 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 - **Transient errors** (timeouts, connection resets) are retried on the same Server up to 3 times, then the Server counts as tried.
 - **CRC mismatch** after decoding is treated like absent for that Server. If no Server gives a valid copy, the best data received so far is written and the Article is flagged damaged, so that Repair can fix it later.
 - Workers are not tied to a single Download. With a Usenet Queue limit of 1 this is moot, but the scheduler must still support more than one active Download.
+- Implementation notes (M2-09, package `internal/usenet/scheduler`):
+  - A part is damaged only when a CRC is announced and does not match; a part with no announced CRC counts as good.
+  - The scheduler has no pause. The runner cancels the context and creates a new scheduler for the Articles not yet done.
+  - `Stats().Servers[].Bytes` counts wire bytes. The runner sums decoded `Part.Data` lengths for progress.
+  - A scheduler handles at most 64 Servers, and an auth failure marks a Server dead for the run (`ServerDown` fires once).
 
 ### yEnc decoding (`internal/usenet/yenc`)
 

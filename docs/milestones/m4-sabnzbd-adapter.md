@@ -125,6 +125,7 @@ A deferred-volume fetch (M3-07) moves the Download back to Fetching. It then app
 - Add kinds `adapter_sab` and `adapter_qbit` to the token store. `adapter_qbit` has a username plus a generated key that acts as the password.
 - Session-only routes `GET/POST/DELETE /api/v1/adapter-credentials`, where the plaintext is shown once.
 - Middleware helpers: `RequireAdapterCredential(kind)`. Adapter credentials are rejected on every other route, and every other credential is rejected on adapter routes.
+- Managing adapter credentials differs from managing API keys: `auth.SessionOnly` rejects bypass and disabled-auth principals, but media managers must still be able to authenticate when the UI runs with disabled auth or LAN bypass. So the credential-management routes must also accept those UI principals (not API keys), and the UI must say that credentials created this way outlive the bypass setting.
 - Track `last_used_at` per credential, so the UI can show which media manager last connected.
 
 **Acceptance criteria**

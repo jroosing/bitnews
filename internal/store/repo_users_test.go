@@ -127,3 +127,24 @@ func TestUserRepoStoresCreatedAtAsUTCMilliseconds(t *testing.T) {
 	assert.Equal(t, time.UnixMilli(u.CreatedAt.UnixMilli()).UTC(), got.CreatedAt)
 	assert.Equal(t, time.UTC, got.CreatedAt.Location())
 }
+
+func TestUserRepoUpdatePasswordHashReplacesHash(t *testing.T) {
+	ctx := context.Background()
+	repo := newUserRepo(t)
+	u := newUser("admin")
+	require.NoError(t, repo.Create(ctx, u))
+
+	require.NoError(t, repo.UpdatePasswordHash(ctx, u.ID, []byte("$argon2id$new")))
+
+	got, err := repo.Get(ctx, u.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("$argon2id$new"), got.PasswordHash)
+	assert.Equal(t, u.Username, got.Username)
+	assert.Equal(t, u.CreatedAt, got.CreatedAt)
+}
+
+func TestUserRepoUpdatePasswordHashUnknownIDIsNotFound(t *testing.T) {
+	err := newUserRepo(t).UpdatePasswordHash(context.Background(), core.NewID(), []byte("x"))
+
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}
