@@ -13,8 +13,8 @@ Only these settings live outside the database. A flag wins over its environment 
 
 | Flag | Env | Default | Notes |
 |---|---|---|---|
-| `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` | Holds `bitnews.db`. Image: `/config`. systemd: `/var/lib/bitnews`. Absolute path. |
-| `--key-file` | `BITNEWS_KEY_FILE` | `$XDG_CONFIG_HOME/bitnews/bitnews.key` | Master key for secret encryption. Absolute path, and bitnews refuses to start if it is inside the config dir. Image: `/run/secrets/bitnews_key`. systemd: a credential, see below. |
+| `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` | Holds `bitnews.db` and the master key `bitnews.key`. Image: `/config`. systemd: `/var/lib/bitnews`. Absolute path. |
+| `--key-file` | `BITNEWS_KEY_FILE` | `bitnews.key` inside the config dir | Master key that encrypts the stored Server and archive passwords. Generated on first start. Set it only to keep the key apart from the database (see [The master key](#the-master-key)). Absolute path. |
 | `--listen` | `BITNEWS_LISTEN` | `0.0.0.0:9494` | `host:port`. |
 | `--log-level` | `BITNEWS_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. |
 | `--log-format` | `BITNEWS_LOG_FORMAT` | `text` | `text` or `json`. |
@@ -47,39 +47,36 @@ docker buildx imagetools inspect gcr.io/distroless/static-debian12
 
 Then write `FROM golang:1.27.2@sha256:<digest>` and `FROM gcr.io/distroless/static-debian12@sha256:<digest>` in the `Dockerfile`. Distroless images are signed with cosign, and you can verify the one you pin (see the distroless README for the exact command). Renovate or Dependabot can keep the digests current.
 
-### Create the key
+### The master key
 
-The master key encrypts the Server passwords stored in the database. It must live **outside** the config directory, so a copy of `/config` never contains the key that decrypts it. The image expects it at `/run/secrets/bitnews_key`, where Docker puts a secret:
+The master key encrypts the secrets bitnews has to send in plaintext later: the Usenet Server passwords and the passwords of encrypted archives. (Login passwords, session tokens and API keys are only hashed and need no key.)
+
+You do nothing: on first start bitnews generates the key and stores it as `bitnews.key` in the config directory (`/config`, mode `0600`), and logs a warning with its location. It holds 32 random bytes, base64-encoded, plus a newline.
+
+- **Back up the whole config directory.** The key and the database belong together. If the key is lost, the stored Server passwords cannot be decrypted and must be entered again (the UI shows which Servers need it); nothing else is lost. Never replace the key of an existing installation with a new one.
+- **What it protects.** A copy of `bitnews.db` alone, such as a database dump attached to a support request, does not expose your provider logins. It does not protect against someone who can read the whole config directory. If that matters to you, keep the key elsewhere (below).
+
+**Optional: keep the key apart from the database.** Point `BITNEWS_KEY_FILE` at a file outside `/config`, for example a Docker secret:
 
 ```sh
-mkdir -p secrets config
+mkdir -p secrets
 head -c 32 /dev/urandom | base64 > secrets/bitnews_key
 chmod 600 secrets/bitnews_key
-sudo chown 1000:1000 secrets/bitnews_key config      # your PUID:PGID
+sudo chown 1000:1000 secrets/bitnews_key      # your PUID:PGID
 ```
 
-The file holds 32 random bytes, base64-encoded, plus a newline.
-
-**Back this file up, separately from the database backup.** If the key is lost, the stored Server passwords cannot be decrypted and must be entered again; nothing else is lost. Never replace the key of an existing installation with a new one.
-
-How the file is read, because it surprises people:
-
-- bitnews drops root **before** it opens any file. It reads the key as `PUID:PGID`, not as root. Under plain `docker compose` (no Swarm) a `file:` secret is a bind mount of the host file, so the host file's owner and mode apply inside the container (the `uid`/`gid`/`mode` options of the long secret syntax are not applied there). Make the file readable by `PUID:PGID`: own it as shown above, or use mode `0440` with group `PGID`. A root-owned `0600` file fails with "permission denied". In Docker Swarm secrets are root-owned `0444`, which is readable by everyone.
-- A key file that is readable by other users (such as `0444`) only produces a warning ("accessible by other users; consider chmod 600"). Reading still works, so that warning is expected for Swarm secrets and is harmless.
-
-Without Docker secrets, mount a file at the default path or point `BITNEWS_KEY_FILE` somewhere else:
-
-```sh
-# a) bind-mount a file onto the default path
--v "$PWD/secrets/bitnews_key:/run/secrets/bitnews_key:ro"
-
-# b) use another absolute path outside /config; if the file is missing and its
-#    directory is writable for PUID, bitnews generates it (mode 0600) on first
-#    start and logs a warning to back it up
--e BITNEWS_KEY_FILE=/keys/bitnews.key -v "$PWD/keys:/keys"
+```yaml
+services:
+  bitnews:
+    environment:
+      BITNEWS_KEY_FILE: /run/secrets/bitnews_key
+    secrets: [bitnews_key]
+secrets:
+  bitnews_key:
+    file: ./secrets/bitnews_key
 ```
 
-If the file is missing and `/run/secrets` is not writable (the normal case), startup fails with instructions rather than silently using a different key.
+bitnews drops root **before** it opens any file, so it reads the key as `PUID:PGID`. Under plain `docker compose` (no Swarm) a `file:` secret is a bind mount of the host file, so the host file's owner and mode apply inside the container; a root-owned `0600` file fails with "permission denied". A key file readable by other users (such as `0444` in Swarm) only produces a warning. If the file named by `BITNEWS_KEY_FILE` is missing and its directory is not writable (the normal case for `/run/secrets`), startup fails with instructions rather than silently using a different key. Back the key up separately from the database.
 
 ### Compose
 
@@ -107,7 +104,6 @@ Because nothing runs as root after the drop, bitnews cannot `chown` anything. Th
 
 - `/config` writable by `PUID:PGID` (`chown -R 1000:1000 config`). A fresh **named volume** is created root-owned, so either `chown` it once or prefer a bind mount.
 - `/data` writable by `PUID:PGID` or by its group.
-- The key file readable by `PUID:PGID` (above).
 
 The hardened compose example uses `cap_drop: [ALL]` and adds back only `SETUID` and `SETGID`, which `setuid`/`setgid`/`setgroups` need. Root touches no file before the drop, so `CHOWN` and `DAC_OVERRIDE` are not needed. `no-new-privileges` blocks gaining privilege through `execve`; it does not stop a process from lowering its own uid, and bitnews executes no other program. Do not run with `cap_drop: [ALL]` and no `PUID`: root without `DAC_OVERRIDE` can only touch files it owns.
 
@@ -188,7 +184,7 @@ The `HEALTHCHECK` uses `--interval=30s --timeout=5s --start-period=20s --retries
 
 ## systemd and bare metal
 
-Needs systemd 250 or newer (for `LoadCredential=` and the `%d` specifier). The same steps work in an LXC container.
+The same steps work in an LXC container. Keeping the key apart from the database with `LoadCredential=` needs systemd 250 or newer.
 
 ```sh
 # 1. Binary (build with `make build-all`, or download a release)
@@ -198,10 +194,8 @@ sudo install -m 0755 dist/bitnews-linux-amd64 /usr/local/bin/bitnews     # or -a
 #    as Group= in the unit instead (see the comments in bitnews.service).
 sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin bitnews
 
-# 3. Master key, owned by root: systemd hands a private copy to the service
+# 3. Config directory for the optional settings file
 sudo install -d -m 0755 /etc/bitnews
-head -c 32 /dev/urandom | base64 | sudo tee /etc/bitnews/bitnews.key >/dev/null
-sudo chown root:root /etc/bitnews/bitnews.key && sudo chmod 600 /etc/bitnews/bitnews.key
 
 # 4. Data tree, writable for the service (TRaSH layout, same filesystem as the library)
 sudo install -d -m 2775 -o bitnews -g bitnews /data/usenet /data/usenet/incomplete /data/usenet/complete
@@ -218,7 +212,7 @@ How the unit is built:
 
 - **User and ids.** It runs as `bitnews` directly. `PUID`/`PGID` are not used (and are rejected when not root). `UMask=0002` matches the Docker default.
 - **State.** `StateDirectory=bitnews` creates `/var/lib/bitnews` (the config dir, mode `0700`) and keeps it writable despite `ProtectSystem=strict`. `ReadWritePaths=/data` opens the download and library tree; the unit does not start if that path is missing, so create it first or write `-/data`.
-- **Key.** `LoadCredential=bitnews.key:/etc/bitnews/bitnews.key` makes systemd read the file as root and expose a copy only to this service, in a private in-memory directory. `%d` in `Environment=BITNEWS_KEY_FILE=%d/bitnews.key` is that directory, the same path as `$CREDENTIALS_DIRECTORY` (`/run/credentials/bitnews.service`). The key therefore stays out of the config dir and its backups, and the service user needs no access to `/etc/bitnews`. The credentials directory is read-only, so under systemd the key is never auto-generated: create it as shown in step 3, and the unit refuses to start without it.
+- **Key.** Generated on first start as `/var/lib/bitnews/bitnews.key`, next to the database; back up the whole directory. To keep it apart, create `/etc/bitnews/bitnews.key` as root (`head -c 32 /dev/urandom | base64`, mode `600`) and uncomment the two lines in the unit: `LoadCredential=bitnews.key:/etc/bitnews/bitnews.key` makes systemd expose a private copy to this service only, and `BITNEWS_KEY_FILE=%d/bitnews.key` points at it (`%d` is `$CREDENTIALS_DIRECTORY`). That directory is read-only, so with a credential the key is never auto-generated: create it first.
 - **Settings.** `EnvironmentFile=-/etc/bitnews/bitnews.env` is optional and overrides the `Environment=` lines. `%d` is not expanded inside the env file. For `BITNEWS_ADMIN_PASSWORD_FILE` use the commented `LoadCredential=` lines in the unit.
 - **Restart and stop.** `Restart=on-failure`, and `TimeoutStopSec=30` leaves room for the 10 second graceful shutdown (stop accepting requests, flush state, close the DB).
 - **Hardening.** See the list in the unit. `MemoryDenyWriteExecute=true` is fine for a static Go binary. `RestrictAddressFamilies` omits `AF_NETLINK`; add it when the torrent interface binding (M5) is used. The `SystemCallFilter` lines return `EPERM` for blocked calls instead of killing the process.
@@ -235,7 +229,7 @@ Proxy, `allowed_hosts` and `trusted_proxies` work exactly as in the Docker secti
 ## Hardening checklist
 
 - [ ] The container (or service) runs as `PUID:PGID` / `User=bitnews`, not root. The log has no "running as root" warning.
-- [ ] The key is outside the config dir, backed up separately, and readable only by the service (a Docker secret or `LoadCredential=`).
+- [ ] The config directory, which holds the database and the master key, is backed up as a whole and readable only by the service. If you want the key apart from the database: a Docker secret or `LoadCredential=` via `BITNEWS_KEY_FILE`.
 - [ ] TLS is terminated by a reverse proxy; port 9494 is not reachable from the internet (loopback or internal Docker network only).
 - [ ] `allowed_hosts` lists the public hostname, `trusted_proxies` lists only the proxy, and *disable auth* and *LAN bypass* are off.
 - [ ] Compose: `read_only: true`, `tmpfs: /tmp`, `cap_drop: [ALL]` with only `SETUID`/`SETGID` added back, `no-new-privileges:true`.

@@ -167,7 +167,7 @@ The defaults follow the TRaSH-guides layout:
 
 - One SQLite file, `bitnews.db`, in the config dir, with mode `0600` and WAL. It holds Downloads, Categories, Servers, settings, users/API keys and torrent piece completion.
 - The UI password is stored as an argon2id hash. Generated tokens (sessions, own API keys, SAB apikeys, qBit adapter passwords) are 256-bit random values stored as SHA-256 hashes. Both are compared in constant time. argon2id isn't needed for high-entropy tokens and would cost 64 MiB per request.
-- Server passwords are encrypted with a master key loaded from `--key-file`. The key is never stored in the DB or its volume. If it is missing on first start, it is generated with mode `0600` and its location is logged. Losing the key means re-entering Server passwords; nothing else is lost.
+- Server and archive passwords are encrypted with a master key. It is generated on first start as `bitnews.key` (mode `0600`) next to the database, and its location is logged ([ADR-0004](adr/0004-master-key-in-config-dir.md)). `--key-file` can place it elsewhere, such as a Docker secret. Losing the key means re-entering Server passwords; nothing else is lost.
 - Secrets never appear in logs, and URLs are redacted.
 
 ## Authentication
@@ -191,10 +191,10 @@ The defaults follow the TRaSH-guides layout:
 ## Deployment
 
 - **Binary:** a static `bitnews` for linux amd64/arm64 (darwin for development).
-- **Bootstrap config (flags/env only):** `--config-dir`, `--key-file`, listen address (default `:9494`), `PUID`/`PGID`, `UMASK`. Everything else is configured through the UI/API and stored in the DB. The full table is in [M1](milestones/m1-foundation.md#bootstrap-configuration).
+- **Bootstrap config (flags/env only):** `--config-dir`, optional `--key-file`, listen address (default `:9494`), `PUID`/`PGID`, `UMASK`. Everything else is configured through the UI/API and stored in the DB. The full table is in [M1](milestones/m1-foundation.md#bootstrap-configuration).
 - **Privileges:** with `PUID`/`PGID` set, the binary drops to them (`setgroups`/`setgid`/`setuid`) before opening the DB, sockets or any input. Compose `user:` also works. Root is allowed and logs a startup warning.
-- **Docker:** distroless image, `/config` volume, key as a Docker secret (`/run/secrets/bitnews_key`), `/data` mounted at the same path as in the media-manager containers. HTTPS is terminated by a reverse proxy (Caddy/Traefik/nginx).
-- **systemd / LXC:** a `bitnews` user, DB in `/var/lib/bitnews`, key in `/etc/bitnews/bitnews.key`, and hardening (`ProtectSystem=strict`, `NoNewPrivileges`, `ReadWritePaths=` for data dirs only).
+- **Docker:** distroless image, `/config` volume (database and key), `/data` mounted at the same path as in the media-manager containers. HTTPS is terminated by a reverse proxy (Caddy/Traefik/nginx).
+- **systemd / LXC:** a `bitnews` user, DB and key in `/var/lib/bitnews`, and hardening (`ProtectSystem=strict`, `NoNewPrivileges`, `ReadWritePaths=` for data dirs only).
 
 ## Testing and CI
 

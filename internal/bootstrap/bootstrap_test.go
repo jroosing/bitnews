@@ -33,7 +33,7 @@ func TestLoadDefaultsPathsFromXDGDirectories(t *testing.T) {
 	cfg, err := bootstrap.Load(nil, env(devEnv()))
 	require.NoError(t, err)
 	assert.Equal(t, "/home/u/.local/share/bitnews", cfg.ConfigDir)
-	assert.Equal(t, "/home/u/.config/bitnews/bitnews.key", cfg.KeyFile)
+	assert.Equal(t, "/home/u/.local/share/bitnews/bitnews.key", cfg.KeyFile, "the key lives next to the database by default")
 }
 
 func TestLoadFallsBackToHomeWhenXDGUnsetOrRelative(t *testing.T) {
@@ -46,7 +46,7 @@ func TestLoadFallsBackToHomeWhenXDGUnsetOrRelative(t *testing.T) {
 			cfg, err := bootstrap.Load(nil, env(vars))
 			require.NoError(t, err)
 			assert.Equal(t, "/home/u/.local/share/bitnews", cfg.ConfigDir)
-			assert.Equal(t, "/home/u/.config/bitnews/bitnews.key", cfg.KeyFile)
+			assert.Equal(t, "/home/u/.local/share/bitnews/bitnews.key", cfg.KeyFile)
 		})
 	}
 }
@@ -273,29 +273,9 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 			wantErr: []string{"BITNEWS_CONFIG_DIR", "absolute"},
 		},
 		{
-			name:    "key-file inside config-dir",
-			args:    []string{"--config-dir", "/config", "--key-file", "/config/bitnews.key"},
-			wantErr: []string{"--key-file", "inside", "/config"},
-		},
-		{
-			name:    "key-file nested inside config-dir with trailing slash",
-			args:    []string{"--config-dir", "/config/", "--key-file", "/config/secrets/bitnews.key"},
-			wantErr: []string{"--key-file", "inside"},
-		},
-		{
-			name:    "key-file inside config-dir after cleaning",
-			args:    []string{"--config-dir", "/config", "--key-file", "/etc/../config/./bitnews.key"},
-			wantErr: []string{"--key-file", "inside"},
-		},
-		{
-			name:    "key-file inside config-dir with dot-dot-prefixed name",
-			args:    []string{"--config-dir", "/config", "--key-file", "/config/..bitnews.key"},
-			wantErr: []string{"--key-file", "inside"},
-		},
-		{
 			name:    "key-file equal to config-dir",
 			args:    []string{"--config-dir", "/config", "--key-file", "/config/"},
-			wantErr: []string{"--key-file", "inside"},
+			wantErr: []string{"--key-file", "directory"},
 		},
 	}
 	for _, tt := range tests {
@@ -320,6 +300,8 @@ func TestLoadAcceptsKeyFileOutsideConfigDirAndCleansPaths(t *testing.T) {
 		{"sibling sharing a name prefix", "/config", "/config-keys/bitnews.key", "/config", "/config-keys/bitnews.key"},
 		{"parent directory", "/var/lib/bitnews/", "/var/lib/bitnews.key", "/var/lib/bitnews", "/var/lib/bitnews.key"},
 		{"escapes via dot-dot", "/config", "/config/../run/secrets/bitnews_key", "/config", "/run/secrets/bitnews_key"},
+		{"inside the config dir", "/config", "/config/bitnews.key", "/config", "/config/bitnews.key"},
+		{"nested inside the config dir", "/config/", "/config/secrets/bitnews.key", "/config", "/config/secrets/bitnews.key"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -423,7 +405,7 @@ func TestUsageDocumentsEveryBootstrapOption(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"--config-dir", "BITNEWS_CONFIG_DIR", "$XDG_DATA_HOME/bitnews",
-		"--key-file", "BITNEWS_KEY_FILE", "$XDG_CONFIG_HOME/bitnews/bitnews.key",
+		"--key-file", "BITNEWS_KEY_FILE", "bitnews.key inside the config dir",
 		"--listen", "BITNEWS_LISTEN", "0.0.0.0:9494",
 		"--log-level", "BITNEWS_LOG_LEVEL",
 		"--log-format", "BITNEWS_LOG_FORMAT",
@@ -434,4 +416,11 @@ func TestUsageDocumentsEveryBootstrapOption(t *testing.T) {
 	} {
 		assert.Contains(t, got, want)
 	}
+}
+
+func TestLoadPlacesTheDefaultKeyFileInsideAnExplicitConfigDir(t *testing.T) {
+	cfg, err := bootstrap.Load([]string{"--config-dir", "/config"}, env(devEnv()))
+
+	require.NoError(t, err)
+	assert.Equal(t, "/config/bitnews.key", cfg.KeyFile)
 }

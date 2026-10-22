@@ -4,8 +4,8 @@
 #   install -m 0644 deploy/bitnews.service /etc/systemd/system/bitnews.service
 #   systemctl daemon-reload && systemctl enable --now bitnews
 #
-# Before the first start the master key must exist at /etc/bitnews/bitnews.key
-# (see docs/deploy.md). Needs systemd 250 or newer for LoadCredential= and %d.
+# The master key is generated on first start as /var/lib/bitnews/bitnews.key.
+# See docs/deploy.md for keeping it apart from the database.
 #
 # Check the hardening on the target machine with:
 #   systemd-analyze verify /etc/systemd/system/bitnews.service
@@ -33,15 +33,11 @@ UMask=0002
 # Bootstrap settings. /etc/bitnews/bitnews.env may override any of them (and
 # add BITNEWS_LISTEN, BITNEWS_LOG_LEVEL, ...); a missing file is fine.
 Environment=BITNEWS_CONFIG_DIR=/var/lib/bitnews
-# The master key is handed to the service as a credential: systemd reads
-# /etc/bitnews/bitnews.key as root and exposes a copy only to this service, in
-# a private in-memory directory. %d expands to that directory, the same path
-# as $CREDENTIALS_DIRECTORY (/run/credentials/bitnews.service). The key
-# therefore never lives in the config dir or its backups, and the bitnews user
-# needs no access to /etc/bitnews. The credential directory is read-only, so
-# bitnews cannot generate the key itself under systemd: create it first.
-LoadCredential=bitnews.key:/etc/bitnews/bitnews.key
-Environment=BITNEWS_KEY_FILE=%d/bitnews.key
+# The master key is generated on first start next to the database. To keep it
+# apart from the database, hand it to the service as a credential instead
+# (needs systemd 250 or newer; %d is $CREDENTIALS_DIRECTORY):
+#LoadCredential=bitnews.key:/etc/bitnews/bitnews.key
+#Environment=BITNEWS_KEY_FILE=%d/bitnews.key
 EnvironmentFile=-/etc/bitnews/bitnews.env
 # Optional: bootstrap the admin password non-interactively.
 #LoadCredential=admin_password:/etc/bitnews/admin_password

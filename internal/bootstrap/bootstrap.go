@@ -72,7 +72,7 @@ type option struct {
 
 var (
 	optConfigDir = option{"config-dir", "BITNEWS_CONFIG_DIR", "dir", "directory holding bitnews.db", "$XDG_DATA_HOME/bitnews, or ~/.local/share/bitnews"}
-	optKeyFile   = option{"key-file", "BITNEWS_KEY_FILE", "path", "master key for secret encryption; must not be inside the config dir", "$XDG_CONFIG_HOME/bitnews/bitnews.key, or ~/.config/bitnews/bitnews.key"}
+	optKeyFile   = option{"key-file", "BITNEWS_KEY_FILE", "path", "master key that encrypts stored Server and archive passwords; created on first start", "bitnews.key inside the config dir"}
 	optListen    = option{"listen", "BITNEWS_LISTEN", "host:port", "address for the API, adapters and UI", "0.0.0.0:9494"}
 	optLogLevel  = option{"log-level", "BITNEWS_LOG_LEVEL", "level", "debug, info, warn or error", "info"}
 	optLogFormat = option{"log-format", "BITNEWS_LOG_FORMAT", "format", "text or json", "text"}
@@ -176,13 +176,17 @@ func Load(args []string, getenv func(string) (string, bool)) (Config, error) {
 	}
 	cfg.ConfigDir = filepath.Clean(configDir.value)
 
-	keyFile := lookup(optKeyFile, filepath.Join(xdgDir(getenv, "XDG_CONFIG_HOME", ".config"), "bitnews", "bitnews.key"))
+	// The key is generated on first start and lives next to the database by
+	// default, so there is nothing to set up. A separate location (a mounted
+	// secret, say) keeps a copy of the database alone from exposing the
+	// stored passwords; it is optional.
+	keyFile := lookup(optKeyFile, filepath.Join(cfg.ConfigDir, "bitnews.key"))
 	if !filepath.IsAbs(keyFile.value) {
 		return Config{}, keyFile.errorf("must be an absolute path")
 	}
 	cfg.KeyFile = filepath.Clean(keyFile.value)
-	if isWithin(cfg.ConfigDir, cfg.KeyFile) {
-		return Config{}, keyFile.errorf("must not be inside the config dir %q: a backup of the config dir would then hold both the database and the key that decrypts its secrets", cfg.ConfigDir)
+	if cfg.KeyFile == cfg.ConfigDir {
+		return Config{}, keyFile.errorf("must be a file, but it is the config directory %q", cfg.ConfigDir)
 	}
 
 	listen := lookup(optListen, "0.0.0.0:9494")
@@ -246,17 +250,6 @@ func parseID(s setting) (int, error) {
 		return 0, s.errorf("must be a number from 0 to 4294967295")
 	}
 	return int(id), nil
-}
-
-// isWithin reports whether path is dir itself or lies below it. Both must be
-// clean absolute paths. Symlinks are not resolved: nothing on disk may be
-// read before privileges are dropped.
-func isWithin(dir, path string) bool {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // validateListen checks that addr is host:port with a numeric port. The

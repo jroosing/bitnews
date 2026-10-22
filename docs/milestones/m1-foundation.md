@@ -28,7 +28,7 @@ These are the only settings that do not live in the DB. Each can be given as a f
 | Flag | Env | Default | Notes |
 |---|---|---|---|
 | `--config-dir` | `BITNEWS_CONFIG_DIR` | `$XDG_DATA_HOME/bitnews` (dev) | Holds `bitnews.db`. Docker uses `/config`, systemd uses `/var/lib/bitnews`. |
-| `--key-file` | `BITNEWS_KEY_FILE` | `$XDG_CONFIG_HOME/bitnews/bitnews.key` (dev). The image sets `/run/secrets/bitnews_key`; systemd uses `/etc/bitnews/bitnews.key`. | Master key for secret encryption. Must not be inside `config-dir`. If it is missing and its directory is not writable, startup fails with instructions. |
+| `--key-file` | `BITNEWS_KEY_FILE` | `bitnews.key` inside `config-dir` | Master key for secret encryption, generated on first start ([ADR-0004](../adr/0004-master-key-in-config-dir.md)). Set it only to keep the key apart from the database. If it is missing and its directory is not writable, startup fails with instructions. |
 | `--listen` | `BITNEWS_LISTEN` | `0.0.0.0:9494` | One port for the own API, adapters and UI. |
 | `--log-level` | `BITNEWS_LOG_LEVEL` | `info` | |
 | `--log-format` | `BITNEWS_LOG_FORMAT` | `text` | `text` or `json` |
@@ -188,9 +188,9 @@ M1 routes (more are added in later milestones):
 - **Docker:**
   - Multi-stage build, ending in `gcr.io/distroless/static-debian12`.
   - The image starts as root so that `PUID`/`PGID` can work; the binary then drops privileges. `user:` in compose also works.
-  - Volumes: `/config`, `/data`. The key comes from `/run/secrets/bitnews_key`.
+  - Volumes: `/config` (database and key), `/data`.
 - **compose:** `deploy/docker-compose.example.yml` with `PUID`/`PGID`/`UMASK`, the `/data` layout from TRaSH, and a commented gluetun variant.
-- **systemd:** `deploy/bitnews.service` runs as the `bitnews` user with `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`, `NoNewPrivileges=true`, `ReadWritePaths=/var/lib/bitnews /data` and `LoadCredential=` for the key.
+- **systemd:** `deploy/bitnews.service` runs as the `bitnews` user with `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp=true`, `NoNewPrivileges=true`, and `ReadWritePaths=/var/lib/bitnews /data`. The key is generated in `/var/lib/bitnews`; `LoadCredential=` is an optional way to keep it apart.
 
 ## Exit criteria
 
@@ -227,7 +227,6 @@ M1 routes (more are added in later milestones):
 
 **Work**
 - Parse the flags with env fallback; a flag wins over env. Validate them: paths must be absolute, the listen address must parse, and `UMASK` must be octal.
-- Refuse to start when the key file lies inside `config-dir`.
 - Configure the `slog` handler (text/JSON, level).
 - Add a redaction helper for URLs that masks the query values of `apikey`, `api_key`, `key`, `token`, `password`, `pass` and `nzbkey` (case-insensitive).
 - Use the `Secret` type (from M1-09) everywhere a secret is held. Here, add a lint-style test that no struct field named `*password*`, `*key*` or `*token*` in `internal/` has type `string` (allowlist exceptions).
@@ -449,7 +448,7 @@ M1 routes (more are added in later milestones):
 
 **Work**
 - Write a multi-stage `Dockerfile` ending in distroless static. It starts as root so `PUID`/`PGID` work. Add a healthcheck via `bitnews healthcheck`, a subcommand that hits `/api/v1/health`.
-- Write `deploy/docker-compose.example.yml` with the TRaSH `/data` layout, `PUID`/`PGID`/`UMASK`, the key as a secret, and a commented gluetun variant.
+- Write `deploy/docker-compose.example.yml` with the TRaSH `/data` layout, `PUID`/`PGID`/`UMASK`, and a commented gluetun variant. The key needs no secret; it is generated in `/config`.
 - Write `deploy/bitnews.service` with the hardening from the design and `LoadCredential=` for the key.
 - Add CI image builds for amd64/arm64 to the GitLab container registry.
 - Write `docs/deploy.md` covering both paths.

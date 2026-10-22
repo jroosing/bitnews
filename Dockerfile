@@ -56,11 +56,10 @@ LABEL org.opencontainers.image.title="bitnews" \
 
 COPY --from=build /out/bitnews /bitnews
 
-# Bootstrap settings. The key defaults to a Docker secret, so mount a file
-# there or set BITNEWS_KEY_FILE to another absolute path outside /config.
+# Bootstrap settings. The master key is generated on first start and stored in
+# /config next to the database (set BITNEWS_KEY_FILE to keep it elsewhere).
 # UMASK 002 follows the linuxserver convention (group-writable files).
 ENV BITNEWS_CONFIG_DIR=/config \
-    BITNEWS_KEY_FILE=/run/secrets/bitnews_key \
     BITNEWS_LISTEN=0.0.0.0:9494 \
     UMASK=002
 
