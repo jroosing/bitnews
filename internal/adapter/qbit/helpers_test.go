@@ -221,7 +221,7 @@ func (e *engine) put(v qbit.TorrentView) {
 }
 
 // stack is the whole adapter on a temp-dir database: real store, real app
-// services, a real adapter credential and the handler under test.
+// services, a real app key and the handler under test.
 type stack struct {
 	t          testing.TB
 	db         *store.DB
@@ -232,7 +232,7 @@ type stack struct {
 	settings   *app.SettingsService
 	dls        *app.DownloadService
 	categories *app.CategoryService
-	creds      *auth.AdapterCredentialService
+	appKey     *auth.AppKeyService
 	limiter    *auth.LoginLimiter
 	remover    *removed
 	engine     *engine
@@ -280,16 +280,14 @@ func newStack(t testing.TB, opts ...stackOption) *stack {
 	appOpts := []app.Option{app.WithClock(s.clock.Now), app.WithLogger(logger), app.WithDataRemover(s.remover)}
 	s.dls = app.NewDownloadService(s.downloads, s.cats, bus, appOpts...)
 	s.categories = app.NewCategoryService(s.cats, s.downloads, bus, appOpts...)
-	s.creds = auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db),
-		auth.WithAdapterClock(s.clock.Now), auth.WithAdapterLogger(logger))
-	s.pass, _, err = s.creds.Create(ctx, auth.KindAdapterQBit, "Radarr", "radarr")
+	s.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
-	s.user = "radarr"
+	s.user, s.pass = auth.QBitUsername, s.appKey.Current().Reveal()
 	s.engine = newEngine(t, s.downloads)
 	s.limiter = auth.NewLoginLimiter(auth.WithLimiterClock(s.clock.Now))
 
 	deps := qbit.Deps{
-		Credentials: s.creds, Downloads: s.dls, Categories: s.categories, Settings: s.settings,
+		AppKey: s.appKey, Downloads: s.dls, Categories: s.categories, Settings: s.settings,
 		Torrents: s.engine, Adder: s.engine, ShareLimits: s.engine, Files: s.engine,
 		Limiter: s.limiter, Logger: logger, Clock: s.clock.Now,
 	}

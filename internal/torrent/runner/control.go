@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 )
 
 // reconcile is one pass of the control loop: it makes the set of running
@@ -236,6 +237,9 @@ func (r *Runner) diskFits(ctx context.Context, root string, remaining int64) (ok
 		return true, ""
 	}
 	free, err := r.free(root)
+	if errors.Is(err, fsutil.ErrUnsupported) {
+		return true, "" // no probe on this platform: the guard is off
+	}
 	if err != nil {
 		r.log.Warn("torrent disk guard: cannot read free space", "path", root, "err", err)
 		return true, ""

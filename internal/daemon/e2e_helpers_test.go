@@ -180,8 +180,11 @@ func newE2E(t *testing.T, opts ...e2eOption) *e2e {
 			ID: core.NewID(), Username: "admin", PasswordHash: sharedAdminHash(t), CreatedAt: time.Now(),
 		}))
 	}
-	e.apiKey, _, err = auth.NewAPIKeyService(store.NewAPIKeyRepo(e.db)).Create(ctx, "e2e", core.APIKeyScopeWrite)
+	// The app key is made on first start; seeding it lets the tests know it,
+	// and makes the daemon load it at start like a restart does.
+	e.apiKey, _, err = auth.NewKindToken(auth.KindAppKey)
 	require.NoError(t, err)
+	require.NoError(t, store.NewAppKeyRepo(e.db).Set(ctx, core.Secret(e.apiKey)))
 	return e
 }
 

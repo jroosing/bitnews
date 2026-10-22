@@ -96,8 +96,7 @@ type env struct {
 	cats       *app.CategoryService
 	setup      *auth.Setup
 	sessions   *auth.SessionService
-	apiKeys    *auth.APIKeyService
-	adapters   *auth.AdapterCredentialService
+	appKey     *auth.AppKeyService
 	handler    http.Handler
 	token      string // the setup token, when setup is open
 }
@@ -107,7 +106,6 @@ type envOption func(*envConfig)
 type envConfig struct {
 	noAdmin bool
 	prober  app.Prober
-	paths   web.PathChecker
 	config  web.ConfigSource
 	server  []func(*web.Server)
 }
@@ -116,9 +114,6 @@ func withoutAdmin() envOption { return func(c *envConfig) { c.noAdmin = true } }
 
 // withProber sets the Prober behind the server connection tests.
 func withProber(p app.Prober) envOption { return func(c *envConfig) { c.prober = p } }
-
-// withPathChecker replaces the file system checks of the paths settings.
-func withPathChecker(p web.PathChecker) envOption { return func(c *envConfig) { c.paths = p } }
 
 // withConfig gives the settings pages what the daemon knows about the running
 // configuration (the settings it started with, the live binding status).
@@ -163,6 +158,9 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	uiAuth, err := auth.NewUIAuth(e.sessions, e.settings.Current)
 	require.NoError(t, err)
+	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
+	require.NoError(t, err)
+	e.appKey = appKey
 
 	appOpts := []app.Option{app.WithClock(e.clock.Now)}
 	downloadSvc := app.NewDownloadService(downloads, cats, bus, appOpts...)
@@ -170,40 +168,33 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	catSvc := app.NewCategoryService(cats, downloads, bus, appOpts...)
 	serverSvc := app.NewServerService(servers, bus, ec.prober, appOpts...)
 	e.servers, e.cats = serverSvc, catSvc
-	e.apiKeys = auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger))
-	e.adapters = auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db), auth.WithAdapterClock(e.clock.Now), auth.WithAdapterLogger(logger))
 	adder := app.NewAddService(downloadSvc, sources, e.settings, append(appOpts, app.WithLogger(logger))...)
 	webUI, err := web.New(web.Deps{
 		Logger: logger, Version: "1.2.3",
 		Sessions: e.sessions, UIAuth: uiAuth, Setup: e.setup, Settings: e.settings,
-		Downloads: downloadSvc, Categories: catSvc, Servers: serverSvc, Bus: bus,
-		APIKeys: e.apiKeys, AdapterCredentials: e.adapters,
+		Downloads: downloadSvc, Categories: catSvc, Servers: serverSvc, Bus: bus, AppKey: appKey,
 		Config: ec.config,
 	})
 	require.NoError(t, err)
 	for _, f := range ec.server {
 		f(webUI)
 	}
-	if ec.paths != nil {
-		web.SetPathChecker(webUI, ec.paths)
-	}
 	srv, err := api.New(api.Config{
-		Logger:             logger,
-		Downloads:          downloadSvc,
-		Adder:              adder,
-		Categories:         catSvc,
-		Servers:            serverSvc,
-		Settings:           e.settings,
-		Setup:              e.setup,
-		Sessions:           e.sessions,
-		UIAuth:             uiAuth,
-		APIKeys:            e.apiKeys,
-		AdapterCredentials: e.adapters,
+		Logger:     logger,
+		Downloads:  downloadSvc,
+		Adder:      adder,
+		Categories: catSvc,
+		Servers:    serverSvc,
+		Settings:   e.settings,
+		Setup:      e.setup,
+		Sessions:   e.sessions,
+		UIAuth:     uiAuth,
+		AppKey:     appKey,
+		Bus:        bus,
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
-			Credentials: e.adapters, Downloads: downloadSvc, Adder: adder, Categories: catSvc,
+			AppKey: appKey, Downloads: downloadSvc, Adder: adder, Categories: catSvc,
 			Settings: e.settings, Logger: logger, Clock: e.clock.Now,
 		}),
-		Bus: bus,
 		Web: webUI,
 	})
 	require.NoError(t, err)

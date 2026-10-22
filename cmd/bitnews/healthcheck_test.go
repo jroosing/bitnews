@@ -12,8 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"gitlab.com/kyura4k/gitnews/internal/privdrop"
 )
 
 // listenOn starts an HTTP server answering /api/v1/health with status and
@@ -42,7 +40,7 @@ func runHealthcheck(t *testing.T, listen string) (int, string) {
 	}
 	getenv := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
 	var out, errOut bytes.Buffer
-	code := run(context.Background(), []string{"healthcheck"}, getenv, privdrop.OS(), &out, &errOut, nil)
+	code := run(context.Background(), []string{"healthcheck"}, getenv, noUmask, &out, &errOut, nil)
 	return code, out.String() + errOut.String()
 }
 

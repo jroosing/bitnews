@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"unicode"
 
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/core"
@@ -58,20 +57,25 @@ func (s *Server) registerCategoryRoutes() {
 	s.handleAuthed("POST /settings/categories/{id}/delete", s.deleteCategory)
 }
 
-// validCategoryInput checks a name and a folder the way the service does,
+// validCategoryInput checks a name and the shape of a folder (never the disk),
 // but reports both problems at once, each next to its field.
 func validCategoryInput(name, dir string, checkName bool) (nameErr, dirErr string) {
 	if checkName && (core.Category{Name: name}).Validate() != nil {
 		nameErr = categoryNameMsg
 	}
-	switch {
-	case dir == "":
-	case strings.ContainsFunc(dir, unicode.IsControl):
-		dirErr = "The path must not contain control characters."
-	case !filepath.IsAbs(dir):
-		dirErr = categoryDirMsg
+	if dir != "" {
+		dirErr = pathShapeError(dir, categoryDirMsg)
 	}
 	return nameErr, dirErr
+}
+
+// cleanCategoryDir drops a trailing or doubled separator from a folder that
+// passed the shape check. Empty (the default folder) stays empty.
+func cleanCategoryDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return filepath.Clean(dir)
 }
 
 // respondCategories answers with the card for htmx, or the whole page.
@@ -95,7 +99,7 @@ func (s *Server) postCategory(w http.ResponseWriter, r *http.Request) {
 	form := categoriesView{Name: strings.TrimSpace(r.PostForm.Get("name")), Dir: strings.TrimSpace(r.PostForm.Get("dir_override"))}
 	form.NameError, form.DirError = validCategoryInput(form.Name, form.Dir, true)
 	if form.NameError == "" && form.DirError == "" {
-		_, err := s.Categories.Create(r.Context(), form.Name, form.Dir)
+		_, err := s.Categories.Create(r.Context(), form.Name, cleanCategoryDir(form.Dir))
 		if ae, ok := settingsAppError(err); ok && ae.Code == "name_taken" {
 			form.NameError = "A category with this name already exists."
 		} else if ok {
@@ -185,6 +189,7 @@ func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		s.renderSettingsPart(w, http.StatusUnprocessableEntity, settingsPathsPage, "category_edit_row", row)
 		return
 	}
+	dir = cleanCategoryDir(dir)
 	updated, err := s.Categories.Update(r.Context(), core.ID(row.ID), app.CategoryPatch{DirOverride: &dir})
 	if ae, isApp := settingsAppError(err); isApp {
 		row.Dir, row.Error = dir, ae.Message

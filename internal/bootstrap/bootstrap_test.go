@@ -228,31 +228,6 @@ func TestLoadRejectsInvalidSettings(t *testing.T) {
 			wantErr: []string{"UMASK"},
 		},
 		{
-			name:    "PUID without PGID",
-			env:     map[string]string{"PUID": "1000"},
-			wantErr: []string{"PGID"},
-		},
-		{
-			name:    "PGID without PUID",
-			env:     map[string]string{"PGID": "1000"},
-			wantErr: []string{"PUID"},
-		},
-		{
-			name:    "PUID negative",
-			env:     map[string]string{"PUID": "-1", "PGID": "1000"},
-			wantErr: []string{"PUID", "-1"},
-		},
-		{
-			name:    "PGID not a number",
-			env:     map[string]string{"PUID": "1000", "PGID": "users"},
-			wantErr: []string{"PGID", "users"},
-		},
-		{
-			name:    "PUID out of range",
-			env:     map[string]string{"PUID": "4294967296", "PGID": "1000"},
-			wantErr: []string{"PUID", "4294967296"},
-		},
-		{
 			name:    "relative admin password file",
 			env:     map[string]string{"BITNEWS_ADMIN_PASSWORD_FILE": "secrets/admin"},
 			wantErr: []string{"BITNEWS_ADMIN_PASSWORD_FILE", "absolute"},
@@ -339,30 +314,15 @@ func TestLoadUmaskIsOctalFromEnvWithDefault002(t *testing.T) {
 	}
 }
 
-func TestLoadRunAsIsUnsetWithoutPUIDAndPGID(t *testing.T) {
-	cfg, err := bootstrap.Load(nil, env(devEnv()))
-	require.NoError(t, err)
-	assert.Nil(t, cfg.RunAs)
-}
+func TestLoadIgnoresPUIDAndPGID(t *testing.T) {
+	// ADR-0006 removed the identity options. Like any other unknown
+	// environment variable they are not looked at, even when malformed.
+	vars := devEnv()
+	vars["PUID"], vars["PGID"] = "not-a-number", "-1"
 
-func TestLoadRunAsFromPUIDAndPGID(t *testing.T) {
-	for _, tt := range []struct {
-		puid, pgid string
-		want       bootstrap.Identity
-	}{
-		{"1000", "1001", bootstrap.Identity{UID: 1000, GID: 1001}},
-		{"0", "0", bootstrap.Identity{UID: 0, GID: 0}},
-		{"4294967294", "65534", bootstrap.Identity{UID: 4294967294, GID: 65534}},
-	} {
-		t.Run(tt.puid+":"+tt.pgid, func(t *testing.T) {
-			vars := devEnv()
-			vars["PUID"], vars["PGID"] = tt.puid, tt.pgid
-			cfg, err := bootstrap.Load(nil, env(vars))
-			require.NoError(t, err)
-			require.NotNil(t, cfg.RunAs)
-			assert.Equal(t, tt.want, *cfg.RunAs)
-		})
-	}
+	_, err := bootstrap.Load(nil, env(vars))
+
+	assert.NoError(t, err)
 }
 
 func TestLoadAdminPasswordFileIsOptional(t *testing.T) {
@@ -403,6 +363,9 @@ func TestUsageDocumentsEveryBootstrapOption(t *testing.T) {
 	var out strings.Builder
 	bootstrap.Usage(&out)
 	got := out.String()
+	for _, gone := range []string{"PUID", "PGID"} {
+		assert.NotContains(t, got, gone)
+	}
 	for _, want := range []string{
 		"--config-dir", "BITNEWS_CONFIG_DIR", "$XDG_DATA_HOME/bitnews",
 		"--key-file", "BITNEWS_KEY_FILE", "bitnews.key inside the config dir",
@@ -410,7 +373,6 @@ func TestUsageDocumentsEveryBootstrapOption(t *testing.T) {
 		"--log-level", "BITNEWS_LOG_LEVEL",
 		"--log-format", "BITNEWS_LOG_FORMAT",
 		"--version", "--help",
-		"PUID", "PGID",
 		"UMASK", "002",
 		"BITNEWS_ADMIN_PASSWORD_FILE",
 		"BITNEWS_TORRENT_PORT", "51413",

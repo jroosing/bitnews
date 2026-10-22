@@ -29,7 +29,7 @@ func (e *env) createCategory(key, body string) categoryJSON {
 func TestCreateCategoryReturns201WithTheStoredCategory(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 
 	rec := e.do("POST", "/api/v1/categories", `{"name":"tv","dir_override":"/data/tv"}`, withBearer(key))
 
@@ -48,11 +48,11 @@ func TestCreateCategoryReturns201WithTheStoredCategory(t *testing.T) {
 func TestListCategoriesShowsNullForMissingDirOverride(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	wkey, rkey := e.newKey(core.APIKeyScopeWrite), e.newKey(core.APIKeyScopeRead)
-	empty := e.do("GET", "/api/v1/categories", "", withBearer(rkey))
-	c := e.createCategory(wkey, `{"name":"tv"}`)
+	key := e.apiKey()
+	empty := e.do("GET", "/api/v1/categories", "", withBearer(key))
+	c := e.createCategory(key, `{"name":"tv"}`)
 
-	rec := e.do("GET", "/api/v1/categories", "", withBearer(rkey))
+	rec := e.do("GET", "/api/v1/categories", "", withBearer(key))
 
 	assert.JSONEq(t, `{"items":[]}`, empty.Body.String())
 	assert.JSONEq(t, `{"items":[{"id":"`+c.ID+`","name":"tv","dir_override":null}]}`, rec.Body.String())
@@ -62,7 +62,7 @@ func TestListCategoriesShowsNullForMissingDirOverride(t *testing.T) {
 func TestCreateCategoryRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	e.createCategory(key, `{"name":"tv"}`)
 	for name, tc := range map[string]struct {
 		body   string
@@ -89,7 +89,7 @@ func TestCreateCategoryRejectsInvalidInput(t *testing.T) {
 func TestPatchCategoryRenamesSetsAndClearsDirOverride(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	c := e.createCategory(key, `{"name":"tv"}`)
 	path := "/api/v1/categories/" + c.ID
 
@@ -105,7 +105,7 @@ func TestPatchCategoryRenamesSetsAndClearsDirOverride(t *testing.T) {
 func TestPatchCategoryRejectsInvalidChanges(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	c := e.createCategory(key, `{"name":"tv"}`)
 	e.createCategory(key, `{"name":"movies"}`)
 	path := "/api/v1/categories/" + c.ID
@@ -126,7 +126,7 @@ func TestPatchCategoryRejectsInvalidChanges(t *testing.T) {
 func TestDeleteCategoryClearsItFromDownloadsAndAnnouncesThem(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	c := e.createCategory(key, `{"name":"tv"}`)
 	d := e.addDownload("show", 0)
 	d.CategoryID = core.ID(c.ID)

@@ -169,7 +169,7 @@ These rules apply to every archive entry before anything is written.
 - **Move:**
   - The destination is the Category `DirOverride`, or `<usenet complete root>/<category>/`, or `<usenet complete root>/` without a Category. It is resolved when the move happens, so later Category changes apply.
   - Use `fsutil.MoveDir` with `Unique` for collisions.
-  - A cross-device move emits a `Warning` event and logs a warning saying hardlinks will not work for this layout.
+  - A cross-device move emits a `Warning` event and logs a warning saying hardlinks will not work for this layout. *Changed by M7-01 / ADR-0006:* the warning now says the finished download was copied instead of renamed because the folders are on different filesystems (slower), and that Sonarr/Radarr can only hardlink if the library shares the complete folder's filesystem.
 - Set `OutputPath`, move to **Ready**, and emit `Ready`.
 
 ## Exit criteria

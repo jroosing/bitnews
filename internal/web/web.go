@@ -35,9 +35,8 @@ type Deps struct {
 	Bus        *core.Bus
 	// Adder adds NZBs and torrents (the "Add download" dialog).
 	Adder *app.AddService
-	// APIKeys and AdapterCredentials back the Security settings.
-	APIKeys            *auth.APIKeyService
-	AdapterCredentials *auth.AdapterCredentialService
+	// AppKey is the one API key of the app, shown on Settings → Security.
+	AppKey *auth.AppKeyService
 	// Runtime reports what the runners are doing right now (speeds, queue
 	// state, post-processing stage). Torrents reports torrent-only facts.
 	// Both are filled in by the daemon; see sources.go. They may be nil in
@@ -66,8 +65,6 @@ type Server struct {
 	pages  []Page
 	live   liveHub             // the /ui/events streams (queue_events.go)
 	routes map[string][]string // path -> methods, for 405 answers
-	// pathCheck inspects the folders of the paths settings (settings_fs.go).
-	pathCheck pathChecker
 	// interfaceBinding is whether this host can bind sockets to a network
 	// interface (Linux); the network binding settings refuse an interface
 	// where it is false, because bitnews would not start with one.

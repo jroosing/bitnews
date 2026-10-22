@@ -139,6 +139,9 @@ What was decided, and is therefore a guess until then:
 - [ ] No real keys or private hostnames are in the repo.
 
 ### M4-02: Adapter credentials per media manager
+
+> **Superseded by [M7-04](m7-simplification.md#m7-04-a-single-api-key) / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).** Per-media-manager credentials and the `/api/v1/adapter-credentials` routes are gone: the SABnzbd `apikey` and the qBittorrent login (username `bitnews`, the key as password) both use the one app key. The work below is kept as history.
+
 - **Labels:** area:auth, area:adapter, ready-for-agent
 - **Depends on:** M1-12
 
@@ -225,7 +228,7 @@ What was decided, and is therefore a guess until then:
 **Goal:** Prove the first daily-use point on real containers with the TRaSH layout.
 
 **Work**
-- Use `deploy/e2e/docker-compose.yml` with bitnews, Sonarr and Radarr (and optionally Prowlarr), all sharing one `/data` mount, with the same `PUID`/`PGID`/`UMASK`.
+- Use `deploy/e2e/docker-compose.yml` with bitnews, Sonarr and Radarr (and optionally Prowlarr), all sharing one `/data` mount, running as the same user and group (`user:`) with the same `UMASK`.
 - Check these against a real Usenet provider:
   - grab → queue → Ready → import by hardlink (the imported file's link count is 2)
   - a forced failure (a test NZB with too little recovery data) → Failed → blocklisted, and another release is grabbed

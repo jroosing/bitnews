@@ -246,6 +246,8 @@ func newQueueEnv(t *testing.T, opts ...qopt) *qenv {
 	appOpts := []app.Option{app.WithClock(e.clock.Now)}
 	q.svc = app.NewDownloadService(q.repo, cats, q.bus, appOpts...)
 	sources := store.NewDownloadSourceRepo(db, key)
+	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
+	require.NoError(t, err)
 	catSvc := app.NewCategoryService(cats, q.repo, q.bus, appOpts...)
 	serverSvc := app.NewServerService(servers, q.bus, nil, appOpts...)
 	q.categories = catSvc
@@ -270,7 +272,7 @@ func newQueueEnv(t *testing.T, opts ...qopt) *qenv {
 		Setup:      e.setup,
 		Sessions:   e.sessions,
 		UIAuth:     uiAuth,
-		APIKeys:    auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger)),
+		AppKey:     appKey,
 		Bus:        q.bus,
 		Web:        q.server,
 	})

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 )
 
 // The files of a Download's directory that are not part of the torrent.
@@ -117,6 +118,10 @@ func (r *Runner) onTorrentError(ctx context.Context, t *tor, cause error) {
 		reason, detail = core.FailureSourceInvalid, "the torrent cannot be used"
 	case errors.Is(cause, core.ErrDiskFull), errors.Is(cause, syscall.ENOSPC):
 		reason, detail = core.FailureDiskFull, "not enough free disk space"
+	case errors.Is(cause, fs.ErrPermission):
+		// Name the folder and the user id: the usual fix is a chown or a
+		// different `user:` in the container.
+		detail = fsutil.WriteError(cause).Error()
 	}
 	r.fail(ctx, t.id, reason, detail)
 	r.drop(ctx, t.id)

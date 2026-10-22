@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -14,50 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
 )
-
-// createSABKey logs in as the admin and creates an adapter_sab credential,
-// as the UI does: the routes refuse API keys.
-func (e *e2e) createSABKey() string {
-	e.t.Helper()
-	var login struct {
-		CSRFToken string `json:"csrf_token"`
-	}
-	body, _ := json.Marshal(map[string]string{"username": "admin", "password": "correct horse battery staple"})
-	resp, err := e.client.Post(e.ts.URL+"/api/v1/auth/login", "application/json", bytes.NewReader(body))
-	require.NoError(e.t, err)
-	require.Equal(e.t, http.StatusOK, resp.StatusCode)
-	require.NoError(e.t, json.NewDecoder(resp.Body).Decode(&login))
-	_ = resp.Body.Close()
-	var cookie *http.Cookie
-	for _, c := range resp.Cookies() {
-		if c.Name == auth.SessionCookieName {
-			cookie = c
-		}
-	}
-	require.NotNil(e.t, cookie)
-
-	req, err := http.NewRequest("POST", e.ts.URL+"/api/v1/adapter-credentials",
-		strings.NewReader(`{"kind":"adapter_sab","name":"sonarr"}`))
-	require.NoError(e.t, err)
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	req.Header.Set(auth.CSRFHeader, login.CSRFToken)
-	resp, err = e.client.Do(req)
-	require.NoError(e.t, err)
-	defer func() { _ = resp.Body.Close() }()
-	raw, _ := io.ReadAll(resp.Body)
-	require.Equal(e.t, http.StatusCreated, resp.StatusCode, string(raw))
-	var out struct {
-		Key string `json:"key"`
-	}
-	require.NoError(e.t, json.Unmarshal(raw, &out))
-	require.NotEmpty(e.t, out.Key)
-	return out.Key
-}
 
 // sab calls /sabnzbd/api and decodes the JSON answer.
 func (e *e2e) sab(key, query string) map[string]any {
@@ -125,7 +85,7 @@ func TestE2ESABnzbdAdapterDrivesADownloadFromAddfileToCompletedAndDelete(t *test
 	data := payload(200_000, 6)
 	fx := nntptest.BuildFixture(t, map[string][]byte{"episode.mkv": data}, 5_000) // 40 Articles
 	fx.Install(srv.Server)
-	key := e.createSABKey()
+	key := e.apiKey
 
 	nzo := e.sabAddFile(key, "Show.S01E01", fx.NZB)
 	id := core.ID(strings.TrimPrefix(nzo, "SABnzbd_nzo_"))
@@ -165,27 +125,48 @@ func TestE2ESABnzbdAdapterDrivesADownloadFromAddfileToCompletedAndDelete(t *test
 	e.call("GET", "/api/v1/downloads/"+string(id), nil, http.StatusNotFound, nil)
 }
 
-func TestE2ESABnzbdAdapterRejectsAWrongKeyAndItsKeyOpensNothingElse(t *testing.T) {
-	e := newE2E(t)
+func TestE2EOneKeyOpensTheOwnAPISABnzbdAndQBitAndAWrongOneNone(t *testing.T) {
+	e := newTorrentE2E(t)
 	e.start()
-	key := e.createSABKey()
+	key := e.apiKey
 
-	wrong := e.sab("bns_not-the-key", "mode=queue")
-	missing := e.sab("", "mode=queue")
-	assert.Equal(t, map[string]any{"status": false, "error": "API Key Incorrect"}, wrong)
-	assert.Equal(t, map[string]any{"status": false, "error": "API Key Required"}, missing)
-	assert.Contains(t, e.sab(key, "mode=version"), "version")
-
-	for _, hdr := range []func(*http.Request){
-		func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+key) },
-		func(r *http.Request) { r.Header.Set("X-Api-Key", key) },
-	} {
+	assert.Equal(t, map[string]any{"status": false, "error": "API Key Incorrect"}, e.sab("bitnews_not-the-key", "mode=queue"))
+	assert.Equal(t, map[string]any{"status": false, "error": "API Key Required"}, e.sab("", "mode=queue"))
+	assert.Contains(t, e.sab(key, "mode=get_cats"), "categories")
+	e.call("GET", "/api/v1/downloads", nil, http.StatusOK, nil)
+	q := &qbitClient{t: t, e: e}
+	assert.Equal(t, "Fails.", q.login("bitnews", "bitnews_not-the-key"))
+	assert.Equal(t, "Fails.", q.login("sonarr", key), "the username is fixed")
+	require.Equal(t, "Ok.", q.login("bitnews", key))
+	status, _ := q.get("app/version")
+	assert.Equal(t, http.StatusOK, status)
+	for _, hdr := range []string{"bitnews_not-the-key", ""} {
 		req, err := http.NewRequest("GET", e.ts.URL+"/api/v1/downloads", nil)
 		require.NoError(t, err)
-		hdr(req)
+		req.Header.Set("Authorization", "Bearer "+hdr)
 		resp, err := e.client.Do(req)
 		require.NoError(t, err)
 		_ = resp.Body.Close()
-		assert.Contains(t, []int{http.StatusUnauthorized, http.StatusForbidden}, resp.StatusCode, "an adapter key is not an API key")
+		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	}
+}
+
+func TestE2ETheKeyIsStoredAsPlainTextAndSurvivesARestart(t *testing.T) {
+	e := newE2E(t)
+	e.start()
+	e.stop()
+
+	d := e.build()
+	ts := httptest.NewServer(d.Handler())
+	t.Cleanup(ts.Close)
+
+	resp, err := e.client.Get(ts.URL + "/sabnzbd/api?mode=get_cats&output=json&apikey=" + e.apiKey)
+	require.NoError(t, err)
+	raw, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	assert.Contains(t, string(raw), "categories", "the restarted daemon loaded the same key")
+	var stored string
+	require.NoError(t, e.db.Reader().QueryRow(`SELECT key FROM app_key`).Scan(&stored))
+	assert.Equal(t, e.apiKey, stored)
+	assert.NotContains(t, e.logs.String(), e.apiKey, "the key is never logged")
 }

@@ -13,7 +13,6 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/adapter/sabnzbd"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/store"
 )
 
 func TestVersionNeedsNoKey(t *testing.T) {
@@ -46,10 +45,12 @@ func TestEveryOtherModeWithoutAKeyIsAPIKeyRequiredWithHTTP200(t *testing.T) {
 
 func TestAWrongOrMalformedKeyIsAPIKeyIncorrect(t *testing.T) {
 	s := newStack(t)
-	unknown, _, err := auth.NewKindToken(auth.KindAdapterSAB)
+	unknown, _, err := auth.NewKindToken(auth.KindAppKey)
+	require.NoError(t, err)
+	session, _, err := auth.NewToken()
 	require.NoError(t, err)
 
-	for _, key := range []string{"nope", unknown, s.key + "x", strings.ToUpper(s.key), strings.Repeat("a", 100_000)} {
+	for _, key := range []string{"nope", unknown, session, s.key + "x", strings.ToUpper(s.key), strings.Repeat("a", 100_000)} {
 		rec := s.callWith(key, "mode=queue")
 
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -57,55 +58,15 @@ func TestAWrongOrMalformedKeyIsAPIKeyIncorrect(t *testing.T) {
 	}
 }
 
-func TestKeysOfOtherKindsAreRefused(t *testing.T) {
-	s := newStack(t)
-	ctx := context.Background()
-	qbit, _, err := s.creds.Create(ctx, auth.KindAdapterQBit, "Radarr", "radarr")
-	require.NoError(t, err)
-	apiKeys := auth.NewAPIKeyService(store.NewAPIKeyRepo(s.db))
-	apiKey, _, err := apiKeys.Create(ctx, "script", "write")
-	require.NoError(t, err)
-	session, _, err := auth.NewToken()
-	require.NoError(t, err)
-
-	for name, key := range map[string]string{"qbit credential": qbit, "own API key": apiKey, "session token": session} {
-		rec := s.callWith(key, "mode=queue")
-
-		assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, rec.Body.String(), name)
-	}
-}
-
-func TestRevokingAKeyTakesEffectImmediately(t *testing.T) {
+func TestRotatingTheKeyTakesEffectImmediately(t *testing.T) {
 	s := newStack(t)
 	assert.Contains(t, s.call("mode=get_cats").Body.String(), `"categories"`)
-	list, err := s.creds.List(context.Background())
+
+	fresh, err := s.appKey.Rotate(context.Background())
 	require.NoError(t, err)
-	require.Len(t, list, 1)
 
-	require.NoError(t, s.creds.Revoke(context.Background(), list[0].ID))
-
-	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, s.call("mode=get_cats").Body.String())
-}
-
-func TestEachMediaManagerHasItsOwnKey(t *testing.T) {
-	s := newStack(t)
-	radarr, info, err := s.creds.Create(context.Background(), auth.KindAdapterSAB, "Radarr", "")
-	require.NoError(t, err)
-	require.NoError(t, s.creds.Revoke(context.Background(), info.ID))
-
-	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, s.callWith(radarr, "mode=get_cats").Body.String())
-	assert.Contains(t, s.call("mode=get_cats").Body.String(), `"categories"`, "Sonarr's key still works")
-}
-
-func TestAKeyUseIsRecordedAsLastUsed(t *testing.T) {
-	s := newStack(t)
-
-	s.call("mode=get_cats")
-
-	list, err := s.creds.List(context.Background())
-	require.NoError(t, err)
-	require.NotNil(t, list[0].LastUsedAt)
-	assert.True(t, list[0].LastUsedAt.Equal(s.clock.Now()), "%v", list[0].LastUsedAt)
+	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, s.call("mode=get_cats").Body.String(), "the old key")
+	assert.Contains(t, s.callWith(fresh.Reveal(), "mode=get_cats").Body.String(), `"categories"`)
 }
 
 func TestTheKeyMayComeInAFormBodyOrBeforeTheFileInAnUpload(t *testing.T) {

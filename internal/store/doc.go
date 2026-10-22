@@ -49,7 +49,6 @@
 //   - users(id, username UNIQUE, password_hash, created_at)
 //   - sessions(token_hash PRIMARY KEY, user_id, created_at, last_seen_at).
 //     user_id references users ON DELETE CASCADE.
-//   - api_keys(id, name, scope, hash UNIQUE, created_at, last_used_at)
 //   - schema_migrations(version, name, applied_at)
 //
 // # Tables (migration 0003, the Usenet runner's state)
@@ -62,6 +61,12 @@
 //     volumes that Repair asked for (M3-07).
 //
 // All three reference downloads ON DELETE CASCADE.
+//
+// # Tables (migration 0008, the app key)
+//
+//   - app_key(id CHECK (id = 1), key, updated_at): the one API key of the app
+//     (ADR-0006), in plain text. The same migration drops api_keys (0001) and
+//     adapter_credentials (0004).
 //
 // All tables are STRICT.
 package store

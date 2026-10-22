@@ -2,12 +2,12 @@
 #
 # Before the first `docker compose up -d`:
 #
-#   1. Make the config dir writable for PUID:PGID below. bitnews runs as that
-#      user after startup and cannot chown anything itself:
+#   1. Make the config dir writable for the `user:` below (bitnews runs as
+#      that user and cannot chown anything itself):
 #        mkdir -p config && sudo chown 1000:1000 config
 #
 #   2. Decide where /data lives on the host (see the layout below) and make
-#      sure PUID:PGID may write to it.
+#      sure that user may write to it.
 #
 # The master key that encrypts the stored Server and archive passwords is
 # generated on first start as ./config/bitnews.key, so back up ./config as a
@@ -32,6 +32,11 @@ services:
     container_name: bitnews
     restart: unless-stopped
 
+    # bitnews runs as whoever starts it. Use the ids of the user that owns
+    # your media library (`id <user>`), with the same group as Sonarr/Radarr.
+    # Without `user:` the image runs as its built-in user 65532:65532.
+    user: "1000:1000"
+
     ports:
       - "9494:9494"
       # Torrent peers. There is no UPnP: forward this port on your router too.
@@ -40,12 +45,6 @@ services:
       - "51413:51413/udp"
 
     environment:
-      # The container starts as root and bitnews drops to PUID:PGID before it
-      # touches any file, socket or input. Use the ids of the user that owns
-      # your media library (`id <user>`); use the same group as Sonarr/Radarr.
-      # Without PUID/PGID bitnews stays root and logs a warning.
-      PUID: "1000"
-      PGID: "1000"
       # 002 = files 664, dirs 775 (group-writable, so the *arr containers
       # sharing the group can read and manage what bitnews writes).
       UMASK: "002"
@@ -55,7 +54,7 @@ services:
       # BITNEWS_LOG_FORMAT: text       # text | json
 
     volumes:
-      # Database and master key (bitnews.key). Must be writable by PUID:PGID.
+      # Database and master key (bitnews.key). Must be writable by the `user:` above.
       - ./config:/config
       # ONE mount for everything, at the same path in every container
       # (TRaSH layout). Downloads and the media library must be on the same
@@ -72,22 +71,10 @@ services:
       - /tmp
     cap_drop:
       - ALL
-    cap_add:
-      # The only capabilities the privilege drop needs: setgroups() and
-      # setgid() need SETGID, setuid() needs SETUID. The kernel clears all
-      # capabilities when the process changes from uid 0 to PUID, so the
-      # running daemon holds none. CHOWN, DAC_OVERRIDE etc. are not needed
-      # because root touches no file before the drop.
-      - SETUID
-      - SETGID
     security_opt:
       # Blocks gaining privileges through execve (setuid binaries, file
-      # capabilities). It does not affect the setuid() call that drops root
-      # to a lower uid, and bitnews executes no other program.
+      # capabilities). bitnews executes no other program.
       - no-new-privileges:true
-    # Alternative to PUID/PGID: let Docker start the process as that user
-    # directly. Then drop cap_add (nothing to drop) and unset PUID/PGID:
-    # user: "1000:1000"
 
   # --- Sonarr sharing the same /data, same path ---------------------------
   # Both containers see /data/usenet/complete/... under the SAME path, so
@@ -100,9 +87,9 @@ services:
   #   image: lscr.io/linuxserver/sonarr:latest
   #   container_name: sonarr
   #   restart: unless-stopped
+  #   # Run it as the same group as bitnews (1000 here). linuxserver.io images
+  #   # take their ids from their own user/group variables, see their docs.
   #   environment:
-  #     PUID: "1000"
-  #     PGID: "1000"      # same group as bitnews
   #     UMASK: "002"
   #     TZ: Etc/UTC
   #   volumes:

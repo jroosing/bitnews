@@ -87,7 +87,7 @@ func New(dir string, opts ...Option) (*Writer, error) {
 	if dir == "" {
 		return nil, errors.New("filewriter: empty directory")
 	}
-	if err := os.MkdirAll(dir, 0o777); err != nil {
+	if err := fsutil.MkdirAll(dir, 0o777); err != nil {
 		return nil, fmt.Errorf("filewriter: create dir: %w", err)
 	}
 	return &Writer{
@@ -254,7 +254,7 @@ func (w *Writer) createFile(key FileKey, raw string) (string, *os.File, error) {
 			continue
 		}
 		if err != nil {
-			return "", nil, fmt.Errorf("filewriter: create %s: %w", name, err)
+			return "", nil, fmt.Errorf("filewriter: create %s: %w", name, fsutil.WriteError(err))
 		}
 		w.names[name] = true
 		return name, f, nil

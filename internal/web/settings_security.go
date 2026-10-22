@@ -9,9 +9,9 @@ import (
 	"unicode/utf8"
 )
 
-// The Security section (M6-08) is five independent cards, each swapped on
+// The Security section (M6-08) is four independent cards, each swapped on
 // its own by htmx: sign-in options (access), allowed hosts and trusted
-// proxies (hosts), the password, API keys and media manager credentials.
+// proxies (hosts), the password and the one API key (M7-05).
 // The files settings_security_*.go hold one card each; this file holds the
 // registry entry, the page data and the parsing the cards share.
 
@@ -21,7 +21,7 @@ const settingsSecurityPage = "settings_security.html"
 func securitySection() SettingsSection {
 	return SettingsSection{
 		Slug: "security", Title: "Security", Icon: "shield", Order: 50,
-		Description: "Sign-in options, API keys and media manager credentials.",
+		Description: "Sign-in options, allowed hosts, your password and the API key for Sonarr, Radarr and scripts.",
 		Template:    settingsSecurityPage, Data: settingsSecurityData, Routes: (*Server).registerSecurityRoutes,
 	}
 }
@@ -31,8 +31,7 @@ type securityPageData struct {
 	Access   accessView
 	Hosts    hostsView
 	Password passwordView
-	Keys     keysView
-	Adapters adaptersView
+	Key      appKeyView
 }
 
 func settingsSecurityData(s *Server, r *http.Request) (any, error) {
@@ -40,13 +39,7 @@ func settingsSecurityData(s *Server, r *http.Request) (any, error) {
 		Access:   s.accessViewFor(r),
 		Hosts:    s.hostsViewFor(r),
 		Password: s.passwordViewFor(r),
-	}
-	var err error
-	if d.Keys, err = s.keysViewFor(r); err != nil {
-		return nil, err
-	}
-	if d.Adapters, err = s.adaptersViewFor(r); err != nil {
-		return nil, err
+		Key:      s.appKeyViewFor(r),
 	}
 	return d, nil
 }
@@ -54,8 +47,7 @@ func settingsSecurityData(s *Server, r *http.Request) (any, error) {
 func (s *Server) registerSecurityRoutes() {
 	s.registerAccessRoutes()
 	s.registerPasswordRoutes()
-	s.registerKeyRoutes()
-	s.registerAdapterRoutes()
+	s.registerAppKeyRoutes()
 }
 
 // respondSecurityCard answers a card post: the card for htmx, the whole

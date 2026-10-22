@@ -43,8 +43,8 @@ type Config struct {
 	// a Download's remaining bytes. Nil means DefaultMinFree.
 	MinFree func(ctx context.Context) (uint64, error)
 	// FreeSpace reports the free bytes of the filesystem holding path. The
-	// default uses statfs where available; when nil and there is no
-	// default, the disk guard is disabled with a warning.
+	// default is fsutil.FreeBytes; where that is unsupported
+	// the disk guard is off.
 	FreeSpace func(path string) (uint64, error)
 	// Now is the clock. Nil means time.Now.
 	Now    func() time.Time

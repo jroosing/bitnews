@@ -143,6 +143,26 @@ func TestUnparseableNZBFailsWithSourceInvalid(t *testing.T) {
 	}, 5*time.Second, 5*time.Millisecond)
 }
 
+func TestUnwritableDownloadFolderFailsNamingTheFolderAndTheUser(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	h := newHarness(t)
+	fx := nntptest.BuildFixture(t, map[string][]byte{"movie.mkv": payload(10_000, 1)}, 5_000)
+	fx.Install(h.addServer("main", 0, 1))
+	d := h.addDownload("movie", fx)
+	dir := h.dirFor(d)
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	h.start()
+
+	got := h.waitState(d.ID, core.StateFailed)
+
+	assert.Equal(t, core.FailureInternal, got.FailureReason)
+	assert.Contains(t, got.FailureDetail, dir)
+	assert.Contains(t, got.FailureDetail, fmt.Sprintf("uid %d", os.Geteuid()))
+}
+
 func TestNZBWithOnlyRecoveryVolumesFailsWithSourceInvalid(t *testing.T) {
 	h := newHarness(t)
 	h.addServer("main", 0, 1)

@@ -82,7 +82,7 @@ func (r *removed) list() []core.ID {
 }
 
 // stack is the whole adapter on a temp-dir database: real store, real app
-// services, a real adapter credential and the handler under test.
+// services, a real app key and the handler under test.
 type stack struct {
 	t          *testing.T
 	db         *store.DB
@@ -96,7 +96,7 @@ type stack struct {
 	dls        *app.DownloadService
 	adder      *app.AddService
 	categories *app.CategoryService
-	creds      *auth.AdapterCredentialService
+	appKey     *auth.AppKeyService
 	remover    *removed
 	complete   string
 	incomplete string
@@ -155,13 +155,12 @@ func newStack(t *testing.T, opts ...stackOption) *stack {
 	s.sources = store.NewDownloadSourceRepo(db, store.GenerateKey())
 	s.adder = app.NewAddService(s.dls, s.sources, s.settings,
 		append(appOpts, sc.addOpts...)...)
-	s.creds = auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db),
-		auth.WithAdapterClock(s.clock.Now), auth.WithAdapterLogger(logger))
-	s.key, _, err = s.creds.Create(ctx, auth.KindAdapterSAB, "Sonarr", "")
+	s.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
+	s.key = s.appKey.Current().Reveal()
 
 	deps := sabnzbd.Deps{
-		Credentials: s.creds, Downloads: s.dls, Adder: s.adder, Categories: s.categories, Settings: s.settings,
+		AppKey: s.appKey, Downloads: s.dls, Adder: s.adder, Categories: s.categories, Settings: s.settings,
 		StageSource: func(id core.ID) (core.Stage, bool) {
 			s.mu.Lock()
 			defer s.mu.Unlock()

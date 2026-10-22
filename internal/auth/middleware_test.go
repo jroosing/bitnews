@@ -120,7 +120,7 @@ func TestPrincipalCSRFTokenIsTheSessionsSynchronizerToken(t *testing.T) {
 func TestUIAuthRejectsMissingOrInvalidCookieWith401(t *testing.T) {
 	e := newUIEnv(t)
 
-	for _, cookie := range []string{"", "garbage", "bn_" + e.login(t)} {
+	for _, cookie := range []string{"", "garbage", "bitnews_" + e.login(t)} {
 		rec := e.do(uiReq{cookie: cookie})
 
 		assert.Equal(t, http.StatusUnauthorized, rec.Code, "cookie %q", cookie)

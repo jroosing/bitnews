@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 )
 
 // PauseQueue stops the whole Usenet Queue: running Downloads go back to
@@ -93,6 +94,9 @@ func (r *Runner) diskFits(ctx context.Context, root string, remaining int64) (ok
 		return true, ""
 	}
 	free, err := r.free(root)
+	if errors.Is(err, fsutil.ErrUnsupported) {
+		return true, "" // no probe on this platform: the guard is off
+	}
 	if err != nil {
 		r.log.Warn("usenet disk guard: cannot read free space", "path", root, "err", err)
 		return true, ""

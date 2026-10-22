@@ -1,2 +1,2 @@
-// Package fsutil provides safe names and joins, same-filesystem checks and directory moves.
+// Package fsutil provides safe names and joins, free space and directory moves.
 package fsutil

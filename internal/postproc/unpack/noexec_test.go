@@ -13,8 +13,8 @@ import (
 
 // ADR-0002: post-processing never starts a subprocess. This scans every
 // non-test Go file under internal/ for an import of os/exec. Test files are
-// exempt: the PAR2 golden test compares against par2cmdline and the privdrop
-// test re-executes the test binary, and neither ships in the product.
+// exempt: the PAR2 golden test compares against par2cmdline,
+// and it does not ship in the product.
 func TestNothingUnderInternalImportsOsExec(t *testing.T) {
 	root := filepath.Join("..", "..") // internal/
 	fset := token.NewFileSet()

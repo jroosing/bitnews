@@ -97,6 +97,7 @@ func TestInvalidCategoryInputIsReportedNextToTheFields(t *testing.T) {
 		{"tv/../x", "", true, false},
 		{"tv", "relative/dir", false, true},
 		{"BAD", "relative", true, true},
+		{"tv", "/data/../etc", false, true},
 	} {
 		t.Run(tc.name+"|"+tc.dir, func(t *testing.T) {
 			e, b := settingsSignedIn(t)
@@ -175,6 +176,30 @@ func TestEditingACategoryFolderRejectsARelativePath(t *testing.T) {
 	assert.Equal(t, "rel", attr(byID(doc, "category-dir-"+string(c.ID)), "value"))
 	cats, _ := e.cats.List(context.Background())
 	assert.Equal(t, "/old", cats[0].DirOverride)
+}
+
+func TestEditingACategoryFolderRejectsDotDot(t *testing.T) {
+	e, b := settingsSignedIn(t)
+	c, _ := e.cats.Create(context.Background(), "tv", "/old")
+
+	rec := b.settingsPost("/settings/categories/"+string(c.ID), url.Values{"dir_override": {"/data/../etc"}})
+
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	doc := parseHTML(t, rec.Body.String())
+	assert.Contains(t, text(byID(doc, "category-dir-"+string(c.ID)+"-error")), "..")
+	cats, _ := e.cats.List(context.Background())
+	assert.Equal(t, "/old", cats[0].DirOverride)
+}
+
+func TestACategoryFolderIsCleanedAndNeverProbed(t *testing.T) {
+	e, b := settingsSignedIn(t)
+
+	rec := b.settingsPost("/settings/categories", url.Values{"name": {"tv"}, "dir_override": {"/not/there/yet/tv/"}})
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	cats, _ := e.cats.List(context.Background())
+	require.Len(t, cats, 1)
+	assert.Equal(t, "/not/there/yet/tv", cats[0].DirOverride)
 }
 
 func TestDeletingACategoryAsksForConfirmationAndKeepsDownloads(t *testing.T) {

@@ -226,7 +226,7 @@ func TestDeclaredSizeMustFitIntoFreeDiskSpace(t *testing.T) {
 }
 
 func TestTheDefaultFreeSpaceProbeWorks(t *testing.T) {
-	n, err := freeSpace(t.TempDir())
+	n, err := newConfig(nil).freeSpace(t.TempDir())
 
 	require.NoError(t, err)
 	require.NotZero(t, n)

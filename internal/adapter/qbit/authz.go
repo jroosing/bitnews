@@ -1,7 +1,6 @@
 package qbit
 
 import (
-	"errors"
 	"mime"
 	"net"
 	"net/http"
@@ -22,31 +21,24 @@ func isForm(r *http.Request) bool {
 	return mt == "application/x-www-form-urlencoded"
 }
 
-// authenticate checks the SID cookie. The session must be live and its
-// credential must still exist, so a revoked credential stops working with
-// its next request. On success the call knows its credential.
+// authenticate checks the SID cookie. The session must be live and must have
+// been opened with the current app key, so refreshing the key ends every
+// session with the next request.
 func (c *call) authenticate() bool {
 	cookie, err := c.r.Cookie(sidCookie)
 	if err != nil {
 		return false
 	}
-	id, ok := c.h.sessions.use(cookie.Value)
+	generation, ok := c.h.sessions.use(cookie.Value)
 	if !ok {
 		return false
 	}
-	infos, err := c.h.Credentials.List(c.ctx())
-	if err != nil {
-		c.h.log.Error("qbit: credential check failed", "err", err)
+	if generation != c.h.AppKey.Generation() {
+		c.h.sessions.drop(cookie.Value)
 		return false
 	}
-	for _, info := range infos {
-		if info.ID == id && info.Kind == auth.KindAdapterQBit {
-			c.credential, c.sid = id, cookie.Value
-			return true
-		}
-	}
-	c.h.sessions.dropCredential(id)
-	return false
+	c.sid = cookie.Value
+	return true
 }
 
 // trustedProxies are the networks whose X-Forwarded-* headers are believed.
@@ -77,7 +69,7 @@ func (h *handler) secure(r *http.Request) bool {
 }
 
 // login serves auth/login: the form fields username and password are checked
-// against the adapter_qbit credentials. The answer is "Ok." and a SID cookie,
+// against the fixed username and the app key. The answer is "Ok." and a SID cookie,
 // or "Fails." with HTTP 200 like qBittorrent. Failures are counted per client
 // IP only (the username is not a key: anyone could otherwise lock the media
 // manager out by failing its username); a banned IP gets 403 whatever it
@@ -99,20 +91,17 @@ func (c *call) login() {
 		}
 		username, password = c.r.PostForm.Get("username"), c.r.PostForm.Get("password")
 	}
-	cred, err := c.h.Credentials.AuthenticateQBit(c.ctx(), username, password)
-	switch {
-	case err == nil:
-	case errors.Is(err, auth.ErrInvalidAdapterCredential):
+	// The generation is read first: a refresh between the check and the
+	// session would at worst make this session stale, never valid for a key
+	// that is gone.
+	generation := c.h.AppKey.Generation()
+	if !c.h.AppKey.AuthenticateQBit(username, password) {
 		c.h.Limiter.Fail(ip, key)
 		c.h.log.Warn("qbit: login failed", "ip", key, "username", printable(username, 40))
 		c.text(http.StatusOK, "Fails.")
 		return
-	default:
-		c.h.log.Error("qbit: login failed", "err", err)
-		c.text(http.StatusInternalServerError, "Internal Server Error")
-		return
 	}
-	token, err := c.h.sessions.create(cred.ID)
+	token, err := c.h.sessions.create(generation)
 	if err != nil {
 		c.h.log.Error("qbit: session failed", "err", err)
 		c.text(http.StatusInternalServerError, "Internal Server Error")

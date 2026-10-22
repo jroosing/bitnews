@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
 func loginBody(user, password string) string {
@@ -154,11 +153,11 @@ func TestVersionReportsBuildInfoToAnyReader(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	sess := e.login()
-	readKey := e.newKey(core.APIKeyScopeRead)
+	key := e.apiKey()
 
 	anonymous := e.do("GET", "/api/v1/version", "")
 	viaSession := e.do("GET", "/api/v1/version", "", withCookie(sess.cookie))
-	viaKey := e.do("GET", "/api/v1/version", "", withBearer(readKey))
+	viaKey := e.do("GET", "/api/v1/version", "", withBearer(key))
 
 	assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
 	for _, rec := range []*httptest.ResponseRecorder{viaSession, viaKey} {

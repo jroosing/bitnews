@@ -148,7 +148,7 @@ func TestCSRFRejectsNullAndMalformedOrigins(t *testing.T) {
 }
 
 func TestCSRFExemptsAPIKeyRequests(t *testing.T) {
-	p := &auth.Principal{Kind: auth.PrincipalAPIKey, Scope: core.APIKeyScopeWrite, KeyID: "k"}
+	p := &auth.Principal{Kind: auth.PrincipalAPIKey}
 
 	rec := csrfCase{method: "POST", principal: p, origin: "https://evil.test", host: "example.test"}.run(t)
 

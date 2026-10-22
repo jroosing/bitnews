@@ -103,8 +103,8 @@ func (s *AddService) StageTorrent(ctx context.Context, r io.Reader) (st *StagedT
 
 	id := core.NewID()
 	dir := filepath.Join(root, string(id))
-	if err := os.MkdirAll(dir, 0o777); err != nil {
-		return nil, fmt.Errorf("app: create download dir: %w", err)
+	if err := fsutil.MkdirAll(dir, 0o777); err != nil {
+		return nil, createDirError(err)
 	}
 	defer func() {
 		if err != nil {

@@ -107,13 +107,9 @@ func (r *Runner) moveToComplete(ctx context.Context, d core.Download, t *tor) {
 		return
 	}
 	target := fsutil.Unique(base)
-	if err := os.MkdirAll(filepath.Dir(target), 0o777); err != nil {
+	if err := fsutil.MkdirAll(filepath.Dir(target), 0o777); err != nil {
 		r.log.Warn("torrent runner: cannot create the destination, the torrent stays where it is", "id", t.id, "err", err)
 		return
-	}
-	if same, err := fsutil.SameFilesystem(cur, filepath.Dir(target)); err == nil && !same {
-		r.log.Warn("torrent runner: the move to complete crosses filesystems; hardlinks will not work for this layout",
-			"kind", "cross_device", "download", string(t.id))
 	}
 	// Write the intent first: after a crash the data is either still at cur or
 	// already at target, and the record says which one to look for.

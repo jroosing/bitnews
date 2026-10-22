@@ -3,6 +3,8 @@ package finalize_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,7 +39,11 @@ func TestCrossDeviceMoveEmitsWarning(t *testing.T) {
 	require.Equal(t, "cross_device", w[0].Kind)
 	require.Equal(t, d.ID, w[0].DownloadID)
 	require.Equal(t, out, w[0].Path)
-	require.Contains(t, w[0].Message, "hardlinks")
+	require.Contains(t, w[0].Message, "copied instead of renamed")
+	require.Contains(t, w[0].Message, "different filesystems")
+	require.Contains(t, w[0].Message, "Sonarr/Radarr")
+	require.Contains(t, w[0].Message, "complete folder")
+	require.NotContains(t, w[0].Message, "hardlinks will not work", "bitnews does not make hardlinks")
 }
 
 func TestSameDeviceMoveEmitsNoWarning(t *testing.T) {
@@ -348,4 +354,21 @@ func TestDirMustExistAndBeADirectory(t *testing.T) {
 	require.NoError(t, os.Symlink(e.base, link))
 	_, err = f.Finish(context.Background(), usenetDownload("S"), link, "")
 	require.ErrorIs(t, err, fsutil.ErrSymlink)
+}
+
+func TestUnwritableCompleteFolderFailsNamingTheFolderAndTheUser(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	e := newEnv(t)
+	complete := e.settings.Paths.Usenet.Complete
+	require.NoError(t, os.MkdirAll(complete, 0o755))
+	require.NoError(t, os.Chmod(complete, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(complete, 0o755) })
+
+	_, err := finishUsenet(t, e, usenetDownload("Show"))
+
+	require.ErrorIs(t, err, fs.ErrPermission)
+	require.Contains(t, err.Error(), complete)
+	require.Contains(t, err.Error(), fmt.Sprintf("uid %d", os.Geteuid()))
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/fsutil"
 )
 
 // Why a job's context was cancelled (context.Cause).
@@ -68,10 +69,7 @@ func New(cfg Config) (*Runner, error) {
 		r.clock = systemClock{}
 	}
 	if r.free == nil {
-		r.free = defaultFreeSpace
-	}
-	if r.free == nil {
-		r.log.Warn("usenet disk guard disabled: no free-space provider")
+		r.free = fsutil.FreeBytes
 	}
 	if r.store == nil {
 		r.store = newMemStore()

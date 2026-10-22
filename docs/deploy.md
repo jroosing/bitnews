@@ -18,8 +18,7 @@ Only these settings live outside the database. A flag wins over its environment 
 | `--listen` | `BITNEWS_LISTEN` | `0.0.0.0:9494` | `host:port`. |
 | `--log-level` | `BITNEWS_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. |
 | `--log-format` | `BITNEWS_LOG_FORMAT` | `text` | `text` or `json`. |
-| – | `PUID`, `PGID` | unset | Set both or neither. When started as root, drop to these ids. Setting them while not root is an error. |
-| – | `UMASK` | `002` | Octal, applied process-wide at startup. |
+| – | `UMASK` | `002` | Octal file creation mask, applied process-wide at startup before any file is created. See [Identity and UMASK](#identity-and-umask). |
 | – | `BITNEWS_ADMIN_PASSWORD_FILE` | unset | Absolute path of a file holding the initial admin password; skips the setup screen. |
 | – | `BITNEWS_TORRENT_PORT` | unset (the setting, `51413`) | TCP and uTP port the torrent engine listens on, 1 to 65535. When set it overrides the port in Settings, Torrent network. See [Torrent port](#torrent-port). |
 
@@ -50,7 +49,7 @@ Then write `FROM golang:1.27.3@sha256:<digest>` and `FROM gcr.io/distroless/stat
 
 ### The master key
 
-The master key encrypts the secrets bitnews has to send in plaintext later: the Usenet Server passwords and the passwords of encrypted archives. (Login passwords, session tokens and API keys are only hashed and need no key.)
+The master key encrypts the secrets bitnews has to send in plaintext later: the Usenet Server passwords and the passwords of encrypted archives. (Login passwords and session tokens are only hashed and need no key. The API key is stored in plain text in the database, like the key of Sonarr and Radarr, so that Settings can show it.)
 
 You do nothing: on first start bitnews generates the key and stores it as `bitnews.key` in the config directory (`/config`, mode `0600`), and logs a warning with its location. It holds 32 random bytes, base64-encoded, plus a newline.
 
@@ -63,7 +62,7 @@ You do nothing: on first start bitnews generates the key and stores it as `bitne
 mkdir -p secrets
 head -c 32 /dev/urandom | base64 > secrets/bitnews_key
 chmod 600 secrets/bitnews_key
-sudo chown 1000:1000 secrets/bitnews_key      # your PUID:PGID
+sudo chown 1000:1000 secrets/bitnews_key      # the uid:gid of `user:` in your compose file
 ```
 
 ```yaml
@@ -77,11 +76,11 @@ secrets:
     file: ./secrets/bitnews_key
 ```
 
-bitnews drops root **before** it opens any file, so it reads the key as `PUID:PGID`. Under plain `docker compose` (no Swarm) a `file:` secret is a bind mount of the host file, so the host file's owner and mode apply inside the container; a root-owned `0600` file fails with "permission denied". A key file readable by other users (such as `0444` in Swarm) only produces a warning. If the file named by `BITNEWS_KEY_FILE` is missing and its directory is not writable (the normal case for `/run/secrets`), startup fails with instructions rather than silently using a different key. Back the key up separately from the database.
+bitnews reads the key as the user the container runs as (`user:` in compose). Under plain `docker compose` (no Swarm) a `file:` secret is a bind mount of the host file, so the host file's owner and mode apply inside the container; a root-owned `0600` file fails with "permission denied". A key file readable by other users (such as `0444` in Swarm) only produces a warning. If the file named by `BITNEWS_KEY_FILE` is missing and its directory is not writable (the normal case for `/run/secrets`), startup fails with instructions rather than silently using a different key. Back the key up separately from the database.
 
 ### Compose
 
-Copy `deploy/docker-compose.example.yml` next to your other stacks, adjust `PUID`, `PGID`, `TZ` and the `/data` path, then:
+Copy `deploy/docker-compose.example.yml` next to your other stacks, adjust `user:`, `TZ` and the `/data` path, then:
 
 ```sh
 docker compose up -d
@@ -105,23 +104,18 @@ With Docker publish both protocols (the example compose file does):
 
 If you change `BITNEWS_TORRENT_PORT`, change the published port with it. Behind a VPN container the forwarded port is the one your VPN provider gives you; set `BITNEWS_TORRENT_PORT` to it.
 
-### PUID, PGID and UMASK
+### Identity and UMASK
 
-The image starts as **root** on purpose (it is not the `:nonroot` distroless variant), so `PUID`/`PGID` work the way they do in linuxserver.io images. The binary then does the dropping itself, first thing at startup, before it opens a file or socket or parses any input:
+bitnews runs as whoever starts it. The image defaults to the distroless `nonroot` user (`65532:65532`); set `user: "1000:1000"` in compose (or `--user 1000:1000`) to run as the owner of your media library (`id <user>`, same group as Sonarr and Radarr). There is no `PUID`/`PGID` and no privilege drop inside bitnews, and the container needs no extra capabilities. Running as root works too, with no warning; it is just a wider blast radius if a parser of hostile input (NZB, NNTP, archives) has a bug.
 
-1. It applies `UMASK` (default `002`: files `664`, directories `775`).
-2. When root and `PUID`/`PGID` are set: `setgroups([PGID])`, `setgid(PGID)`, `setuid(PUID)`, then it verifies that `setuid(0)` fails and aborts if it succeeds. After this the daemon holds no capabilities.
-3. When root and `PUID`/`PGID` are **not** set, bitnews keeps running as root and logs once: `running as root: a parser bug would run with root privileges`. That works, but a bug in a parser of hostile input (NZB, NNTP, archives) would then run with root privileges. Set `PUID`/`PGID`.
-4. `PUID`/`PGID` with a process that is not root is an error, unless they equal the current ids.
+bitnews cannot `chown` anything, so the directories you mount must already be usable by that user:
 
-Alternative: let Docker start the process as that user with `user: "1000:1000"` in compose (or `--user`) and leave `PUID`/`PGID` unset. This also works and needs no capabilities at all.
+- `/config` writable by it (`chown -R 1000:1000 config`). The image ships `/config` world-writable, so a fresh **named volume** works for any `user:`; a bind mount keeps the host's owner and mode.
+- `/data` writable by that user or by its group.
 
-Because nothing runs as root after the drop, bitnews cannot `chown` anything. The host directories you mount must already be usable by `PUID:PGID`:
+`UMASK` (default `002`) is applied process-wide before bitnews creates any file: files become `664` and directories `775`. It stays because Sonarr and Radarr usually run as another user in the same group, and they can only manage what bitnews wrote if the group may write it. Use `027` or `077` if nothing else needs access.
 
-- `/config` writable by `PUID:PGID` (`chown -R 1000:1000 config`). A fresh **named volume** is created root-owned, so either `chown` it once or prefer a bind mount.
-- `/data` writable by `PUID:PGID` or by its group.
-
-The hardened compose example uses `cap_drop: [ALL]` and adds back only `SETUID` and `SETGID`, which `setuid`/`setgid`/`setgroups` need. Root touches no file before the drop, so `CHOWN` and `DAC_OVERRIDE` are not needed. `no-new-privileges` blocks gaining privilege through `execve`; it does not stop a process from lowering its own uid, and bitnews executes no other program. Do not run with `cap_drop: [ALL]` and no `PUID`: root without `DAC_OVERRIDE` can only touch files it owns.
+The hardened compose example uses `cap_drop: [ALL]` and adds nothing back. `no-new-privileges` blocks gaining privilege through `execve`, and bitnews executes no other program. Do not combine `cap_drop: [ALL]` with `user: "0:0"`: root without `DAC_OVERRIDE` can only touch files it owns.
 
 ### The shared `/data` layout
 
@@ -140,15 +134,15 @@ Mount **one** `/data` into bitnews, Sonarr, Radarr and anything else that handle
 
 Why it matters:
 
-- **Hardlinks.** A hardlink only works inside one filesystem, and Docker treats each mount as separate. If `/data/usenet` and `/data/media` are separate mounts (or separate host filesystems), Sonarr must copy instead of hardlink: twice the disk use, slower imports, and torrents stop seeding from the same file. One mount, one filesystem, solves it.
-- **Atomic moves.** bitnews moves a finished Download from `incomplete` to `complete` with a `rename`, which is instant on one filesystem. The UI warns if the configured roots are on different filesystems.
+- **Hardlinks.** Sonarr and Radarr make the hardlinks, from the `complete` directory into the library; bitnews never hardlinks. A hardlink only works inside one filesystem, and Docker treats each mount as separate, so keep the `complete` directory and the library on one filesystem (one mount). If `/data/usenet` and `/data/media` are separate mounts (or separate host filesystems), Sonarr must copy instead of hardlink: twice the disk use, slower imports, and torrents stop seeding from the same file. bitnews does not check this, and it cannot know where the library is.
+- **Moves.** bitnews moves a finished Download from `incomplete` to `complete` with a `rename`, which is instant on one filesystem, and copies then removes the source when the two are on different filesystems (for example `incomplete` on an SSD and `complete` on a share). That keeps working; it is just slower. bitnews does not probe paths when you save them: a folder it cannot write fails the Download with the folder and the user id it runs as.
 - **No remote path mapping.** Sonarr is told "the download is at `/data/usenet/complete/tv/X`", and that path exists for Sonarr too. If container paths differed you would need Remote Path Mappings, and they are an easy source of "import failed" errors.
 
 Files are never modified after Ready, because hardlinks share the data with the library.
 
 Ownership tips:
 
-- Use the **same group** (`PGID`) for bitnews and the *arr containers, ideally the same `PUID` too, and keep `UMASK=002` everywhere so group members can read and write each other's files.
+- Run bitnews and the *arr containers with the **same group**, ideally the same user too, and keep `UMASK=002` everywhere so group members can read and write each other's files.
 - Make the tree group-writable and let new directories inherit the group:
   `sudo chgrp -R 1000 /data && sudo chmod -R g+rwX /data && sudo find /data -type d -exec chmod g+s {} +`
 - Do not mix `UMASK=022` containers with `002` ones on the same tree.
@@ -228,7 +222,7 @@ journalctl -u bitnews -f           # setup token
 
 How the unit is built:
 
-- **User and ids.** It runs as `bitnews` directly. `PUID`/`PGID` are not used (and are rejected when not root). `UMask=0002` matches the Docker default.
+- **User and ids.** It runs as `User=bitnews` / `Group=bitnews` directly; change them (or add `SupplementaryGroups=`) to share files with Sonarr and Radarr. `UMask=0002` matches the Docker default.
 - **State.** `StateDirectory=bitnews` creates `/var/lib/bitnews` (the config dir, mode `0700`) and keeps it writable despite `ProtectSystem=strict`. `ReadWritePaths=/data` opens the download and library tree; the unit does not start if that path is missing, so create it first or write `-/data`.
 - **Key.** Generated on first start as `/var/lib/bitnews/bitnews.key`, next to the database; back up the whole directory. To keep it apart, create `/etc/bitnews/bitnews.key` as root (`head -c 32 /dev/urandom | base64`, mode `600`) and uncomment the two lines in the unit: `LoadCredential=bitnews.key:/etc/bitnews/bitnews.key` makes systemd expose a private copy to this service only, and `BITNEWS_KEY_FILE=%d/bitnews.key` points at it (`%d` is `$CREDENTIALS_DIRECTORY`). That directory is read-only, so with a credential the key is never auto-generated: create it first.
 - **Settings.** `EnvironmentFile=-/etc/bitnews/bitnews.env` is optional and overrides the `Environment=` lines. `%d` is not expanded inside the env file. For `BITNEWS_ADMIN_PASSWORD_FILE` use the commented `LoadCredential=` lines in the unit.
@@ -246,14 +240,14 @@ Proxy, `allowed_hosts` and `trusted_proxies` work exactly as in the Docker secti
 
 ## Hardening checklist
 
-- [ ] The container (or service) runs as `PUID:PGID` / `User=bitnews`, not root. The log has no "running as root" warning.
+- [ ] The container (or service) runs as a dedicated non-root user (`user: "1000:1000"` / `User=bitnews`).
 - [ ] The config directory, which holds the database and the master key, is backed up as a whole and readable only by the service. If you want the key apart from the database: a Docker secret or `LoadCredential=` via `BITNEWS_KEY_FILE`.
 - [ ] TLS is terminated by a reverse proxy; port 9494 is not reachable from the internet (loopback or internal Docker network only).
 - [ ] `allowed_hosts` lists the public hostname, `trusted_proxies` lists only the proxy, and *disable auth* and *LAN bypass* are off.
-- [ ] Compose: `read_only: true`, `tmpfs: /tmp`, `cap_drop: [ALL]` with only `SETUID`/`SETGID` added back, `no-new-privileges:true`.
+- [ ] Compose: `read_only: true`, `tmpfs: /tmp`, `cap_drop: [ALL]` with nothing added back, `no-new-privileges:true`.
 - [ ] systemd: `systemd-analyze security bitnews.service` is below 3.0 on your system.
 - [ ] Base images are pinned to digests and rebuilt regularly, and `govulncheck` (CI) is clean for the release you run.
 - [ ] One `/data` mount shared with the *arr containers, same path everywhere, same group, `UMASK=002`.
 - [ ] A VPN, if wanted, is configured and tested in its own container (bitnews does not manage it).
-- [ ] An API key per client (Sonarr, Radarr, scripts) with the narrowest scope that works, and no admin password in the environment or shell history (`BITNEWS_ADMIN_PASSWORD_FILE` points at a file only the service can read).
+- [ ] The API key (Settings → Security) is rotated if it leaked, and then updated in Sonarr, Radarr and your scripts. There is one key for all of them, with full access. No admin password in the environment or shell history (`BITNEWS_ADMIN_PASSWORD_FILE` points at a file only the service can read).
 - [ ] The database (`/config`, `/var/lib/bitnews`) is backed up; the key is not stored with it.

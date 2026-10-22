@@ -1,6 +1,6 @@
 # Own API v1
 
-The own API is served on the daemon's one port under `/api/v1/`. The UI (M6) uses the same routes with a session cookie. Scripts use an API key. This page is the route table; the design is in [M1](milestones/m1-foundation.md#http-server-and-own-api-v1).
+The own API is served on the daemon's one port under `/api/v1/`. The UI (M6) uses the same routes with a session cookie. Scripts use the app key: one key, shown on Settings → Security, that also serves SABnzbd and qBittorrent ([ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md)). This page is the route table; the design is in [M1](milestones/m1-foundation.md#http-server-and-own-api-v1).
 
 ## Conventions
 
@@ -11,10 +11,10 @@ The own API is served on the daemon's one port under `/api/v1/`. The UI (M6) use
   {"error": {"code": "invalid_priority", "message": "unknown priority \"urgent\": use force, high, normal or low"}}
   ```
 
-  Status codes: `400` invalid input, `401` not authenticated, `403` forbidden (scope, CSRF, session required), `404` not found, `405` wrong method, `409` conflict, `413` too large, `415` wrong media type, `502` `fetch_failed` (a URL the daemon fetched failed), `421` Host not allowed, `429` login rate limit (with `Retry-After`), `500` `internal` (generic; the detail is only in the server log), `503` `setup_required`.
+  Status codes: `400` invalid input, `401` not authenticated, `403` forbidden (CSRF, session required), `404` not found, `405` wrong method, `409` conflict, `413` too large, `415` wrong media type, `502` `fetch_failed` (a URL the daemon fetched failed), `421` Host not allowed, `429` login rate limit (with `Retry-After`), `500` `internal` (generic; the detail is only in the server log), `503` `setup_required`.
 - **Request IDs:** every response carries `X-Request-ID`. A client-supplied one is kept only if it is 1 to 64 characters of `[A-Za-z0-9._-]`; otherwise the server makes one. It appears in the server log.
 - **Security headers** on every response: `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`. API responses are `Cache-Control: no-store`.
-- **IDs** (Downloads, Categories, Servers, API keys) are opaque strings. Times are RFC 3339 UTC.
+- **IDs** (Downloads, Categories, Servers) are opaque strings. Times are RFC 3339 UTC.
 
 ## Authentication
 
@@ -22,9 +22,10 @@ The own API is served on the daemon's one port under `/api/v1/`. The UI (M6) use
 |---|---|
 | none | No credentials. |
 | setup token | The one-time token from the startup log. |
-| read / write | An API key of that scope (`Authorization: Bearer bn_...` or `X-Api-Key`), or else a UI session. A `read` key may only use GET; a `write` key may use every method. A request that carries a key is judged as a key request and never falls back to the session. |
-| session | A logged-in UI session (cookie `bitnews_session`). State-changing requests also need the `X-CSRF-Token` header from `GET /auth/session` or the login response. API keys are refused. |
-| UI principal | Like session, but the disable-auth and LAN bypass principals are accepted too (they also need the CSRF token). API keys and adapter credentials are refused with `403 session_required`, even where the bypass would let the request in without them. Used only to manage adapter credentials, so media managers can be configured when the UI runs without a login. |
+| read / write | The app key (`Authorization: Bearer bitnews_...` or `X-Api-Key`) with full access, or else a UI session. There are no scopes: the key may use every method. A request that carries a key is judged as a key request and never falls back to the session. The disable-auth and LAN bypass settings never apply to a request with a key. |
+| session | A logged-in UI session (cookie `bitnews_session`). State-changing requests also need the `X-CSRF-Token` header from `GET /auth/session` or the login response. |
+
+The key is generated on first start, stored in plain text in the database and shown in the UI, where it can be rotated; the API has no key endpoints. After a rotation the old key is rejected at once, on this API, on `/sabnzbd/api` and on the qBittorrent login.
 
 While first-run setup is open, every route except `POST /setup` and `GET /health` answers `503 setup_required`.
 
@@ -57,23 +58,12 @@ While first-run setup is open, every route except `POST /setup` and `GET /health
 | DELETE | `/api/v1/servers/{id}` | write | | `204` |
 | POST | `/api/v1/servers/{id}/test` | write | | `200 ProbeResult`; `409 password_unavailable` |
 | GET | `/api/v1/settings` | read | | `200 Settings` |
-| PUT | `/api/v1/settings` | write | the full `Settings` object | `200 Settings`; `400 invalid_settings` lists every problem. A request with an API key may not change the `auth` section (`403 session_required`). |
-| GET | `/api/v1/api-keys` | session only | | `200 {"items":[{"id","name","scope","created_at","last_used_at"}]}` |
-| POST | `/api/v1/api-keys` | session only | `{"name","scope":"read\|write"}` | `201` the key's fields plus `"key":"bn_..."`, shown this once |
-| DELETE | `/api/v1/api-keys/{id}` | session only | | `204` |
-| GET | `/api/v1/adapter-credentials` | UI principal | | `200 {"items":[{"id","kind","name","username"?,"created_at","last_used_at"}]}` (never a key or hash) |
-| POST | `/api/v1/adapter-credentials` | UI principal | `{"kind":"adapter_sab\|adapter_qbit","name","username"?}` | `201` the credential's fields plus `"key":"bns_..."` (or `"bnq_..."`), shown this once; `400 invalid_kind`, `invalid_name`, `invalid_username`; `409 username_taken` |
-| DELETE | `/api/v1/adapter-credentials/{id}` | UI principal | | `204`; the credential stops working with the next request |
+| PUT | `/api/v1/settings` | write | the full `Settings` object | `200 Settings`; `400 invalid_settings` lists every problem. A request with the key may not change the `auth` section (`403 session_required`). |
 | GET | `/api/v1/events` | read | | `200 text/event-stream`, see below |
 
-Routes that need a session are also refused to the disable-auth and LAN bypass principals (`403 session_required`).
+### Adapter authentication
 
-### Adapter credentials
-
-An adapter credential authenticates one media manager (Sonarr, Radarr, Prowlarr) on one adapter, so each can be revoked on its own. The key is 256 random bits shown once, as `bns_` + base32 for `adapter_sab` and `bnq_` + base32 for `adapter_qbit`; only its SHA-256 hash is stored. `username` is set for `adapter_qbit` only: it is `[a-z0-9_-]{1,32}`, unique among qBit credentials, derived from the name when omitted (`"My Radarr"` becomes `my-radarr`), and the key is the password to configure next to it. `last_used_at` is updated at most once a minute, so the UI can show which media manager last connected.
-
-- A credential is valid on its own adapter only: `/sabnzbd/api` takes `adapter_sab`, the qBittorrent adapter takes `adapter_qbit`. Every `/api/v1` route refuses it with `401`, and `/sabnzbd/api` refuses API keys and sessions (`{"status":false,"error":"API Key Incorrect"}`).
-- The adapters never honour disable-auth or LAN bypass. The credential routes above do accept those UI principals, so a credential made under them keeps working after the bypass setting is turned off. The UI must say so.
+The adapters take the same app key, with no scopes and no per-manager credentials. `/sabnzbd/api` reads it from the `apikey` parameter, the qBittorrent adapter takes the fixed username `bitnews` with the key as the password. `/sabnzbd/api` refuses sessions and bearer headers (`{"status":false,"error":"API Key Incorrect"}`), and the qBittorrent `SID` cookie opens nothing under `/api/v1`. The adapters never honour disable-auth or LAN bypass.
 
 ### SABnzbd adapter
 
@@ -209,7 +199,7 @@ data: { …Download… }
 - If the client falls behind (its 256-event buffer fills), the server sends `event: resync` with `data: {}` and ends the stream. Reconnect and refetch.
 - **`Last-Event-ID` is not supported.** Events are not persisted, so nothing is replayed: refetch the state after every (re)connect. The stream sends no `id:` field.
 - The stream ends when the client disconnects or the server shuts down. The server's write timeout does not apply to it; each single write is limited to 30 seconds, so a client that stops reading is dropped.
-- Authentication is the same as for the other `read` routes. A browser `EventSource` sends the session cookie. Scripts send an API key header.
+- Authentication is the same as for the other routes. A browser `EventSource` sends the session cookie. Scripts send the key in a header.
 
 ### qBittorrent adapter
 

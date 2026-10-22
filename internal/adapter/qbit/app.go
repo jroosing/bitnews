@@ -113,7 +113,7 @@ func (h *handler) preferences() preferences {
 func (c *call) getPreferences() { c.json(c.h.preferences()) }
 
 // setPreferences serves app/setPreferences. The settings of bitnews are not
-// changed through an adapter credential: the call is accepted and ignored,
+// changed through the adapter: the call is accepted and ignored,
 // so a tool that sends it does not break.
 func (c *call) setPreferences() {
 	c.h.log.Debug("qbit: setPreferences ignored")

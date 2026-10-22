@@ -104,8 +104,8 @@ type Config struct {
 	// after a restart. Nil keeps them in memory only.
 	Reports ReportStore
 	// FreeSpace reports the free bytes of the filesystem holding path. The
-	// default uses statfs where available; when nil and there is no
-	// default, the disk guard is disabled with a warning.
+	// default is fsutil.FreeBytes; where that is unsupported
+	// the disk guard is off.
 	FreeSpace func(path string) (uint64, error)
 	Clock     Clock
 	Logger    *slog.Logger

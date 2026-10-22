@@ -127,31 +127,3 @@ type SessionRepo interface {
 	// with the token hash keep and reports how many it removed.
 	DeleteForUserExcept(ctx context.Context, userID ID, keep TokenHash) (int, error)
 }
-
-// APIKeyScope limits what an API key may do.
-type APIKeyScope string
-
-// The API key scopes: read allows GET requests, write allows everything.
-const (
-	APIKeyScopeRead  APIKeyScope = "read"
-	APIKeyScopeWrite APIKeyScope = "write"
-)
-
-// APIKey is a named key for scripts and the own API.
-type APIKey struct {
-	ID         ID
-	Name       string
-	Scope      APIKeyScope
-	Hash       TokenHash
-	CreatedAt  time.Time
-	LastUsedAt time.Time // zero until first use
-}
-
-// APIKeyRepo persists API keys.
-type APIKeyRepo interface {
-	Create(ctx context.Context, k APIKey) error
-	List(ctx context.Context) ([]APIKey, error)
-	GetByHash(ctx context.Context, h TokenHash) (APIKey, error)
-	TouchLastUsed(ctx context.Context, id ID, at time.Time) error
-	Delete(ctx context.Context, id ID) error
-}

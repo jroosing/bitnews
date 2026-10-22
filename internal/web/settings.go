@@ -16,10 +16,9 @@ import (
 
 // SettingsSection is one page of the Settings area. The sections are listed
 // in settingsSections (the registry); the shell turns every entry into a
-// link in the settings navigation and a page at /settings/<Slug>. To build
-// a section that is still a placeholder, give its entry a Template (and a
-// Data and Routes function when it needs them); see "Settings sections" in
-// README.md.
+// link in the settings navigation and a page at /settings/<Slug>. To add a
+// section, give its entry a Template (and a Data and Routes function when it
+// needs them); see "Settings sections" in README.md.
 type SettingsSection struct {
 	// Slug is the last path element: /settings/<Slug>. It is also the ID of
 	// the section in tests.
@@ -32,11 +31,8 @@ type SettingsSection struct {
 	Description string
 	// Order sorts the navigation; the first section is where /settings leads.
 	Order int
-	// Template is the file below assets/templates/pages/. Empty means the
-	// "coming next" placeholder (settings_soon.html).
+	// Template is the file below assets/templates/pages/.
 	Template string
-	// Planned lists what a placeholder section will hold.
-	Planned []string
 	// Data returns the section's own data, which the template sees as
 	// .Page.Data. Optional.
 	Data func(s *Server, r *http.Request) (any, error)
@@ -44,8 +40,6 @@ type SettingsSection struct {
 	// Optional.
 	Routes func(s *Server)
 }
-
-const settingsPlaceholderTemplate = "settings_soon.html"
 
 // settingsSections is the registry of sections. Add a line here and a
 // template to add a section; everything else follows from the table.
@@ -80,7 +74,6 @@ type settingsNavItem struct {
 type settingsPage struct {
 	Section settingsNavItem
 	Nav     []settingsNavItem
-	Planned []string
 	Data    any
 }
 
@@ -97,16 +90,13 @@ func settingsNavFor(secs []SettingsSection, active string) []settingsNavItem {
 
 func settingsPageFor(secs []SettingsSection, sec SettingsSection, data any) settingsPage {
 	nav := settingsNavFor(secs, sec.Slug)
-	return settingsPage{Section: nav[slices.IndexFunc(nav, func(n settingsNavItem) bool { return n.Slug == sec.Slug })], Nav: nav, Planned: sec.Planned, Data: data}
+	return settingsPage{Section: nav[slices.IndexFunc(nav, func(n settingsNavItem) bool { return n.Slug == sec.Slug })], Nav: nav, Data: data}
 }
 
 // registerSettings adds the settings shell: /settings (a redirect to the
 // first section), a page per section and the section's own routes.
 func (s *Server) registerSettings() {
 	secs := settingsSections()
-	if s.pathCheck == nil {
-		s.pathCheck = osPathChecker{}
-	}
 	// The sidebar entry. It has no page of its own, so it is added to the
 	// list without a route; the redirect below serves the path.
 	s.pages = append(s.pages, Page{Path: "/settings", Title: "Settings", NavLabel: "Settings", NavIcon: "settings"})
@@ -114,12 +104,8 @@ func (s *Server) registerSettings() {
 		s.redirect(w, r, "/settings/"+secs[0].Slug)
 	})
 	for _, sec := range secs {
-		tmpl := sec.Template
-		if tmpl == "" {
-			tmpl = settingsPlaceholderTemplate
-		}
 		s.addPage(Page{
-			Path: "/settings/" + sec.Slug, Template: tmpl, Title: sec.Title,
+			Path: "/settings/" + sec.Slug, Template: sec.Template, Title: sec.Title,
 			Data: func(s *Server, r *http.Request) (any, error) {
 				var data any
 				if sec.Data != nil {
@@ -155,13 +141,9 @@ func (s *Server) renderSettingsPage(w http.ResponseWriter, r *http.Request, stat
 		s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not load this page. Details are in the server log.")
 		return
 	}
-	tmpl := sec.Template
-	if tmpl == "" {
-		tmpl = settingsPlaceholderTemplate
-	}
 	v := s.newView(r, sec.Title)
 	v.Page = settingsPageFor(settingsSections(), sec, data)
-	s.render(w, r, status, tmpl, "layout_app", v)
+	s.render(w, r, status, sec.Template, "layout_app", v)
 }
 
 // renderSettingsPart renders one named template of a page with data that is

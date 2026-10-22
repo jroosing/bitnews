@@ -44,26 +44,26 @@ func TestTokenHashEqual(t *testing.T) {
 
 func TestTokenKindsHaveDistinctPrefixes(t *testing.T) {
 	prefixes := map[string]auth.TokenKind{}
-	for _, k := range []auth.TokenKind{auth.KindSession, auth.KindAPI, auth.KindAdapterSAB, auth.KindAdapterQBit} {
+	for _, k := range []auth.TokenKind{auth.KindSession, auth.KindAppKey} {
 		p := k.Prefix()
 		if other, dup := prefixes[p]; dup {
 			t.Fatalf("kinds %q and %q share prefix %q", k, other, p)
 		}
 		prefixes[p] = k
 	}
-	assert.Equal(t, "bn_", auth.KindAPI.Prefix())
+	assert.Equal(t, "bitnews_", auth.KindAppKey.Prefix())
 	assert.Equal(t, "", auth.KindSession.Prefix())
 }
 
 func TestNewKindTokenCarriesKindPrefix(t *testing.T) {
-	plain, hash, err := auth.NewKindToken(auth.KindAPI)
+	plain, hash, err := auth.NewKindToken(auth.KindAppKey)
 
 	require.NoError(t, err)
-	assert.Regexp(t, regexp.MustCompile(`^bn_[a-z2-7]{52}$`), plain)
+	assert.Regexp(t, regexp.MustCompile(`^bitnews_[a-z2-7]{52}$`), plain)
 	assert.Equal(t, auth.HashToken(plain), hash)
 	k, ok := auth.KindOf(plain)
 	assert.True(t, ok)
-	assert.Equal(t, auth.KindAPI, k)
+	assert.Equal(t, auth.KindAppKey, k)
 }
 
 func TestNewKindTokenRejectsUnknownKind(t *testing.T) {
@@ -73,14 +73,14 @@ func TestNewKindTokenRejectsUnknownKind(t *testing.T) {
 }
 
 func TestKindOfRecognisesEveryKindAndRejectsGarbage(t *testing.T) {
-	for _, k := range []auth.TokenKind{auth.KindSession, auth.KindAPI, auth.KindAdapterSAB, auth.KindAdapterQBit} {
+	for _, k := range []auth.TokenKind{auth.KindSession, auth.KindAppKey} {
 		plain, _, err := auth.NewKindToken(k)
 		require.NoError(t, err)
 		got, ok := auth.KindOf(plain)
 		assert.True(t, ok, k)
 		assert.Equal(t, k, got)
 	}
-	_, ok := auth.KindOf("bn_short")
+	_, ok := auth.KindOf("bitnews_short")
 	assert.False(t, ok)
 	_, ok = auth.KindOf("")
 	assert.False(t, ok)

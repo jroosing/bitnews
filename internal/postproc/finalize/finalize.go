@@ -142,18 +142,18 @@ func (f *Finisher) Finish(ctx context.Context, d core.Download, dir, unpackedDir
 		return "", err
 	}
 	dst := fsutil.Unique(base)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o777); err != nil {
+	if err := fsutil.MkdirAll(filepath.Dir(dst), 0o777); err != nil {
 		return "", fmt.Errorf("finalize: create %q: %w", filepath.Dir(dst), err)
 	}
 	res, err := f.deps.Mover(dir, dst)
 	if res.CrossDevice {
 		f.deps.Warn(ctx, Warning{
 			Kind: "cross_device", DownloadID: d.ID, Path: dst,
-			Message: fmt.Sprintf("moved %q to %q across filesystems; hardlinks will not work for this layout", dir, dst),
+			Message: fmt.Sprintf("the finished download was copied instead of renamed from %q to %q because the folders are on different filesystems (slower); Sonarr/Radarr can only hardlink it into the library if the library shares the filesystem of the complete folder", dir, dst),
 		})
 	}
 	if err != nil {
-		return "", fmt.Errorf("finalize: %w", err)
+		return "", fmt.Errorf("finalize: %w", fsutil.WriteError(err))
 	}
 	return dst, nil
 }

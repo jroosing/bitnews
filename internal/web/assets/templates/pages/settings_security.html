@@ -5,8 +5,7 @@
 {{template "access_card" .Page.Data.Access}}
 {{template "hosts_card" .Page.Data.Hosts}}
 {{template "password_card" .Page.Data.Password}}
-{{template "apikeys_card" .Page.Data.Keys}}
-{{template "adapters_card" .Page.Data.Adapters}}
+{{template "appkey_card" .Page.Data.Key}}
 {{template "settings_layout_end"}}
 {{end}}
 
@@ -92,7 +91,7 @@
     <legend class="px-2 text-sm font-semibold text-fg">Turn sign-in off</legend>
     <div class="alert alert-warn">
       {{icon "warning" "mt-0.5 size-5 shrink-0"}}
-      <p class="min-w-0">Anyone who can reach this address can control bitnews and everything it downloads, with no password. Only do this if something else in front of bitnews, such as a reverse proxy with its own login, already protects it. Sonarr, Radarr and API keys are not affected.</p>
+      <p class="min-w-0">Anyone who can reach this address can control bitnews and everything it downloads, with no password. Only do this if something else in front of bitnews, such as a reverse proxy with its own login, already protects it. Sonarr, Radarr and anything using the API key are not affected.</p>
     </div>
     {{template "security_switch" dict "ID" "access-disable-auth" "Name" "disable_auth" "Label" "Do not ask anyone to sign in" "Checked" .DisableAuth "Error" (index .Errors "disable_auth")}}
   </fieldset>
@@ -157,137 +156,62 @@
 {{end}}
 {{end}}
 {{/*
-  security_secret: a credential shown once, in the answer to its creation.
-  Dot is a shownSecret. The values are in this response only: no later page
-  load contains them.
+  appkey_card: the one API key (ADR-0006), as plain text with a Copy button.
+  The key is in this card only. Dot is an appKeyView.
 */}}
-{{define "security_secret"}}
-<div id="{{.ID}}-secret" class="rounded-xl border border-ok-fg bg-ok-soft p-4 text-ok-fg" role="status">
-  <p class="flex items-center gap-2 font-semibold">{{icon "key" "size-5 shrink-0"}}{{.Heading}}</p>
-  <p class="mt-1.5 text-sm">{{.Intro}}</p>
-  <dl class="mt-4 space-y-3">
-    {{- range .Fields}}
+{{define "appkey_card"}}
+{{if .Confirm}}{{template "security_confirm" .Confirm}}{{else}}
+<section id="appkey-card" class="card" aria-labelledby="appkey-title">
+  <header class="card-header">
     <div>
-      <dt class="text-xs font-medium">{{.Label}}</dt>
-      <dd class="mt-1 flex flex-wrap items-center gap-2">
-        <code class="min-w-0 flex-1 select-all break-all rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">{{.Value}}</code>
-        {{template "copy_button" dict "Text" .Value}}
-      </dd>
+      <h2 id="appkey-title" class="text-base">API key</h2>
+      <p class="mt-0.5 text-sm text-fg-muted">One key for everything that talks to bitnews: Sonarr and Radarr (as a SABnzbd or qBittorrent download client) and your own scripts (<code>Authorization: Bearer</code>). Anyone who has it can control bitnews, so treat it like a password.</p>
     </div>
-    {{- end}}
-  </dl>
-  {{- range .Hints}}<p class="mt-3 text-xs">{{.}}</p>{{end}}
-  <div class="mt-4 flex justify-end">
-    <a href="/settings/security" class="btn btn-secondary btn-sm" hx-get="{{.Done}}" hx-target="#{{.ID}}-card" hx-swap="outerHTML">I have copied it</a>
+  </header>
+  {{if .Unavailable}}
+  <div class="card-body">{{template "alert" dict "Variant" "info" "Body" "The API key is not available in this build."}}</div>
+  {{else}}
+  <div class="card-body space-y-6">
+    <div>
+      <p id="appkey-label" class="label">API key</p>
+      <div class="flex flex-wrap items-center gap-2">
+        <code id="appkey-value" aria-labelledby="appkey-label" class="min-w-0 flex-1 select-all break-all rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm text-fg">{{.Key}}</code>
+        {{template "copy_button" dict "Text" .Key}}
+      </div>
+      <p class="help">The same key is the SABnzbd API key, the qBittorrent password and the API bearer token.</p>
+    </div>
+
+    <div>
+      <h3 class="text-sm font-semibold">Settings for Sonarr and Radarr</h3>
+      <p class="mt-1 text-sm text-fg-muted">In Settings, Download Clients, add SABnzbd (Usenet) or qBittorrent (torrents) and enter these values. For SABnzbd the API key is the key above; for qBittorrent the password is.</p>
+      <dl class="mt-4 space-y-3">
+        {{template "appkey_value" dict "Label" "Host" "Value" .Host}}
+        {{template "appkey_value" dict "Label" "Port" "Value" .Port}}
+        {{template "appkey_value" dict "Label" "URL base" "Value" "sabnzbd"}}
+        {{template "appkey_value" dict "Label" "qBittorrent username" "Value" "bitnews"}}
+      </dl>
+      <p class="mt-3 text-xs text-fg-muted">SABnzbd needs the URL base <code>sabnzbd</code>; leave the URL base empty for qBittorrent. {{if .TLS}}Turn “Use SSL” on.{{else}}Leave “Use SSL” off.{{end}}</p>
+      {{if .Loopback}}<p class="mt-2 text-xs text-fg-muted">You opened bitnews as “{{.Host}}”. If your media manager runs on another machine or in a container, use this machine's network address or name instead.</p>{{end}}
+    </div>
   </div>
+  <footer class="card-footer justify-between">
+    <p class="text-sm text-fg-muted">Rotating makes a new key. Every client stops working until you update it.</p>
+    <form method="post" action="/settings/security/app-key" hx-post="/settings/security/app-key" hx-target="#appkey-card" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']">
+      {{template "csrf_field" .}}
+      <button type="submit" class="btn btn-secondary"><span class="btn-spinner" aria-hidden="true"></span>{{icon "refresh" "size-4 shrink-0"}}Rotate key</button>
+    </form>
+  </footer>
+  {{end}}
+</section>
+{{end}}
+{{end}}
+
+{{define "appkey_value"}}
+<div>
+  <dt class="text-xs font-medium text-fg-muted">{{.Label}}</dt>
+  <dd class="mt-1 flex flex-wrap items-center gap-2">
+    <code class="min-w-0 flex-1 select-all break-all rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">{{.Value}}</code>
+    {{template "copy_button" dict "Text" .Value}}
+  </dd>
 </div>
-{{end}}
-
-{{define "apikeys_card"}}
-<section id="apikeys-card" class="card" aria-labelledby="apikeys-title">
-  <header class="card-header">
-    <div>
-      <h2 id="apikeys-title" class="text-base">API keys</h2>
-      <p class="mt-0.5 text-sm text-fg-muted">For scripts and other programs that talk to bitnews' own API. Not for Sonarr or Radarr: they get their own credentials below. A key can do everything its access level allows, so treat it like a password.</p>
-    </div>
-  </header>
-  {{if .Unavailable}}
-  <div class="card-body">{{template "alert" dict "Variant" "info" "Body" "API keys are not available in this build."}}</div>
-  {{else}}
-  {{with .Secret}}<div class="card-body border-b border-line">{{template "security_secret" .}}</div>{{end}}
-  {{if .Items}}
-  {{template "table_start" dict "Caption" "API keys" "Class" "rounded-none border-0 shadow-none"}}
-    <thead><tr><th scope="col">Name</th><th scope="col">Access</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-    <tbody>
-      {{range .Items}}{{template "apikey_row" .}}{{end}}
-    </tbody>
-  {{template "table_end"}}
-  {{else}}
-  {{template "empty_state" dict "Icon" "key" "Title" "No API keys yet" "Body" "Create one when a script needs to read or control bitnews."}}
-  {{end}}
-
-  <form id="apikeys-form" method="post" action="/settings/security/api-keys" hx-post="/settings/security/api-keys" hx-target="#apikeys-card" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']" class="border-t border-line p-5">
-    {{template "csrf_field" .}}
-    <h3 class="text-sm font-semibold">Create an API key</h3>
-    {{if .Error}}<div class="mt-3">{{template "alert" dict "Variant" "danger" "Body" .Error "ID" "apikeys-error"}}</div>{{end}}
-    <div class="mt-3 grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] sm:items-start">
-      {{template "field" dict "ID" "apikeys-name" "Name" "name" "Label" "Name" "Value" .Name "Placeholder" "Home Assistant" "Help" "Where the key will be used, so you can recognise it later." "Error" (index .Errors "name") "Required" true "MaxLength" 100 "Autocomplete" "off"}}
-      {{template "select_field" dict "ID" "apikeys-scope" "Name" "scope" "Label" "Access" "Selected" .Scope "Required" true "Error" (index .Errors "scope") "Help" "Read only can look but not change anything." "Options" .Scopes}}
-    </div>
-    <div class="mt-4 flex justify-end">
-      <button type="submit" class="btn btn-primary"><span class="btn-spinner" aria-hidden="true"></span>{{icon "plus" "size-4 shrink-0"}}Create key</button>
-    </div>
-  </form>
-  {{end}}
-</section>
-{{end}}
-
-{{define "apikey_row"}}
-<tr id="apikey-{{.ID}}">
-  <td data-label="Name" class="min-w-0 break-words"><span class="font-medium text-fg">{{.Name}}</span></td>
-  <td data-label="Access"><span class="badge {{if eq .Scope "write"}}badge-processing{{else}}badge-queued{{end}}">{{.ScopeLabel}}</span></td>
-  <td data-label="Created" class="whitespace-nowrap text-fg-muted">{{with .Created}}{{if .Valid}}<time datetime="{{.ISO}}" title="{{.Abs}}">{{.Rel}}</time>{{end}}{{end}}</td>
-  <td data-label="Last used" class="whitespace-nowrap text-fg-muted">{{if .LastUsed.Valid}}<time datetime="{{.LastUsed.ISO}}" title="{{.LastUsed.Abs}}">{{.LastUsed.Rel}}</time>{{else}}Never{{end}}</td>
-  <td data-label="" class="whitespace-nowrap md:w-px">
-    <form method="post" action="/settings/security/api-keys/{{.ID}}/revoke" class="flex justify-end">
-      {{template "csrf_field" .}}
-      <button type="submit" class="btn btn-ghost btn-sm" hx-post="/settings/security/api-keys/{{.ID}}/revoke" hx-target="#apikeys-card" hx-swap="outerHTML" hx-confirm="{{print "Revoke the API key " .Name "? Anything using it stops working right away."}}" data-confirm-tone="danger" data-confirm-label="Revoke">{{icon "trash" "size-4 shrink-0"}}Revoke<span class="sr-only"> {{.Name}}</span></button>
-    </form>
-  </td>
-</tr>
-{{end}}
-{{define "adapters_card"}}
-<section id="adapters-card" class="card" aria-labelledby="adapters-title">
-  <header class="card-header">
-    <div>
-      <h2 id="adapters-title" class="text-base">Media manager credentials</h2>
-      <p class="mt-0.5 text-sm text-fg-muted">What Sonarr, Radarr and other media managers use to talk to bitnews as a SABnzbd or qBittorrent download client. Make one credential per program, so you can revoke each on its own. They work on that one door only, never for the web interface or the API.</p>
-    </div>
-  </header>
-  {{if .Unavailable}}
-  <div class="card-body">{{template "alert" dict "Variant" "info" "Body" "Media manager credentials are not available in this build."}}</div>
-  {{else}}
-  {{with .Secret}}<div class="card-body border-b border-line">{{template "security_secret" .}}</div>{{end}}
-  {{if .Items}}
-  {{template "table_start" dict "Caption" "Media manager credentials" "Class" "rounded-none border-0 shadow-none"}}
-    <thead><tr><th scope="col">Name</th><th scope="col">Acts as</th><th scope="col">Username</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-    <tbody>
-      {{range .Items}}{{template "adapter_row" .}}{{end}}
-    </tbody>
-  {{template "table_end"}}
-  {{else}}
-  {{template "empty_state" dict "Icon" "key" "Title" "No media managers connected" "Body" "Create a credential, then enter its values in Sonarr, Radarr or Lidarr as a SABnzbd or qBittorrent download client."}}
-  {{end}}
-
-  <form id="adapters-form" method="post" action="/settings/security/adapters" hx-post="/settings/security/adapters" hx-target="#adapters-card" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']" class="border-t border-line p-5">
-    {{template "csrf_field" .}}
-    <h3 class="text-sm font-semibold">Create a credential</h3>
-    {{if .Error}}<div class="mt-3">{{template "alert" dict "Variant" "danger" "Body" .Error "ID" "adapters-error"}}</div>{{end}}
-    <div class="mt-3 grid gap-4 sm:grid-cols-2 sm:items-start">
-      {{template "select_field" dict "ID" "adapters-kind" "Name" "kind" "Label" "Download client type" "Selected" .Kind "Required" true "Error" (index .Errors "kind") "Help" "SABnzbd for Usenet downloads, qBittorrent for torrents." "Options" .Kinds}}
-      {{template "field" dict "ID" "adapters-name" "Name" "name" "Label" "Name" "Value" .Name "Placeholder" "Sonarr" "Help" "The program that will use it." "Error" (index .Errors "name") "Required" true "MaxLength" 100 "Autocomplete" "off"}}
-      {{template "field" dict "ID" "adapters-username" "Name" "username" "Label" "Username" "Optional" true "Value" .Username "Placeholder" "sonarr" "Help" "qBittorrent only. Empty makes one from the name." "Error" (index .Errors "username") "MaxLength" 32 "Raw" true "Autocomplete" "off"}}
-    </div>
-    <div class="mt-4 flex justify-end">
-      <button type="submit" class="btn btn-primary"><span class="btn-spinner" aria-hidden="true"></span>{{icon "plus" "size-4 shrink-0"}}Create credential</button>
-    </div>
-  </form>
-  {{end}}
-</section>
-{{end}}
-
-{{define "adapter_row"}}
-<tr id="adapter-{{.ID}}">
-  <td data-label="Name" class="min-w-0 break-words"><span class="font-medium text-fg">{{.Name}}</span></td>
-  <td data-label="Acts as"><span class="badge {{if eq .Kind "qbit"}}badge-ready{{else}}badge-downloading{{end}}">{{.KindLabel}}</span></td>
-  <td data-label="Username">{{if .Username}}<code class="break-all text-xs text-fg">{{.Username}}</code>{{else}}<span class="text-fg-subtle">None</span>{{end}}</td>
-  <td data-label="Created" class="whitespace-nowrap text-fg-muted">{{with .Created}}{{if .Valid}}<time datetime="{{.ISO}}" title="{{.Abs}}">{{.Rel}}</time>{{end}}{{end}}</td>
-  <td data-label="Last used" class="whitespace-nowrap text-fg-muted">{{if .LastUsed.Valid}}<time datetime="{{.LastUsed.ISO}}" title="{{.LastUsed.Abs}}">{{.LastUsed.Rel}}</time>{{else}}Never{{end}}</td>
-  <td data-label="" class="whitespace-nowrap md:w-px">
-    <form method="post" action="/settings/security/adapters/{{.ID}}/revoke" class="flex justify-end">
-      {{template "csrf_field" .}}
-      <button type="submit" class="btn btn-ghost btn-sm" hx-post="/settings/security/adapters/{{.ID}}/revoke" hx-target="#adapters-card" hx-swap="outerHTML" hx-confirm="{{print "Revoke the credential for " .Name "? It stops working right away and the program loses its connection to bitnews."}}" data-confirm-tone="danger" data-confirm-label="Revoke">{{icon "trash" "size-4 shrink-0"}}Revoke<span class="sr-only"> {{.Name}}</span></button>
-    </form>
-  </td>
-</tr>
 {{end}}

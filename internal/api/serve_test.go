@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/api"
-	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
 func TestHTTPServerIsHardened(t *testing.T) {
@@ -79,7 +78,7 @@ func listenWith(t *testing.T, e *env, tweak func(*http.Server)) (net.Listener, *
 func TestRealServerServesTheAPIAndCapsRequestBodies(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.newKey(core.APIKeyScopeWrite)
+	key := e.apiKey()
 	base, stop := start(t, e)
 
 	health, err := oneShot.Get(base + "/api/v1/health")

@@ -543,6 +543,28 @@ func classify(err error) FailureReason {
 // maxDetailRunes caps a failure detail.
 const maxDetailRunes = 200
 
+// detailer is implemented by errors that vouch for their own failure text,
+// such as fsutil's permission error, which names a folder from the settings
+// and the user id. Their text keeps its path; any other error is redacted.
+type detailer interface{ FailureDetail() string }
+
+// failureDetail is the stored detail of a failure: the vouched text of the
+// first error in the chain that has one, else the redacted error text.
+func failureDetail(err error) string {
+	var d detailer
+	if errors.As(err, &d) {
+		return truncateDetail(d.FailureDetail())
+	}
+	return redactDetail(err.Error())
+}
+
+func truncateDetail(s string) string {
+	if utf8.RuneCountInString(s) > maxDetailRunes {
+		s = string([]rune(s)[:maxDetailRunes])
+	}
+	return s
+}
+
 var (
 	// windowsPath matches drive-letter and UNC paths.
 	windowsPath = regexp.MustCompile(`[A-Za-z]:\\[^\s"'()<>|;,]*|\\\\[^\s"'()<>|;,]+`)
@@ -556,16 +578,13 @@ var (
 func redactDetail(s string) string {
 	s = windowsPath.ReplaceAllString(s, "<dir>")
 	s = unixPath.ReplaceAllString(s, "${1}<dir>")
-	if utf8.RuneCountInString(s) > maxDetailRunes {
-		s = string([]rune(s)[:maxDetailRunes])
-	}
-	return s
+	return truncateDetail(s)
 }
 
 // fail moves d to StateFailed for err and publishes the events. It never
 // touches the Download's data: torrents keep seeding.
 func (p *PostProcessor) fail(ctx context.Context, d Download, err error) error {
-	reason, detail := classify(err), redactDetail(err.Error())
+	reason, detail := classify(err), failureDetail(err)
 	failed, uerr := p.cfg.Downloads.UpdateState(ctx, d.ID, StateChange{
 		To: StateFailed, At: p.cfg.Clock(), FailureReason: reason, FailureDetail: detail,
 	})

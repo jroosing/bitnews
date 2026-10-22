@@ -30,9 +30,6 @@ type Config struct {
 	LogFormat LogFormat
 	// Umask is applied process-wide before any file is created.
 	Umask fs.FileMode
-	// RunAs is the identity to drop to when started as root. It is nil when
-	// PUID and PGID are unset.
-	RunAs *Identity
 	// AdminPasswordFile optionally bootstraps the admin password. It is
 	// empty when unset.
 	AdminPasswordFile string
@@ -42,12 +39,6 @@ type Config struct {
 	// setting. Zero means not set: the setting decides, by default 51413.
 	// Peers need the port forwarded to reach bitnews: there is no UPnP.
 	TorrentPort int
-}
-
-// Identity is a numeric user and group id.
-type Identity struct {
-	UID int
-	GID int
 }
 
 // LogFormat is the output format of the logger.
@@ -82,14 +73,12 @@ var (
 	optListen      = option{"listen", "BITNEWS_LISTEN", "host:port", "address for the API, adapters and UI", "0.0.0.0:9494"}
 	optLogLevel    = option{"log-level", "BITNEWS_LOG_LEVEL", "level", "debug, info, warn or error", "info"}
 	optLogFormat   = option{"log-format", "BITNEWS_LOG_FORMAT", "format", "text or json", "text"}
-	optPUID        = option{"", "PUID", "uid", "user id to drop to when started as root; requires PGID", "unset"}
-	optPGID        = option{"", "PGID", "gid", "group id to drop to when started as root; requires PUID", "unset"}
-	optUmask       = option{"", "UMASK", "octal", "file mode creation mask applied at startup", "002"}
+	optUmask       = option{"", "UMASK", "octal", "file mode creation mask applied at startup, so files are group-writable for Sonarr and Radarr", "002"}
 	optTorrentPort = option{"", "BITNEWS_TORRENT_PORT", "port", "TCP and uTP port the torrent engine listens on, overriding the setting; forward it for incoming peers (no UPnP)", "the torrent port setting (51413)"}
 	optAdminPass   = option{"", "BITNEWS_ADMIN_PASSWORD_FILE", "path", "absolute path of a file holding the initial admin password", "unset"}
 )
 
-var options = []option{optConfigDir, optKeyFile, optListen, optLogLevel, optLogFormat, optPUID, optPGID, optUmask, optAdminPass, optTorrentPort}
+var options = []option{optConfigDir, optKeyFile, optListen, optLogLevel, optLogFormat, optUmask, optAdminPass, optTorrentPort}
 
 // Usage writes the help text for every bootstrap option to w.
 func Usage(w io.Writer) {
@@ -222,25 +211,6 @@ func Load(args []string, getenv func(string) (string, bool)) (Config, error) {
 	}
 	cfg.Umask = fs.FileMode(mask)
 
-	puid, pgid := lookup(optPUID, ""), lookup(optPGID, "")
-	switch {
-	case puid.value == "" && pgid.value == "":
-	case puid.value == "":
-		return Config{}, errors.New("PGID is set but PUID is not: set both or neither")
-	case pgid.value == "":
-		return Config{}, errors.New("PUID is set but PGID is not: set both or neither")
-	default:
-		uid, err := parseID(puid)
-		if err != nil {
-			return Config{}, err
-		}
-		gid, err := parseID(pgid)
-		if err != nil {
-			return Config{}, err
-		}
-		cfg.RunAs = &Identity{UID: uid, GID: gid}
-	}
-
 	if adminPass := lookup(optAdminPass, ""); adminPass.value != "" {
 		if !filepath.IsAbs(adminPass.value) {
 			return Config{}, adminPass.errorf("must be an absolute path")
@@ -256,15 +226,6 @@ func Load(args []string, getenv func(string) (string, bool)) (Config, error) {
 		cfg.TorrentPort = int(n)
 	}
 	return cfg, nil
-}
-
-// parseID parses a numeric uid or gid, which is a 32-bit unsigned value.
-func parseID(s setting) (int, error) {
-	id, err := strconv.ParseUint(s.value, 10, 32)
-	if err != nil {
-		return 0, s.errorf("must be a number from 0 to 4294967295")
-	}
-	return int(id), nil
 }
 
 // validateListen checks that addr is host:port with a numeric port. The

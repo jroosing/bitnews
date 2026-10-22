@@ -34,58 +34,9 @@ type qbitClient struct {
 	pass string
 }
 
-// uiSession logs in to the own API like the UI does and returns the session
-// cookie and the CSRF token: adapter credentials can only be managed there.
-func (e *e2e) uiSession() (*http.Cookie, string) {
+func (e *e2e) newQBit() *qbitClient {
 	e.t.Helper()
-	body, err := json.Marshal(map[string]string{"username": "admin", "password": "correct horse battery staple"})
-	require.NoError(e.t, err)
-	resp, err := e.client.Post(e.ts.URL+"/api/v1/auth/login", "application/json", bytes.NewReader(body))
-	require.NoError(e.t, err)
-	defer func() { _ = resp.Body.Close() }()
-	require.Equal(e.t, http.StatusOK, resp.StatusCode)
-	var out struct {
-		CSRFToken string `json:"csrf_token"`
-	}
-	require.NoError(e.t, json.NewDecoder(resp.Body).Decode(&out))
-	for _, ck := range resp.Cookies() {
-		if ck.Name == auth.SessionCookieName {
-			return ck, out.CSRFToken
-		}
-	}
-	e.t.Fatal("no session cookie")
-	return nil, ""
-}
-
-// newCredential creates an adapter credential through POST
-// /api/v1/adapter-credentials with a UI session.
-func (e *e2e) newCredential(kind, name, username string) (user, key string) {
-	e.t.Helper()
-	ck, csrf := e.uiSession()
-	body, err := json.Marshal(map[string]any{"kind": kind, "name": name, "username": username})
-	require.NoError(e.t, err)
-	req, err := http.NewRequest("POST", e.ts.URL+"/api/v1/adapter-credentials", bytes.NewReader(body))
-	require.NoError(e.t, err)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(auth.CSRFHeader, csrf)
-	req.AddCookie(ck)
-	resp, err := e.client.Do(req)
-	require.NoError(e.t, err)
-	defer func() { _ = resp.Body.Close() }()
-	raw, _ := io.ReadAll(resp.Body)
-	require.Equal(e.t, http.StatusCreated, resp.StatusCode, string(raw))
-	var cred struct {
-		Username string `json:"username"`
-		Key      string `json:"key"`
-	}
-	require.NoError(e.t, json.Unmarshal(raw, &cred))
-	return cred.Username, cred.Key
-}
-
-func (e *e2e) newQBit(name, username string) *qbitClient {
-	e.t.Helper()
-	user, key := e.newCredential("adapter_qbit", name, username)
-	return &qbitClient{t: e.t, e: e, user: user, pass: key}
+	return &qbitClient{t: e.t, e: e, user: auth.QBitUsername, pass: e.apiKey}
 }
 
 func (c *qbitClient) do(method, path string, body io.Reader, contentType string) (int, string, []*http.Cookie) {
@@ -204,24 +155,17 @@ func (c *qbitClient) waitComplete(hash string, id core.ID) (qbitTorrent, []strin
 	return last, seen
 }
 
-func TestQBitLoginIsAdapterCredentialOnly(t *testing.T) {
+func TestQBitLoginIsTheFixedUsernameAndTheKeyOnly(t *testing.T) {
 	e := newTorrentE2E(t)
 	e.start()
-	c := e.newQBit("Sonarr", "sonarr")
+	c := e.newQBit()
 
-	assert.Equal(t, "Fails.", c.login("sonarr", "wrong"))
+	assert.Equal(t, "Fails.", c.login("bitnews", "wrong"))
 	assert.Equal(t, "Fails.", c.login("nobody", c.pass))
 	status, _ := c.get("torrents/info")
 	assert.Equal(t, http.StatusForbidden, status, "no session, no access")
 
-	// A SAB credential is not a qBit login, and the SID is useless elsewhere.
-	sabUser, sabKey := e.newCredential("adapter_sab", "SAB", "")
-	other := &qbitClient{t: t, e: e}
-	assert.Equal(t, "Fails.", other.login(sabUser, sabKey))
-	assert.Equal(t, "Fails.", other.login("SAB", sabKey))
-
 	// Wait out the per-IP backoff of the failed logins before the good one.
-	time.Sleep(0)
 	good := &qbitClient{t: t, e: e}
 	require.Eventually(t, func() bool { return good.login(c.user, c.pass) == "Ok." }, 20*time.Second, 200*time.Millisecond)
 	require.NotEmpty(t, good.sid)
@@ -238,7 +182,7 @@ func TestQBitMagnetEndToEnd(t *testing.T) {
 	c0 := torrenttest.MakeRandom(t, "Show.S01.1080p", map[string]int{"ep1.mkv": 90_000, "ep2.mkv": 70_000})
 	seeder := torrenttest.Seed(t, c0)
 	e.start()
-	q := e.newQBit("Sonarr", "sonarr")
+	q := e.newQBit()
 	require.Equal(t, "Ok.", q.login(q.user, q.pass))
 	hash := c0.Hash.String()
 
@@ -313,7 +257,7 @@ func TestQBitTorrentFileDeleteWithFilesAndDuplicates(t *testing.T) {
 	c0 := torrenttest.MakeRandom(t, "Movie.2026", map[string]int{"movie.mkv": 80_000})
 	seeder := torrenttest.Seed(t, c0)
 	e.start()
-	q := e.newQBit("Radarr", "radarr")
+	q := e.newQBit()
 	require.Equal(t, "Ok.", q.login(q.user, q.pass))
 	hash := c0.Hash.String()
 
@@ -362,7 +306,7 @@ func TestQBitPausedAddWaitsAndResumeStartsIt(t *testing.T) {
 	c0 := torrenttest.MakeRandom(t, "Paused.One", map[string]int{"f.bin": 30_000})
 	seeder := torrenttest.Seed(t, c0)
 	e.start()
-	q := e.newQBit("Sonarr", "sonarr")
+	q := e.newQBit()
 	require.Equal(t, "Ok.", q.login(q.user, q.pass))
 	hash := c0.Hash.String()
 
@@ -391,7 +335,7 @@ func TestQBitSetShareLimitsPausesASeedingTorrentAtOnce(t *testing.T) {
 	c0 := torrenttest.MakeRandom(t, "Limited.One", map[string]int{"f.bin": 40_000})
 	seeder := torrenttest.Seed(t, c0)
 	e.start()
-	q := e.newQBit("Sonarr", "sonarr")
+	q := e.newQBit()
 	require.Equal(t, "Ok.", q.login(q.user, q.pass))
 	hash := c0.Hash.String()
 	status, _ := q.form("torrents/add", url.Values{"urls": {c0.Magnet(torrenttest.Addr(seeder))}})
@@ -419,7 +363,7 @@ func TestQBitSetShareLimitsPausesASeedingTorrentAtOnce(t *testing.T) {
 func TestQBitIsTorrentOnlyAndNeverShowsNZBs(t *testing.T) {
 	e := newTorrentE2E(t)
 	e.start()
-	q := e.newQBit("Sonarr", "sonarr")
+	q := e.newQBit()
 	require.Equal(t, "Ok.", q.login(q.user, q.pass))
 	fx := nntptest.BuildFixture(t, map[string][]byte{"a.bin": payload(5000, 3)}, 4096)
 	nzbDL := e.addNZB("An.NZB", fx.NZB, "")

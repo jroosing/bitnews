@@ -174,6 +174,8 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 	appOpts := []app.Option{app.WithClock(e.clock.Now), app.WithDataRemover(d.remover)}
 	d.svc = app.NewDownloadService(d.repo, cats, bus, appOpts...)
 	sources := store.NewDownloadSourceRepo(db, key)
+	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
+	require.NoError(t, err)
 	d.catSvc = app.NewCategoryService(cats, d.repo, bus, appOpts...)
 	addOpts := []app.Option{app.WithLogger(logger), app.WithClock(e.clock.Now)}
 	if !cfg.noTorrents {
@@ -201,8 +203,8 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 		Logger: logger, Downloads: d.svc, Adder: adder, Categories: d.catSvc,
 		Servers:  deps.Servers,
 		Settings: e.settings, Setup: e.setup, Sessions: e.sessions, UIAuth: uiAuth,
-		APIKeys: auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger)),
-		Bus:     bus, Web: webUI,
+		AppKey: appKey,
+		Bus:    bus, Web: webUI,
 	})
 	require.NoError(t, err)
 	e.handler = srv.Handler()
