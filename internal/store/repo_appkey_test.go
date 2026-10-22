@@ -15,22 +15,21 @@ var _ core.AppKeyRepo = (*store.AppKeyRepo)(nil)
 
 const plainAppKey = "bitnews_abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqr"
 
-func newAppKeyRepo(t *testing.T) (*store.AppKeyRepo, *store.DB, store.Key) {
+func newAppKeyRepo(t *testing.T) (*store.AppKeyRepo, *store.DB) {
 	t.Helper()
 	db, _ := openTemp(t)
-	key := store.GenerateKey()
-	return store.NewAppKeyRepo(db, key), db, key
+	return store.NewAppKeyRepo(db), db
 }
 
 func rawAppKey(t *testing.T, db *store.DB) string {
 	t.Helper()
 	var raw string
-	require.NoError(t, db.Reader().QueryRow(`SELECT sealed_key FROM app_key WHERE id = 1`).Scan(&raw))
+	require.NoError(t, db.Reader().QueryRow(`SELECT key FROM app_key WHERE id = 1`).Scan(&raw))
 	return raw
 }
 
 func TestAppKeyRepoHasNoKeyOnAFreshDatabase(t *testing.T) {
-	repo, _, _ := newAppKeyRepo(t)
+	repo, _ := newAppKeyRepo(t)
 
 	_, err := repo.Get(context.Background())
 
@@ -39,7 +38,7 @@ func TestAppKeyRepoHasNoKeyOnAFreshDatabase(t *testing.T) {
 
 func TestAppKeyRepoSetThenGetRoundTrips(t *testing.T) {
 	ctx := context.Background()
-	repo, _, _ := newAppKeyRepo(t)
+	repo, _ := newAppKeyRepo(t)
 
 	require.NoError(t, repo.Set(ctx, plainAppKey))
 	got, err := repo.Get(ctx)
@@ -48,23 +47,17 @@ func TestAppKeyRepoSetThenGetRoundTrips(t *testing.T) {
 	assert.Equal(t, plainAppKey, got.Reveal())
 }
 
-func TestAppKeyRepoStoresTheKeySealedWithTheRowAAD(t *testing.T) {
+func TestAppKeyRepoStoresTheKeyAsPlainText(t *testing.T) {
 	ctx := context.Background()
-	repo, db, key := newAppKeyRepo(t)
+	repo, db := newAppKeyRepo(t)
 	require.NoError(t, repo.Set(ctx, plainAppKey))
 
-	raw := rawAppKey(t, db)
-
-	assert.NotContains(t, raw, plainAppKey)
-	assert.Contains(t, raw, "v1:")
-	plain, err := store.Unseal(key, raw, store.AAD("app_key", "sealed_key", "1"))
-	require.NoError(t, err)
-	assert.Equal(t, plainAppKey, plain)
+	assert.Equal(t, plainAppKey, rawAppKey(t, db))
 }
 
 func TestAppKeyRepoSetReplacesTheKeyAndKeepsASingleRow(t *testing.T) {
 	ctx := context.Background()
-	repo, db, _ := newAppKeyRepo(t)
+	repo, db := newAppKeyRepo(t)
 	require.NoError(t, repo.Set(ctx, plainAppKey))
 
 	require.NoError(t, repo.Set(ctx, "bitnews_other"))
@@ -73,16 +66,6 @@ func TestAppKeyRepoSetReplacesTheKeyAndKeepsASingleRow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "bitnews_other", got.Reveal())
 	assert.Equal(t, 1, count(t, db.Reader(), "app_key"))
-}
-
-func TestAppKeyRepoSealedWithAnotherMasterKeyIsUnreadable(t *testing.T) {
-	ctx := context.Background()
-	repo, db, _ := newAppKeyRepo(t)
-	require.NoError(t, repo.Set(ctx, plainAppKey))
-
-	_, err := store.NewAppKeyRepo(db, store.GenerateKey()).Get(ctx)
-
-	assert.ErrorIs(t, err, core.ErrAppKeyUnreadable)
 }
 
 func TestMigration0008CreatesAppKeyAndDropsTheOldCredentialTables(t *testing.T) {
@@ -96,6 +79,8 @@ func TestMigration0008CreatesAppKeyAndDropsTheOldCredentialTables(t *testing.T) 
 		require.NoError(t, db.Reader().QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n))
 		assert.Zero(t, n, table)
 	}
-	_, err := db.Writer().ExecContext(context.Background(), `INSERT INTO app_key (id, sealed_key) VALUES (2, 'x')`)
+	_, err := db.Writer().ExecContext(context.Background(), `INSERT INTO app_key (id, key, updated_at) VALUES (2, 'x', 0)`)
 	assert.Error(t, err, "only the row with id 1 is allowed")
+	_, err = db.Writer().ExecContext(context.Background(), `INSERT INTO app_key (id, key, updated_at) VALUES (1, '', 0)`)
+	assert.Error(t, err, "an empty key is refused")
 }

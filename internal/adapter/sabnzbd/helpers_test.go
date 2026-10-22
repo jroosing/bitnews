@@ -155,7 +155,7 @@ func newStack(t *testing.T, opts ...stackOption) *stack {
 	s.sources = store.NewDownloadSourceRepo(db, store.GenerateKey())
 	s.adder = app.NewAddService(s.dls, s.sources, s.settings,
 		append(appOpts, sc.addOpts...)...)
-	s.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, store.GenerateKey()), auth.WithAppKeyLogger(logger))
+	s.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
 	s.key = s.appKey.Current().Reveal()
 

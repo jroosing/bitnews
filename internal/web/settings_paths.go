@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -29,10 +30,6 @@ type pathsView struct {
 	Dirty bool
 	// Saved is the plain-POST success note; htmx shows a toast instead.
 	Saved bool
-	// Checked is set after a successful save: Warnings (possibly none) is
-	// the result of looking at the folders.
-	Checked  bool
-	Warnings []pathWarning
 }
 
 // pathsGroup is the two folders of one protocol.
@@ -105,14 +102,11 @@ func parsePaths(form map[string][]string) (paths core.Paths, typed core.Paths, e
 	}
 	clean := func(name string) (typedValue, cleaned string) {
 		typedValue = get(name)
-		switch {
-		case typedValue == "":
+		if typedValue == "" {
 			errs[name] = "Enter the full path of a folder, such as /data/usenet/incomplete."
-		case strings.ContainsFunc(typedValue, unicode.IsControl):
-			errs[name] = "The path must not contain control characters."
-		case !filepath.IsAbs(typedValue):
-			errs[name] = "Use an absolute path: it has to start with / (for example /data/usenet/incomplete)."
-		default:
+		} else if msg := pathShapeError(typedValue, "Use an absolute path: it has to start with / (for example /data/usenet/incomplete)."); msg != "" {
+			errs[name] = msg
+		} else {
 			cleaned = filepath.Clean(typedValue)
 		}
 		return typedValue, cleaned
@@ -124,10 +118,31 @@ func parsePaths(form map[string][]string) (paths core.Paths, typed core.Paths, e
 	return paths, typed, errs
 }
 
-// pathWarnings looks at the saved folders. It never fails a save.
-func (s *Server) pathWarnings(p core.Paths) []pathWarning {
-	out := checkProtocolRoots(s.pathCheck, "Usenet", p.Usenet.Incomplete, p.Usenet.Complete)
-	return append(out, checkProtocolRoots(s.pathCheck, "Torrent", p.Torrent.Incomplete, p.Torrent.Complete)...)
+// pathShapeError is the shape check of a typed folder: no control
+// characters, absolute (relativeMsg is said otherwise) and no ".." element.
+// It looks at the text only, never at the disk. A trailing slash or a doubled
+// separator is not an error: the caller cleans it.
+func pathShapeError(p, relativeMsg string) string {
+	switch {
+	case strings.ContainsFunc(p, unicode.IsControl):
+		return "The path must not contain control characters."
+	case !filepath.IsAbs(p):
+		return relativeMsg
+	case slices.Contains(strings.Split(filepath.ToSlash(p), "/"), ".."):
+		return `The path must not contain ".." (write the full path instead).`
+	}
+	return ""
+}
+
+// pathProblemErrors maps the shape problems core finds in the four folders
+// (a root nested in another) to the form field of the folder at fault.
+func pathProblemErrors(p core.Paths, errs map[string]string) {
+	for _, pp := range p.Problems() {
+		name := pp.Protocol + "_" + pp.Root
+		if _, seen := errs[name]; !seen {
+			errs[name] = "This folder " + pp.Reason + ". Keep the incomplete and complete folders apart, not one inside the other."
+		}
+	}
 }
 
 // postPaths saves the Paths part of the Settings and leaves the rest alone.
@@ -137,6 +152,7 @@ func (s *Server) postPaths(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paths, typed, errs := parsePaths(r.PostForm)
+	pathProblemErrors(paths, errs)
 	if len(errs) > 0 {
 		v := pathsViewFrom(settingsCSRF(r), typed, errs)
 		v.Dirty = true
@@ -159,14 +175,8 @@ func (s *Server) postPaths(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v := pathsViewFrom(settingsCSRF(r), paths, nil)
-	v.Checked = true
-	v.Warnings = s.pathWarnings(paths)
 	if isHTMX(r) {
-		level, msg := "success", "Folders saved. New downloads use them."
-		if len(v.Warnings) > 0 {
-			level, msg = "warn", "Folders saved, but check the warnings."
-		}
-		settingsTrigger(w, level, msg, nil)
+		settingsTrigger(w, "success", "Folders saved. New downloads use them.", nil)
 	} else {
 		v.Saved = true
 	}

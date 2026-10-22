@@ -280,7 +280,7 @@ func newStack(t testing.TB, opts ...stackOption) *stack {
 	appOpts := []app.Option{app.WithClock(s.clock.Now), app.WithLogger(logger), app.WithDataRemover(s.remover)}
 	s.dls = app.NewDownloadService(s.downloads, s.cats, bus, appOpts...)
 	s.categories = app.NewCategoryService(s.cats, s.downloads, bus, appOpts...)
-	s.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, store.GenerateKey()), auth.WithAppKeyLogger(logger))
+	s.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
 	s.user, s.pass = auth.QBitUsername, s.appKey.Current().Reveal()
 	s.engine = newEngine(t, s.downloads)

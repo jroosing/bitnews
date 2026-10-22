@@ -125,42 +125,71 @@ func (s Settings) Validate() error {
 	return nil
 }
 
-// validate checks the shape of the four data roots and nothing else: each is
+// PathProblem is one shape problem of one data root.
+type PathProblem struct {
+	// Protocol is "usenet" or "torrent"; Root is "incomplete" or "complete".
+	Protocol, Root string
+	// Path is the root as given.
+	Path string
+	// Reason says what is wrong, for example "is not an absolute path".
+	Reason string
+}
+
+func (p PathProblem) Error() string {
+	return fmt.Sprintf("%s %s root %q %s", p.Protocol, p.Root, p.Path, p.Reason)
+}
+
+// Problems checks the shape of the four data roots and nothing else: each is
 // absolute and clean (no "..", no trailing or doubled separators), and no root
 // lies inside another, which would let a finished Download be picked up again
 // as incomplete data or its move target contain its own source. Equal roots are
 // fine. Whether a root exists or is writable is the user's business and shows
-// up when the first Download needs it.
-func (p Paths) validate() []error {
-	roots := []struct{ name, path string }{
-		{"usenet incomplete", p.Usenet.Incomplete},
-		{"usenet complete", p.Usenet.Complete},
-		{"torrent incomplete", p.Torrent.Incomplete},
-		{"torrent complete", p.Torrent.Complete},
+// up when the first Download needs it. A nested root is reported on the inner
+// one.
+func (p Paths) Problems() []PathProblem {
+	roots := []PathProblem{
+		{Protocol: "usenet", Root: "incomplete", Path: p.Usenet.Incomplete},
+		{Protocol: "usenet", Root: "complete", Path: p.Usenet.Complete},
+		{Protocol: "torrent", Root: "incomplete", Path: p.Torrent.Incomplete},
+		{Protocol: "torrent", Root: "complete", Path: p.Torrent.Complete},
 	}
-	var problems []error
-	var shaped []struct{ name, path string }
+	var problems, shaped []PathProblem
 	for _, root := range roots {
 		switch {
-		case !filepath.IsAbs(root.path):
-			problems = append(problems, fmt.Errorf("%s root %q is not an absolute path", root.name, root.path))
-		case filepath.Clean(root.path) != root.path:
-			problems = append(problems, fmt.Errorf("%s root %q is not a clean path (no \"..\", \".\" or doubled and trailing separators)", root.name, root.path))
+		case !filepath.IsAbs(root.Path):
+			root.Reason = "is not an absolute path"
+			problems = append(problems, root)
+		case filepath.Clean(root.Path) != root.Path:
+			root.Reason = `is not a clean path (no "..", "." or doubled and trailing separators)`
+			problems = append(problems, root)
 		default:
 			shaped = append(shaped, root)
 		}
 	}
 	for i, a := range shaped {
 		for _, b := range shaped[i+1:] {
+			inner, outer := b, a
 			switch {
-			case isWithin(a.path, b.path):
-				problems = append(problems, fmt.Errorf("%s root %q lies inside the %s root %q", b.name, b.path, a.name, a.path))
-			case isWithin(b.path, a.path):
-				problems = append(problems, fmt.Errorf("%s root %q lies inside the %s root %q", a.name, a.path, b.name, b.path))
+			case isWithin(a.Path, b.Path):
+			case isWithin(b.Path, a.Path):
+				inner, outer = a, b
+			default:
+				continue
 			}
+			inner.Reason = fmt.Sprintf("lies inside the %s %s root %q", outer.Protocol, outer.Root, outer.Path)
+			problems = append(problems, inner)
 		}
 	}
 	return problems
+}
+
+// validate adapts Problems to Settings.Validate.
+func (p Paths) validate() []error {
+	var out []error
+	for _, problem := range p.Problems() {
+		out = append(out, problem)
+	}
+	return out
 }
 
 // isWithin reports whether child is strictly below parent. Both are clean

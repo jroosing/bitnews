@@ -261,3 +261,36 @@ func TestSettingsSurviveAJSONRoundTrip(t *testing.T) {
 		t.Errorf("round trip changed Settings:\n in: %+v\nout: %+v", in, out)
 	}
 }
+
+func TestPathProblemsNameTheRootThatIsWrong(t *testing.T) {
+	p := core.DefaultSettings().Paths
+	if got := p.Problems(); len(got) != 0 {
+		t.Fatalf("default paths: %v", got)
+	}
+
+	p.Usenet.Complete = "relative"
+	p.Torrent.Incomplete = "/t"
+	p.Torrent.Complete = "/t/done"
+	got := p.Problems()
+
+	roots := map[string]string{}
+	for _, pp := range got {
+		roots[pp.Protocol+"/"+pp.Root] = pp.Reason
+	}
+	if len(roots) != 2 || roots["usenet/complete"] == "" || roots["torrent/complete"] == "" {
+		t.Fatalf("Problems = %v, want usenet/complete (relative) and torrent/complete (nested inside incomplete)", got)
+	}
+	if !strings.Contains(roots["torrent/complete"], "torrent incomplete") {
+		t.Errorf("nested reason %q does not name the other root", roots["torrent/complete"])
+	}
+}
+
+func TestCategoryDirOverrideMustBeClean(t *testing.T) {
+	// placed here with the other path-shape tests
+	for _, bad := range []string{"/data/../etc", "/data/tv/", "/data//tv"} {
+		c := core.Category{ID: core.NewID(), Name: "tv", DirOverride: bad}
+		if err := c.Validate(); err == nil {
+			t.Errorf("DirOverride %q accepted", bad)
+		}
+	}
+}

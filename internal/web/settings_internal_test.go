@@ -75,3 +75,9 @@ func TestMovePriorities(t *testing.T) {
 		})
 	}
 }
+
+func TestEverySettingsSectionHasATemplate(t *testing.T) {
+	for _, sec := range settingsSections() {
+		assert.NotEmpty(t, sec.Template, sec.Slug)
+	}
+}

@@ -124,8 +124,8 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/7) · [wiki]
 
 | ID | Issue | Title | Labels | Status |
 |---|---|---|---|---|
-| M7-01 | [#67](https://gitlab.com/kyura4k/bitnews/-/issues/67) | Paths are the user's responsibility | area:ui, area:core, ready-for-agent | open |
-| M7-02 | [#68](https://gitlab.com/kyura4k/bitnews/-/issues/68) | One free-space helper | area:core, ready-for-agent | open |
-| M7-03 | [#69](https://gitlab.com/kyura4k/bitnews/-/issues/69) | Remove the privilege drop | area:deploy, ready-for-agent | open |
-| M7-04 | [#70](https://gitlab.com/kyura4k/bitnews/-/issues/70) | A single API key | area:auth, area:adapter, ready-for-agent | open |
-| M7-05 | [#71](https://gitlab.com/kyura4k/bitnews/-/issues/71) | Security page key card | area:ui, area:auth, ready-for-agent | open |
+| M7-01 | [#67](https://gitlab.com/kyura4k/bitnews/-/issues/67) | Paths are the user's responsibility | area:ui, area:core, ready-for-agent | done |
+| M7-02 | [#68](https://gitlab.com/kyura4k/bitnews/-/issues/68) | One free-space helper | area:core, ready-for-agent | done |
+| M7-03 | [#69](https://gitlab.com/kyura4k/bitnews/-/issues/69) | Remove the privilege drop | area:deploy, ready-for-agent | done |
+| M7-04 | [#70](https://gitlab.com/kyura4k/bitnews/-/issues/70) | A single API key | area:auth, area:adapter, ready-for-agent | done |
+| M7-05 | [#71](https://gitlab.com/kyura4k/bitnews/-/issues/71) | Security page key card | area:ui, area:auth, ready-for-agent | done |

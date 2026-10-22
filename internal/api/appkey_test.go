@@ -21,13 +21,13 @@ func TestTheAppKeyOpensEveryOwnAPIRouteWithFullAccess(t *testing.T) {
 	assert.Equal(t, http.StatusOK, e.do("GET", "/api/v1/settings", "", withBearer(key)).Code)
 }
 
-func TestRefreshingTheKeyRejectsTheOldOneOnTheOwnAPIAtOnce(t *testing.T) {
+func TestRotatingTheKeyRejectsTheOldOneOnTheOwnAPIAtOnce(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	old := e.apiKey()
 	require.Equal(t, http.StatusOK, e.do("GET", "/api/v1/downloads", "", withBearer(old)).Code)
 
-	fresh, err := e.appKey.Refresh(context.Background())
+	fresh, err := e.appKey.Rotate(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusUnauthorized, e.do("GET", "/api/v1/downloads", "", withBearer(old)).Code)
@@ -48,7 +48,7 @@ func TestTheAPIHasNoKeyEndpoints(t *testing.T) {
 		{"POST", "/api/v1/adapter-credentials", `{"kind":"adapter_sab","name":"Sonarr"}`},
 		{"DELETE", "/api/v1/adapter-credentials/x", ""},
 		{"GET", "/api/v1/app-key", ""},
-		{"POST", "/api/v1/app-key/refresh", ""},
+		{"POST", "/api/v1/app-key/rotate", ""},
 	} {
 		viaSession := e.do(rt.method, rt.path, rt.body, sess.mods()...)
 		viaKey := e.do(rt.method, rt.path, rt.body, withBearer(key))

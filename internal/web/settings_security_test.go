@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
@@ -30,7 +29,7 @@ func TestSecurityPageShowsOneCardPerGroupOfSettings(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	doc := parseHTML(t, rec.Body.String())
-	for _, id := range []string{"access-card", "hosts-card", "password-card", "apikeys-card", "adapters-card"} {
+	for _, id := range []string{"access-card", "hosts-card", "password-card", "appkey-card"} {
 		assert.NotNil(t, byID(doc, id), id)
 	}
 	assert.NotContains(t, rec.Body.String(), "Coming next")
@@ -474,329 +473,134 @@ func TestPasswordCardIsNotAvailableWithoutASignedInUser(t *testing.T) {
 	_ = b
 }
 
-// ---- API keys -------------------------------------------------------------
+// ---- the app key ----------------------------------------------------------
 
-func TestAPIKeysCardListsKeysWithScopeCreatedAndLastUsedButNeverASecret(t *testing.T) {
+const hostileHost = `<script>alert(1)</script>"><img src=x onerror=alert(1)>`
+
+func TestKeyCardShowsTheKeyAsPlainTextWithACopyButtonAndNeverElsewhere(t *testing.T) {
 	e, b := settingsSignedIn(t)
-	plain, info, err := e.apiKeys.Create(t.Context(), "Home Assistant", core.APIKeyScopeRead)
-	require.NoError(t, err)
-	_, err = e.apiKeys.Authenticate(t.Context(), plain)
-	require.NoError(t, err)
-	_, unused, err := e.apiKeys.Create(t.Context(), "Backup script", core.APIKeyScopeWrite)
-	require.NoError(t, err)
+	key := e.appKey.Current().Reveal()
 
 	rec := b.get("/settings/security")
 
 	body := rec.Body.String()
-	assert.NotContains(t, body, plain)
-	card := byID(parseHTML(t, body), "apikeys-card")
-	rows := findAll(card, func(n *html.Node) bool { return n.Data == "tr" && attr(n, "id") != "" })
-	require.Len(t, rows, 2)
-	first := text(byID(card, "apikey-"+string(info.ID)))
-	assert.Contains(t, first, "Home Assistant")
-	assert.Contains(t, first, "Read only")
-	assert.NotContains(t, first, "Never")
-	second := text(byID(card, "apikey-"+string(unused.ID)))
-	assert.Contains(t, second, "Never", "a key that was not used yet")
-	assert.Contains(t, second, "Read and change")
+	doc := parseHTML(t, body)
+	card := byID(doc, "appkey-card")
+	require.NotNil(t, card)
+	assert.Equal(t, strings.Count(renderNode(t, card), key), strings.Count(body, key), "the key is in the card and nowhere else on the page")
+	assert.Equal(t, key, text(byID(card, "appkey-value")), "visible, no masking")
+	assert.Nil(t, find(card, func(n *html.Node) bool { return n.Data == "input" && attr(n, "type") == "password" }))
+	assert.Nil(t, find(card, func(n *html.Node) bool { return n.Data == "button" && strings.Contains(text(n), "Reveal") }), "nothing to reveal")
+	assert.NotNil(t, find(card, func(n *html.Node) bool { return attr(n, "data-copy") == key }), "a Copy button")
+	assert.Nil(t, byID(doc, "apikeys-card"))
+	assert.Nil(t, byID(doc, "adapters-card"))
+	assert.NotContains(t, e.log.String(), key)
 }
 
-func createKeyForm(name, scope string) url.Values {
-	return url.Values{"name": {name}, "scope": {scope}}
-}
-
-func TestCreatingAnAPIKeyShowsTheSecretOnceAndTheKeyWorks(t *testing.T) {
+func TestTheSameKeyIsShownOnEveryLoad(t *testing.T) {
 	e, b := settingsSignedIn(t)
+	key := e.appKey.Current().Reveal()
 
-	rec := b.settingsPost("/settings/security/api-keys", createKeyForm("Home Assistant", "read"))
+	first := text(byID(parseHTML(t, b.get("/settings/security").Body.String()), "appkey-value"))
+	second := text(byID(parseHTML(t, b.get("/settings/security").Body.String()), "appkey-value"))
+	card := text(byID(parseHTML(t, b.settingsDo(http.MethodGet, "/settings/security/app-key", nil).Body.String()), "appkey-value"))
 
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-	doc := parseHTML(t, rec.Body.String())
-	secret := byID(doc, "apikeys-secret")
-	require.NotNil(t, secret, "the show-once block")
-	plain := text(find(secret, func(n *html.Node) bool { return n.Data == "code" }))
-	assert.True(t, strings.HasPrefix(plain, "bn_"), plain)
-	copyBtn := find(secret, func(n *html.Node) bool { return attr(n, "data-copy") != "" })
-	require.NotNil(t, copyBtn, "copy button")
-	assert.Equal(t, plain, attr(copyBtn, "data-copy"))
-	assert.NotContains(t, rec.Header().Get("HX-Trigger"), plain)
-	assert.NotContains(t, e.log.String(), plain)
-
-	api := e.browser().get("/api/v1/downloads", header("Authorization", "Bearer "+plain))
-	assert.Equal(t, http.StatusOK, api.Code, "the key works on the API")
-
-	later := b.get("/settings/security")
-	assert.NotContains(t, later.Body.String(), plain, "never on a later load")
-	assert.Contains(t, later.Body.String(), "Home Assistant")
-	assert.NotContains(t, b.settingsDo(http.MethodGet, "/settings/security/api-keys", nil).Body.String(), plain)
+	assert.Equal(t, key, first)
+	assert.Equal(t, key, second)
+	assert.Equal(t, key, card)
 }
 
-func TestCreatingAnAPIKeyWithAPlainFormPostShowsTheSecretOnceOnTheWholePage(t *testing.T) {
-	_, b := settingsSignedIn(t)
-	form := createKeyForm("Cron job", "write")
-	form.Set("_csrf", b.csrf())
-
-	rec := b.post("/settings/security/api-keys", form)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-	doc := parseHTML(t, rec.Body.String())
-	assert.NotNil(t, byID(doc, "main"))
-	assert.NotNil(t, byID(doc, "apikeys-secret"))
-}
-
-func TestAPIKeyNameAndScopeAreChecked(t *testing.T) {
-	e, b := settingsSignedIn(t)
-
-	blank := b.settingsPost("/settings/security/api-keys", createKeyForm("  ", "read"))
-	badScope := b.settingsPost("/settings/security/api-keys", createKeyForm("ok", "admin"))
-	long := b.settingsPost("/settings/security/api-keys", createKeyForm(strings.Repeat("x", 101), "read"))
-
-	assert.Equal(t, http.StatusUnprocessableEntity, blank.Code)
-	assert.NotNil(t, byID(parseHTML(t, blank.Body.String()), "apikeys-name-error"))
-	assert.Equal(t, http.StatusUnprocessableEntity, badScope.Code)
-	assert.NotNil(t, byID(parseHTML(t, badScope.Body.String()), "apikeys-scope-error"))
-	assert.Equal(t, http.StatusUnprocessableEntity, long.Code)
-	keys, _ := e.apiKeys.List(t.Context())
-	assert.Empty(t, keys)
-	assert.Contains(t, text(byID(parseHTML(t, blank.Body.String()), "apikeys-card")), "No API keys", "the list stays")
-}
-
-func TestRevokingAnAPIKeyStopsItAtOnce(t *testing.T) {
-	e, b := settingsSignedIn(t)
-	plain, info, err := e.apiKeys.Create(t.Context(), "Old script", core.APIKeyScopeWrite)
-	require.NoError(t, err)
-	api := func() int {
-		return e.browser().get("/api/v1/downloads", header("Authorization", "Bearer "+plain)).Code
-	}
-	require.Equal(t, http.StatusOK, api())
-
-	rec := b.settingsPost("/settings/security/api-keys/"+string(info.ID)+"/revoke", url.Values{})
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, http.StatusUnauthorized, api())
-	assert.NotContains(t, rec.Body.String(), "Old script", "gone from the list")
-	assert.Contains(t, rec.Header().Get("HX-Trigger"), "revoked")
-}
-
-func TestRevokingAnUnknownAPIKeyIsNotFound(t *testing.T) {
+func TestKeyCardGivesCopyReadyValuesForSonarrAndRadarr(t *testing.T) {
 	_, b := settingsSignedIn(t)
 
-	rec := b.settingsPost("/settings/security/api-keys/"+string(core.NewID())+"/revoke", url.Values{})
+	rec := b.get("http://nas.lan:9494/settings/security")
 
-	assert.Equal(t, http.StatusNotFound, rec.Code)
-}
-
-func TestRevokeButtonsAskForConfirmation(t *testing.T) {
-	e, b := settingsSignedIn(t)
-	_, info, _ := e.apiKeys.Create(t.Context(), "Old script", core.APIKeyScopeRead)
-
-	doc := parseHTML(t, b.get("/settings/security").Body.String())
-
-	row := byID(doc, "apikey-"+string(info.ID))
-	btn := find(row, func(n *html.Node) bool { return n.Data == "button" && attr(n, "hx-post") != "" })
-	require.NotNil(t, btn)
-	assert.Equal(t, "/settings/security/api-keys/"+string(info.ID)+"/revoke", attr(btn, "hx-post"))
-	assert.Contains(t, attr(btn, "hx-confirm"), "Old script")
-	assert.Equal(t, "danger", attr(btn, "data-confirm-tone"))
-}
-
-func TestHostileAPIKeyNamesRenderInert(t *testing.T) {
-	_, b := settingsSignedIn(t)
-	hostile := `<script>alert(1)</script>"><img src=x onerror=alert(1)>`
-
-	rec := b.settingsPost("/settings/security/api-keys", createKeyForm(hostile, "read"))
-	page := b.get("/settings/security")
-
-	for _, body := range []string{rec.Body.String(), page.Body.String()} {
-		assert.NotContains(t, body, "<script>alert(1)")
-		assert.NotContains(t, body, "<img src=x")
-		doc := parseHTML(t, body)
-		assert.Nil(t, find(doc, func(n *html.Node) bool { return n.Data == "img" && attr(n, "onerror") != "" }))
-		assert.Contains(t, text(byID(doc, "apikeys-card")), "<script>alert(1)</script>")
-	}
-}
-
-// ---- media manager credentials --------------------------------------------
-
-func adapterForm(kind, name, username string) url.Values {
-	return url.Values{"kind": {kind}, "name": {name}, "username": {username}}
-}
-
-// shown reads the label and value pairs of the show-once block.
-func shown(t *testing.T, body, prefix string) map[string]string {
-	t.Helper()
-	block := byID(parseHTML(t, body), prefix+"-secret")
-	require.NotNil(t, block, "the show-once block")
-	out := map[string]string{}
-	for _, dt := range findAll(block, func(n *html.Node) bool { return n.Data == "dt" }) {
+	card := byID(parseHTML(t, rec.Body.String()), "appkey-card")
+	vals := map[string]string{}
+	for _, dt := range findAll(card, func(n *html.Node) bool { return n.Data == "dt" }) {
 		dd := dt.NextSibling
 		for dd != nil && dd.Data != "dd" {
 			dd = dd.NextSibling
 		}
 		require.NotNil(t, dd)
 		code := find(dd, func(n *html.Node) bool { return n.Data == "code" })
-		require.NotNil(t, code)
-		out[text(dt)] = text(code)
+		require.NotNil(t, code, text(dt))
+		vals[text(dt)] = text(code)
 		btn := find(dd, func(n *html.Node) bool { return attr(n, "data-copy") != "" })
 		require.NotNil(t, btn, "a copy button for %s", text(dt))
 		assert.Equal(t, text(code), attr(btn, "data-copy"))
 	}
-	return out
-}
-
-func sabCall(e *env, key string) string {
-	return e.browser().get("/sabnzbd/api?mode=get_cats&output=json&apikey=" + url.QueryEscape(key)).Body.String()
-}
-
-func TestCreatingASABnzbdCredentialShowsWhatSonarrNeedsOnceAndItWorksUntilRevoked(t *testing.T) {
-	e, b := settingsSignedIn(t)
-
-	rec := b.settingsPost("/settings/security/adapters", adapterForm("sab", "Sonarr", ""))
-
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-	vals := shown(t, rec.Body.String(), "adapters")
-	assert.Equal(t, "example.com", vals["Host"])
-	assert.Equal(t, "80", vals["Port"])
-	assert.Equal(t, "sabnzbd", vals["URL base"])
-	key := vals["API key"]
-	assert.True(t, strings.HasPrefix(key, "bns_"), key)
-	assert.NotContains(t, e.log.String(), key)
-	assert.NotContains(t, rec.Header().Get("HX-Trigger"), key)
-
-	assert.Contains(t, sabCall(e, key), "categories", "Sonarr can use it")
-	assert.NotContains(t, b.get("/settings/security").Body.String(), key, "never on a later load")
-
-	creds, err := e.adapters.List(t.Context())
-	require.NoError(t, err)
-	require.Len(t, creds, 1)
-	revoke := b.settingsPost("/settings/security/adapters/"+string(creds[0].ID)+"/revoke", url.Values{})
-	require.Equal(t, http.StatusOK, revoke.Code)
-	assert.Contains(t, sabCall(e, key), "API Key Incorrect", "the very next request fails")
-	assert.Contains(t, revoke.Body.String(), "No media managers connected", "gone from the list")
-}
-
-func TestCreatingAQBittorrentCredentialShowsUsernameAndPasswordOnceAndItWorksUntilRevoked(t *testing.T) {
-	e, b := settingsSignedIn(t)
-
-	rec := b.settingsPost("/settings/security/adapters", adapterForm("qbit", "My Radarr", ""))
-
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	vals := shown(t, rec.Body.String(), "adapters")
-	assert.Equal(t, "example.com", vals["Host"])
-	assert.Equal(t, "80", vals["Port"])
-	assert.Equal(t, "my-radarr", vals["Username"], "derived from the name")
-	password := vals["Password"]
-	assert.True(t, strings.HasPrefix(password, "bnq_"), password)
-	assert.NotContains(t, e.log.String(), password)
-	assert.NotContains(t, b.get("/settings/security").Body.String(), password)
-
-	info, err := e.adapters.AuthenticateQBit(t.Context(), "my-radarr", password)
-	require.NoError(t, err)
-	assert.Equal(t, "My Radarr", info.Name)
-
-	revoke := b.settingsPost("/settings/security/adapters/"+string(info.ID)+"/revoke", url.Values{})
-	require.Equal(t, http.StatusOK, revoke.Code)
-	_, err = e.adapters.AuthenticateQBit(t.Context(), "my-radarr", password)
-	assert.ErrorIs(t, err, auth.ErrInvalidAdapterCredential, "revoked at once")
-}
-
-func TestAdapterCredentialShowsTheHostAndPortTheBrowserUsed(t *testing.T) {
-	_, b := settingsSignedIn(t)
-
-	rec := b.settingsPost("http://nas.lan:9494/settings/security/adapters", adapterForm("sab", "Sonarr", ""), header("Origin", "http://nas.lan:9494"))
-
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	vals := shown(t, rec.Body.String(), "adapters")
 	assert.Equal(t, "nas.lan", vals["Host"])
 	assert.Equal(t, "9494", vals["Port"])
+	assert.Equal(t, "sabnzbd", vals["URL base"])
+	assert.Equal(t, "bitnews", vals["qBittorrent username"])
 }
 
-func TestAdapterCredentialsListLastUsedAndKind(t *testing.T) {
-	e, b := settingsSignedIn(t)
-	key, sab, err := e.adapters.Create(t.Context(), auth.KindAdapterSAB, "Sonarr", "")
-	require.NoError(t, err)
-	_, qbit, err := e.adapters.Create(t.Context(), auth.KindAdapterQBit, "Radarr", "radarr")
-	require.NoError(t, err)
-	require.Contains(t, sabCall(e, key), "categories")
-
-	body := b.get("/settings/security").Body.String()
-
-	card := byID(parseHTML(t, body), "adapters-card")
-	used := text(byID(card, "adapter-"+string(sab.ID)))
-	assert.Contains(t, used, "Sonarr")
-	assert.Contains(t, used, "SABnzbd")
-	assert.NotContains(t, used, "Never")
-	fresh := text(byID(card, "adapter-"+string(qbit.ID)))
-	assert.Contains(t, fresh, "qBittorrent")
-	assert.Contains(t, fresh, "radarr")
-	assert.Contains(t, fresh, "Never")
-	assert.NotContains(t, body, key)
-}
-
-func TestAdapterCredentialInputIsCheckedPerField(t *testing.T) {
-	e, b := settingsSignedIn(t)
-	_, _, err := e.adapters.Create(t.Context(), auth.KindAdapterQBit, "Existing", "taken")
-	require.NoError(t, err)
-
-	blank := b.settingsPost("/settings/security/adapters", adapterForm("sab", " ", ""))
-	kind := b.settingsPost("/settings/security/adapters", adapterForm("plex", "x", ""))
-	badUser := b.settingsPost("/settings/security/adapters", adapterForm("qbit", "x", "Not Valid!"))
-	taken := b.settingsPost("/settings/security/adapters", adapterForm("qbit", "x", "taken"))
-
-	for name, tc := range map[string]struct {
-		rec *httptest.ResponseRecorder
-		id  string
-	}{
-		"name": {blank, "adapters-name-error"}, "kind": {kind, "adapters-kind-error"},
-		"username": {badUser, "adapters-username-error"}, "taken": {taken, "adapters-username-error"},
-	} {
-		assert.Equal(t, http.StatusUnprocessableEntity, tc.rec.Code, name)
-		assert.NotNil(t, byID(parseHTML(t, tc.rec.Body.String()), tc.id), name)
-		assert.Nil(t, byID(parseHTML(t, tc.rec.Body.String()), "adapters-secret"), name)
-	}
-	creds, _ := e.adapters.List(t.Context())
-	assert.Len(t, creds, 1)
-}
-
-func TestRevokingAnUnknownAdapterCredentialIsNotFound(t *testing.T) {
+func TestKeyCardRendersAHostileHostHeaderInert(t *testing.T) {
 	_, b := settingsSignedIn(t)
 
-	rec := b.settingsPost("/settings/security/adapters/"+string(core.NewID())+"/revoke", url.Values{})
+	rec := b.get("/settings/security", func(r *http.Request) { r.Host = hostileHost })
 
-	assert.Equal(t, http.StatusNotFound, rec.Code)
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.NotContains(t, body, "<script>alert(1)")
+	assert.NotContains(t, body, "<img src=x")
+	doc := parseHTML(t, body)
+	assert.Nil(t, find(doc, func(n *html.Node) bool { return n.Data == "img" && attr(n, "onerror") != "" }))
+	assert.Contains(t, text(byID(doc, "appkey-card")), "<script>alert(1)</script>")
 }
 
-func TestAdapterRevokeButtonsAskForConfirmation(t *testing.T) {
+func TestRotateAsksForConfirmationAndChangesNothingUntilConfirmed(t *testing.T) {
 	e, b := settingsSignedIn(t)
-	_, info, _ := e.adapters.Create(t.Context(), auth.KindAdapterSAB, "Sonarr", "")
+	key := e.appKey.Current()
 
-	doc := parseHTML(t, b.get("/settings/security").Body.String())
+	rec := b.settingsPost("/settings/security/app-key", url.Values{})
 
-	btn := find(byID(doc, "adapter-"+string(info.ID)), func(n *html.Node) bool { return n.Data == "button" && attr(n, "hx-post") != "" })
-	require.NotNil(t, btn)
-	assert.Contains(t, attr(btn, "hx-confirm"), "Sonarr")
-	assert.Equal(t, "danger", attr(btn, "data-confirm-tone"))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	doc := parseHTML(t, rec.Body.String())
+	assert.Contains(t, text(byID(doc, "appkey-card")), "every client (Sonarr, Radarr, scripts) stops working until updated")
+	confirm := byID(doc, "appkey-confirm-form")
+	require.NotNil(t, confirm)
+	assert.Equal(t, "1", inputValue(confirm, "confirmed"))
+	assert.Equal(t, key, e.appKey.Current(), "nothing changed yet")
+	assert.Contains(t, sabCall(e, key.Reveal()), "categories")
 }
 
-func TestHostileAdapterNamesRenderInert(t *testing.T) {
+func TestRotateButtonDoesNotNeedJavaScriptToAskForConfirmation(t *testing.T) {
 	_, b := settingsSignedIn(t)
-	hostile := `<script>alert(1)</script>"><img src=x onerror=alert(1)>`
+	card := byID(parseHTML(t, b.get("/settings/security").Body.String()), "appkey-card")
 
-	rec := b.settingsPost("/settings/security/adapters", adapterForm("sab", hostile, ""))
-	page := b.get("/settings/security")
+	form := find(card, func(n *html.Node) bool { return n.Data == "form" && attr(n, "action") == "/settings/security/app-key" })
 
-	for _, body := range []string{rec.Body.String(), page.Body.String()} {
-		assert.NotContains(t, body, "<script>alert(1)")
-		doc := parseHTML(t, body)
-		assert.Nil(t, find(doc, func(n *html.Node) bool { return n.Data == "img" && attr(n, "onerror") != "" }))
-		assert.Contains(t, text(byID(doc, "adapters-card")), "<script>alert(1)</script>")
-	}
+	require.NotNil(t, form, "a plain form post reaches the confirm step")
+	assert.Equal(t, "post", strings.ToLower(attr(form, "method")))
 }
 
-func TestAdapterCredentialsStayManageableWhileSignInIsOff(t *testing.T) {
+func TestConfirmedRotateMakesANewKeyAndTheOldOneStopsEverywhereAtOnce(t *testing.T) {
+	e, b := settingsSignedIn(t)
+	old := e.appKey.Current().Reveal()
+	require.Contains(t, sabCall(e, old), "categories")
+	require.Equal(t, http.StatusOK, e.browser().get("/api/v1/downloads", header("Authorization", "Bearer "+old)).Code)
+
+	rec := b.settingsPost("/settings/security/app-key", url.Values{"confirmed": {"1"}})
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	fresh := e.appKey.Current().Reveal()
+	assert.NotEqual(t, old, fresh)
+	assert.Contains(t, sabCall(e, old), "API Key Incorrect")
+	assert.Contains(t, sabCall(e, fresh), "categories")
+	assert.Equal(t, http.StatusUnauthorized, e.browser().get("/api/v1/downloads", header("Authorization", "Bearer "+old)).Code)
+	assert.Equal(t, http.StatusOK, e.browser().get("/api/v1/downloads", header("Authorization", "Bearer "+fresh)).Code)
+	card := byID(parseHTML(t, rec.Body.String()), "appkey-card")
+	assert.Equal(t, fresh, text(byID(card, "appkey-value")), "the card shows the new key")
+	assert.NotContains(t, rec.Body.String(), old)
+	assert.Contains(t, rec.Header().Get("HX-Trigger"), "rotated")
+	assert.NotContains(t, rec.Header().Get("HX-Trigger"), fresh)
+	assert.NotContains(t, e.log.String(), old)
+	assert.NotContains(t, e.log.String(), fresh)
+}
+
+func TestKeyCardAndRotateWorkWhileSignInIsOff(t *testing.T) {
 	e, _ := settingsSignedIn(t)
 	setAuth(t, e, func(a *core.Auth) {
 		a.AllowedHosts = []string{"example.com"}
@@ -804,10 +608,68 @@ func TestAdapterCredentialsStayManageableWhileSignInIsOff(t *testing.T) {
 	})
 	anon := e.browser()
 
-	rec := anon.settingsPost("/settings/security/adapters", adapterForm("sab", "Sonarr", ""))
+	page := anon.get("/settings/security")
+	rec := anon.settingsPost("/settings/security/app-key", url.Values{"confirmed": {"1"}})
 
+	require.Equal(t, http.StatusOK, page.Code)
+	assert.NotNil(t, byID(parseHTML(t, page.Body.String()), "appkey-card"))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.NotNil(t, byID(parseHTML(t, rec.Body.String()), "adapters-secret"))
+	assert.NotEmpty(t, e.appKey.Current())
+}
+
+func TestKeyRoutesRejectAPostWithoutTheCSRFToken(t *testing.T) {
+	e, b := settingsSignedIn(t)
+	key := e.appKey.Current()
+
+	rec := b.post("/settings/security/app-key", url.Values{"confirmed": {"1"}}, htmx())
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Equal(t, key, e.appKey.Current())
+}
+
+func TestTheOldKeyAndCredentialRoutesAreGone(t *testing.T) {
+	_, b := settingsSignedIn(t)
+
+	for _, path := range []string{
+		"/settings/security/api-keys", "/settings/security/api-keys/abc/revoke",
+		"/settings/security/adapters", "/settings/security/adapters/abc/revoke",
+	} {
+		assert.Equal(t, http.StatusNotFound, b.settingsDo(http.MethodGet, path, nil).Code, "GET "+path)
+		assert.Equal(t, http.StatusNotFound, b.settingsPost(path, url.Values{"name": {"x"}}).Code, "POST "+path)
+	}
+}
+
+func TestSecurityPageStillHasTheOtherCardsUnchanged(t *testing.T) {
+	_, b := settingsSignedIn(t)
+
+	doc := parseHTML(t, b.get("/settings/security").Body.String())
+
+	assert.Contains(t, text(byID(doc, "access-card")), "Turn sign-in off")
+	assert.NotNil(t, byID(doc, "access"))
+	assert.Contains(t, text(byID(doc, "hosts-card")), "Trusted proxies")
+	assert.NotNil(t, byID(doc, "password-current"))
+	assert.Contains(t, text(byID(doc, "appkey-card")), "API key")
+}
+
+// renderNode serialises a node back to HTML.
+func renderNode(t *testing.T, n *html.Node) string {
+	t.Helper()
+	var b strings.Builder
+	require.NoError(t, html.Render(&b, n))
+	return b.String()
+}
+
+// inputValue is the value of the named input inside n.
+func inputValue(n *html.Node, name string) string {
+	in := find(n, func(c *html.Node) bool { return c.Data == "input" && attr(c, "name") == name })
+	if in == nil {
+		return ""
+	}
+	return attr(in, "value")
+}
+
+func sabCall(e *env, key string) string {
+	return e.browser().get("/sabnzbd/api?mode=get_cats&output=json&apikey=" + url.QueryEscape(key)).Body.String()
 }
 
 // addSecurityResponses renders the pages and fragments of the Security
@@ -816,10 +678,6 @@ func addSecurityResponses(t *testing.T, e *env, b *browser, out map[string]*http
 	t.Helper()
 	hostile := `<script>alert(1)</script>"><img src=x onerror=alert(1)>`
 	setAuth(t, e, func(a *core.Auth) { a.AllowedHosts = []string{"example.com"} })
-	_, _, err := e.apiKeys.Create(t.Context(), hostile, core.APIKeyScopeRead)
-	require.NoError(t, err)
-	_, _, err = e.adapters.Create(t.Context(), auth.KindAdapterQBit, hostile, "")
-	require.NoError(t, err)
 
 	out["GET /settings/security (with data)"] = b.get("/settings/security")
 	out["POST access (confirm)"] = b.settingsPost("/settings/security/access", accessForm(true, "192.168.1.0/24"))
@@ -827,11 +685,9 @@ func addSecurityResponses(t *testing.T, e *env, b *browser, out map[string]*http
 	out["POST hosts (invalid)"] = b.settingsPost("/settings/security/hosts", hostsForm("http://x/", "nope"))
 	out["POST hosts (confirm)"] = b.settingsPost("/settings/security/hosts", hostsForm("", "0.0.0.0/0"))
 	out["POST password (invalid)"] = b.settingsPost("/settings/security/password", passwordForm("", "short", "other"))
-	out["POST api key (invalid)"] = b.settingsPost("/settings/security/api-keys", createKeyForm("", "x"))
-	out["POST api key (created)"] = b.settingsPost("/settings/security/api-keys", createKeyForm(hostile, "write"))
-	out["POST credential (invalid)"] = b.settingsPost("/settings/security/adapters", adapterForm("x", "", "Bad Name"))
-	out["POST credential (sab created)"] = b.settingsPost("/settings/security/adapters", adapterForm("sab", hostile, ""))
-	out["POST credential (qbit created)"] = b.settingsPost("/settings/security/adapters", adapterForm("qbit", "Radarr", ""))
+	out["GET /settings/security (hostile host)"] = b.get("/settings/security", func(r *http.Request) { r.Host = hostile })
+	out["POST key rotate (confirm)"] = b.settingsPost("/settings/security/app-key", url.Values{})
+	out["POST key rotate (done)"] = b.settingsPost("/settings/security/app-key", url.Values{"confirmed": {"1"}})
 	// Last, because turning sign-in off changes what every later request sees.
 	form := accessForm(false, "192.168.1.0/24")
 	form.Set("confirmed", "1")

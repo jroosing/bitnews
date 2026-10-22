@@ -141,7 +141,7 @@ func TestSettingsSubNavigationIsAScrollableBarOnPhonesAndASidebarFromMd(t *testi
 func addSettingsResponses(t *testing.T, out map[string]*httptest.ResponseRecorder) {
 	t.Helper()
 	prober := &recordingProber{result: app.ProbeResult{Class: app.ProbeTLS, Detail: "certificate_untrusted", Message: "x"}}
-	e, b := settingsSignedIn(t, withProber(prober), withPathChecker(&fakeFS{otherFS: true}))
+	e, b := settingsSignedIn(t, withProber(prober))
 	ctx := context.Background()
 	cat, err := e.cats.Create(ctx, "tv", "/data/<media>/tv")
 	require.NoError(t, err)
@@ -155,7 +155,7 @@ func addSettingsResponses(t *testing.T, out map[string]*httptest.ResponseRecorde
 	for _, slug := range settingsSlugs {
 		out["GET /settings/"+slug+" (with data)"] = b.get("/settings/" + slug)
 	}
-	out["POST /settings/paths (warnings)"] = b.settingsPost("/settings/paths", pathsForm(t))
+	out["POST /settings/paths (saved)"] = b.settingsPost("/settings/paths", pathsForm(t))
 	bad := pathsForm(t)
 	bad.Set("usenet_complete", "relative")
 	out["POST /settings/paths (invalid)"] = b.settingsPost("/settings/paths", bad)

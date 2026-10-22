@@ -302,7 +302,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 			return int64(min(free, math.MaxInt64)), int64(min(free, math.MaxInt64)), err == nil //nolint:gosec // clamped
 		}
 	}
-	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, deps.Key), auth.WithAppKeyLogger(log))
+	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(log))
 	if err != nil {
 		return nil, err
 	}

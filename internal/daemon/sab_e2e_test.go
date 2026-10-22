@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
 )
@@ -126,7 +126,7 @@ func TestE2ESABnzbdAdapterDrivesADownloadFromAddfileToCompletedAndDelete(t *test
 }
 
 func TestE2EOneKeyOpensTheOwnAPISABnzbdAndQBitAndAWrongOneNone(t *testing.T) {
-	e := newE2E(t)
+	e := newTorrentE2E(t)
 	e.start()
 	key := e.apiKey
 
@@ -151,7 +151,7 @@ func TestE2EOneKeyOpensTheOwnAPISABnzbdAndQBitAndAWrongOneNone(t *testing.T) {
 	}
 }
 
-func TestE2ETheStoredKeyIsSealedAndSurvivesARestart(t *testing.T) {
+func TestE2ETheKeyIsStoredAsPlainTextAndSurvivesARestart(t *testing.T) {
 	e := newE2E(t)
 	e.start()
 	e.stop()
@@ -164,9 +164,9 @@ func TestE2ETheStoredKeyIsSealedAndSurvivesARestart(t *testing.T) {
 	require.NoError(t, err)
 	raw, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	assert.Contains(t, string(raw), "categories", "the restarted daemon decrypted the same key")
-	var sealed string
-	require.NoError(t, e.db.Reader().QueryRow(`SELECT sealed_key FROM app_key`).Scan(&sealed))
-	assert.NotContains(t, sealed, e.apiKey)
+	assert.Contains(t, string(raw), "categories", "the restarted daemon loaded the same key")
+	var stored string
+	require.NoError(t, e.db.Reader().QueryRow(`SELECT key FROM app_key`).Scan(&stored))
+	assert.Equal(t, e.apiKey, stored)
 	assert.NotContains(t, e.logs.String(), e.apiKey, "the key is never logged")
 }

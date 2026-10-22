@@ -41,7 +41,6 @@ type Config struct {
 	TorrentPort int
 }
 
-
 // LogFormat is the output format of the logger.
 type LogFormat string
 

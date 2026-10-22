@@ -58,11 +58,11 @@ func TestAWrongOrMalformedKeyIsAPIKeyIncorrect(t *testing.T) {
 	}
 }
 
-func TestRefreshingTheKeyTakesEffectImmediately(t *testing.T) {
+func TestRotatingTheKeyTakesEffectImmediately(t *testing.T) {
 	s := newStack(t)
 	assert.Contains(t, s.call("mode=get_cats").Body.String(), `"categories"`)
 
-	fresh, err := s.appKey.Refresh(context.Background())
+	fresh, err := s.appKey.Rotate(context.Background())
 	require.NoError(t, err)
 
 	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, s.call("mode=get_cats").Body.String(), "the old key")

@@ -96,8 +96,7 @@ type env struct {
 	cats       *app.CategoryService
 	setup      *auth.Setup
 	sessions   *auth.SessionService
-	apiKeys    *auth.APIKeyService
-	adapters   *auth.AdapterCredentialService
+	appKey     *auth.AppKeyService
 	handler    http.Handler
 	token      string // the setup token, when setup is open
 }
@@ -107,7 +106,6 @@ type envOption func(*envConfig)
 type envConfig struct {
 	noAdmin bool
 	prober  app.Prober
-	paths   web.PathChecker
 	config  web.ConfigSource
 	server  []func(*web.Server)
 }
@@ -116,9 +114,6 @@ func withoutAdmin() envOption { return func(c *envConfig) { c.noAdmin = true } }
 
 // withProber sets the Prober behind the server connection tests.
 func withProber(p app.Prober) envOption { return func(c *envConfig) { c.prober = p } }
-
-// withPathChecker replaces the file system checks of the paths settings.
-func withPathChecker(p web.PathChecker) envOption { return func(c *envConfig) { c.paths = p } }
 
 // withConfig gives the settings pages what the daemon knows about the running
 // configuration (the settings it started with, the live binding status).
@@ -163,8 +158,9 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	uiAuth, err := auth.NewUIAuth(e.sessions, e.settings.Current)
 	require.NoError(t, err)
-	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, key), auth.WithAppKeyLogger(logger))
+	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
+	e.appKey = appKey
 
 	appOpts := []app.Option{app.WithClock(e.clock.Now)}
 	downloadSvc := app.NewDownloadService(downloads, cats, bus, appOpts...)
@@ -183,9 +179,6 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	for _, f := range ec.server {
 		f(webUI)
 	}
-	if ec.paths != nil {
-		web.SetPathChecker(webUI, ec.paths)
-	}
 	srv, err := api.New(api.Config{
 		Logger:     logger,
 		Downloads:  downloadSvc,
@@ -202,7 +195,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 			AppKey: appKey, Downloads: downloadSvc, Adder: adder, Categories: catSvc,
 			Settings: e.settings, Logger: logger, Clock: e.clock.Now,
 		}),
-		Web:        webUI,
+		Web: webUI,
 	})
 	require.NoError(t, err)
 	e.handler = srv.Handler()

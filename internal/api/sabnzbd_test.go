@@ -71,13 +71,13 @@ func TestTheKeyAsAQueryParameterOnTheOwnAPIDoesNothing(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestRefreshingTheKeyStopsTheSABnzbdRouteAtOnce(t *testing.T) {
+func TestRotatingTheKeyStopsTheSABnzbdRouteAtOnce(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withSABnzbd())
 	old := e.apiKey()
 	require.Contains(t, e.do("GET", "/sabnzbd/api?mode=get_cats&apikey="+old, "").Body.String(), `"categories"`)
 
-	fresh, err := e.appKey.Refresh(context.Background())
+	fresh, err := e.appKey.Rotate(context.Background())
 	require.NoError(t, err)
 
 	assert.JSONEq(t, `{"status":false,"error":"API Key Incorrect"}`, e.do("GET", "/sabnzbd/api?mode=get_cats&apikey="+old, "").Body.String())

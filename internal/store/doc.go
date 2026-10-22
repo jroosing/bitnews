@@ -64,9 +64,9 @@
 //
 // # Tables (migration 0008, the app key)
 //
-//   - app_key(id CHECK (id = 1), sealed_key, updated_at): the one API key of
-//     the app (ADR-0006), sealed with the master key. The same migration
-//     drops api_keys (0001) and adapter_credentials (0004).
+//   - app_key(id CHECK (id = 1), key, updated_at): the one API key of the app
+//     (ADR-0006), in plain text. The same migration drops api_keys (0001) and
+//     adapter_credentials (0004).
 //
 // All tables are STRICT.
 package store

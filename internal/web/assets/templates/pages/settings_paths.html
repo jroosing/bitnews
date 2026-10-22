@@ -17,8 +17,9 @@
   {{template "alert" dict "Variant" "info" "Title" "Changes apply to new downloads only" "Body" "Downloads that already exist keep the folders they started with. New downloads use the folders below."}}
 
   <div class="rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-3.5 text-sm text-fg-muted">
-    <p class="flex items-center gap-2 font-medium text-fg">{{icon "folder" "size-4 text-fg-subtle"}}Tip: put everything under one mount</p>
-    <p class="mt-1.5">Keep your download folders and your media library on the same disk, for example under <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> (<code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/usenet</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/torrents</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/media</code>). A finished download is then moved instantly, and Sonarr, Radarr and friends can hardlink it into your library instead of copying it. In Docker, mount <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> once, not one volume per folder.</p>
+    <p class="flex items-center gap-2 font-medium text-fg">{{icon "folder" "size-4 text-fg-subtle"}}Tip: keep complete and your library on one filesystem</p>
+    <p class="mt-1.5">Sonarr and Radarr import a finished download by hardlinking it into your library, and bitnews does not make those links. That only works when the complete folders and the library are on the same filesystem, for example under <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> (<code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/usenet</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/torrents</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/media</code>). In Docker, mount <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> once, not one volume per folder. The incomplete folder can live anywhere, such as a fast local disk.</p>
+    <p class="mt-1.5">bitnews checks only that each path is absolute and that the folders are not nested. Folders that do not exist yet are fine: bitnews will create missing folders when the first download needs them.</p>
   </div>
 
   {{range .Groups}}
@@ -32,27 +33,6 @@
   </fieldset>
   {{end}}
 
-  {{if .Checked}}
-    {{if .Warnings}}
-    <div id="paths-warnings" class="alert alert-warn" role="alert">
-      {{icon "warning" "mt-0.5 size-5 shrink-0"}}
-      <div class="min-w-0">
-        <p class="alert-title">Saved, but check {{if eq (len .Warnings) 1}}this{{else}}these{{end}}</p>
-        <p class="mt-0.5">These do not stop you from saving. Fix them before relying on the folders.</p>
-        <ul class="mt-3 space-y-3">
-          {{range .Warnings}}
-          <li>
-            <p class="font-medium">{{.Title}}</p>
-            <p class="mt-0.5 break-words">{{.Body}}</p>
-          </li>
-          {{end}}
-        </ul>
-      </div>
-    </div>
-    {{else}}
-    {{template "alert" dict "Variant" "success" "ID" "paths-warnings" "Title" "Folders look good" "Body" "They exist, bitnews can write to them, and each protocol keeps its incomplete and complete folders on one filesystem."}}
-    {{end}}
-  {{end}}
 {{template "settings_form_end" dict "Label" "Save folders"}}
 {{end}}
 

@@ -178,7 +178,7 @@ func TestTheSessionWorksForAHourOfIdleTimeThenExpires(t *testing.T) {
 	s.clock.Advance(59 * time.Minute)
 	require.Equal(t, http.StatusOK, s.get(sid, "/api/v2/app/version").Code)
 	s.clock.Advance(59 * time.Minute)
-	assert.Equal(t, http.StatusOK, s.get(sid, "/api/v2/app/version").Code, "use refreshes the idle timer")
+	assert.Equal(t, http.StatusOK, s.get(sid, "/api/v2/app/version").Code, "use rotatees the idle timer")
 
 	s.clock.Advance(61 * time.Minute)
 
@@ -203,13 +203,13 @@ func TestLogoutEndsTheSession(t *testing.T) {
 	assert.True(t, cleared, "the cookie is dropped")
 }
 
-func TestRefreshingTheKeyKillsEverySessionAtOnceAndOnlyTheNewKeyLogsIn(t *testing.T) {
+func TestRotatingTheKeyKillsEverySessionAtOnceAndOnlyTheNewKeyLogsIn(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	sid, other := s.login(), s.login()
 	require.Equal(t, http.StatusOK, s.get(sid, "/api/v2/app/version").Code)
 
-	fresh, err := s.appKey.Refresh(context.Background())
+	fresh, err := s.appKey.Rotate(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusForbidden, s.get(sid, "/api/v2/app/version").Code)

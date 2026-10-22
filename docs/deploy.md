@@ -49,7 +49,7 @@ Then write `FROM golang:1.27.3@sha256:<digest>` and `FROM gcr.io/distroless/stat
 
 ### The master key
 
-The master key encrypts the secrets bitnews has to send in plaintext later: the Usenet Server passwords and the passwords of encrypted archives. (Login passwords, session tokens and API keys are only hashed and need no key.)
+The master key encrypts the secrets bitnews has to send in plaintext later: the Usenet Server passwords and the passwords of encrypted archives. (Login passwords and session tokens are only hashed and need no key. The API key is stored in plain text in the database, like the key of Sonarr and Radarr, so that Settings can show it.)
 
 You do nothing: on first start bitnews generates the key and stores it as `bitnews.key` in the config directory (`/config`, mode `0600`), and logs a warning with its location. It holds 32 random bytes, base64-encoded, plus a newline.
 
@@ -249,5 +249,5 @@ Proxy, `allowed_hosts` and `trusted_proxies` work exactly as in the Docker secti
 - [ ] Base images are pinned to digests and rebuilt regularly, and `govulncheck` (CI) is clean for the release you run.
 - [ ] One `/data` mount shared with the *arr containers, same path everywhere, same group, `UMASK=002`.
 - [ ] A VPN, if wanted, is configured and tested in its own container (bitnews does not manage it).
-- [ ] An API key per client (Sonarr, Radarr, scripts) with the narrowest scope that works, and no admin password in the environment or shell history (`BITNEWS_ADMIN_PASSWORD_FILE` points at a file only the service can read).
+- [ ] The API key (Settings → Security) is rotated if it leaked, and then updated in Sonarr, Radarr and your scripts. There is one key for all of them, with full access. No admin password in the environment or shell history (`BITNEWS_ADMIN_PASSWORD_FILE` points at a file only the service can read).
 - [ ] The database (`/config`, `/var/lib/bitnews`) is backed up; the key is not stored with it.

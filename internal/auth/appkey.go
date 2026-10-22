@@ -21,15 +21,16 @@ const QBitUsername = "bitnews"
 // client (SABnzbd's apikey, the qBittorrent password and the own API's
 // Authorization: Bearer, see ADR-0006). It has full access, with no scopes.
 //
-// The key is generated on first start, stored sealed (core.AppKeyRepo), and
-// decrypted once at start. Requests are compared against the copy in memory in
-// constant time, with no database access. Refresh replaces the key for every
+// The key is generated on first start and stored as plain text
+// (core.AppKeyRepo), like the key of Sonarr and Radarr, so Settings can show
+// it. Requests are compared against the copy in memory in constant time, with
+// no database access. Rotate replaces the key for every
 // surface at once.
 type AppKeyService struct {
 	repo core.AppKeyRepo
 	log  *slog.Logger
 
-	mu  sync.Mutex // serialises Refresh
+	mu  sync.Mutex // serialises Rotate
 	cur atomic.Pointer[appKey]
 }
 
@@ -50,9 +51,9 @@ func WithAppKeyLogger(l *slog.Logger) AppKeyOption {
 }
 
 // NewAppKeyService loads the key from repo, or makes and stores one when there
-// is none (the first start). A stored key that cannot be decrypted, because
-// bitnews.key was lost, is replaced by a new one; every client then needs the
-// new key.
+// is none (the first start). A stored value that is not shaped like an app key
+// (the row was edited by hand) is replaced by a new one; every client then
+// needs the new key.
 func NewAppKeyService(ctx context.Context, repo core.AppKeyRepo, opts ...AppKeyOption) (*AppKeyService, error) {
 	s := &AppKeyService{repo: repo, log: slog.Default()}
 	for _, o := range opts {
@@ -61,11 +62,12 @@ func NewAppKeyService(ctx context.Context, repo core.AppKeyRepo, opts ...AppKeyO
 	key, err := repo.Get(ctx)
 	switch {
 	case err == nil:
-		s.cur.Store(newAppKey(key, 1))
-		return s, nil
+		if kind, ok := KindOf(key.Reveal()); ok && kind == KindAppKey {
+			s.cur.Store(newAppKey(key, 1))
+			return s, nil
+		}
+		s.log.Warn("auth: the stored API key is malformed; making a new one")
 	case errors.Is(err, core.ErrNotFound):
-	case errors.Is(err, core.ErrAppKeyUnreadable):
-		s.log.Warn("auth: the stored API key is unreadable (was the master key replaced?); making a new one")
 	default:
 		return nil, fmt.Errorf("auth: load app key: %w", err)
 	}
@@ -92,10 +94,10 @@ func (s *AppKeyService) Current() core.Secret { return s.cur.Load().secret }
 // with a key (the qBittorrent SID) record it and end when it changes.
 func (s *AppKeyService) Generation() uint64 { return s.cur.Load().gen }
 
-// Refresh makes a new key, stores it and swaps it in. The old key stops
+// Rotate makes a new key, stores it and swaps it in. The old key stops
 // working with the next request on every surface. If storing fails, the old
 // key stays.
-func (s *AppKeyService) Refresh(ctx context.Context) (core.Secret, error) {
+func (s *AppKeyService) Rotate(ctx context.Context) (core.Secret, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	fresh, _, err := NewKindToken(KindAppKey)
@@ -107,7 +109,7 @@ func (s *AppKeyService) Refresh(ctx context.Context) (core.Secret, error) {
 	}
 	next := newAppKey(core.Secret(fresh), s.cur.Load().gen+1)
 	s.cur.Store(next)
-	s.log.Info("auth: the API key was refreshed")
+	s.log.Info("auth: the API key was rotated")
 	return next.secret, nil
 }
 

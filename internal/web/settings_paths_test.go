@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,35 +28,6 @@ func pathsForm(t *testing.T) url.Values {
 	}
 	return v
 }
-
-// fakeFS is a path checker with the failures of a real disk set by hand.
-type fakeFS struct {
-	missing    map[string]bool
-	file       map[string]bool
-	readOnly   map[string]bool
-	otherFS    bool
-	writeProbe []string
-}
-
-func (f *fakeFS) Stat(path string) (fs.FileInfo, error) {
-	switch {
-	case f.missing[path]:
-		return nil, &fs.PathError{Op: "stat", Path: path, Err: fs.ErrNotExist}
-	case f.file[path]:
-		return os.Stat(os.Args[0])
-	}
-	return os.Stat(os.TempDir())
-}
-
-func (f *fakeFS) Writable(dir string) error {
-	f.writeProbe = append(f.writeProbe, dir)
-	if f.readOnly[dir] {
-		return &fs.PathError{Op: "open", Path: dir, Err: fs.ErrPermission}
-	}
-	return nil
-}
-
-func (f *fakeFS) SameFilesystem(string, string) (bool, error) { return !f.otherFS, nil }
 
 func settingsToastOf(t *testing.T, rec *httptest.ResponseRecorder) (level, message string) {
 	t.Helper()
@@ -97,8 +67,9 @@ func TestPathsPageShowsTheCurrentFoldersInLabelledGroups(t *testing.T) {
 		assert.Equal(t, want, attr(in, "value"), id)
 	}
 	body := text(doc)
-	assert.Contains(t, body, "one mount")
-	assert.Contains(t, body, "hardlink")
+	assert.Contains(t, body, "same filesystem")
+	assert.Contains(t, body, "Sonarr and Radarr")
+	assert.Contains(t, body, "create missing folders")
 	assert.Contains(t, body, "new downloads only")
 }
 
@@ -128,17 +99,6 @@ func TestSavingFoldersChangesOnlyThePathsOfTheSettings(t *testing.T) {
 	// The answer is the card only, ready to swap in.
 	assert.NotContains(t, rec.Body.String(), "<html")
 	assert.NotNil(t, byID(parseHTML(t, rec.Body.String()), "paths-card"))
-}
-
-func TestSavingGoodFoldersReportsThatTheyLookGood(t *testing.T) {
-	_, b := settingsSignedIn(t)
-
-	rec := b.settingsPost("/settings/paths", pathsForm(t))
-
-	doc := parseHTML(t, rec.Body.String())
-	note := byID(doc, "paths-warnings")
-	require.NotNil(t, note)
-	assert.Contains(t, attr(note, "class"), "alert-success")
 }
 
 func TestARelativeFolderIsRejectedNextToItsField(t *testing.T) {
@@ -187,7 +147,21 @@ func TestFoldersAreCleanedBeforeTheyAreSaved(t *testing.T) {
 	assert.Equal(t, dir, e.settings.Current().Paths.Usenet.Complete)
 }
 
-func TestWarningsForAMissingFolderAreNotBlocking(t *testing.T) {
+func TestSavingFoldersMakesNoClaimAboutTheDisk(t *testing.T) {
+	_, b := settingsSignedIn(t)
+
+	rec := b.settingsPost("/settings/paths", pathsForm(t))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	doc := parseHTML(t, rec.Body.String())
+	assert.Nil(t, byID(doc, "paths-warnings"), "no checks, so no verdict")
+	body := strings.ToLower(text(doc))
+	for _, claim := range []string{"look good", "writable", "does not exist", "different filesystems"} {
+		assert.NotContains(t, body, claim)
+	}
+}
+
+func TestAMissingButWellFormedFolderSavesWithoutAWarningOrAProbe(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	form := pathsForm(t)
 	missing := filepath.Join(t.TempDir(), "not-there-yet")
@@ -196,59 +170,47 @@ func TestWarningsForAMissingFolderAreNotBlocking(t *testing.T) {
 	rec := b.settingsPost("/settings/paths", form)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, missing, e.settings.Current().Paths.Usenet.Incomplete, "saved anyway")
-	warn := byID(parseHTML(t, rec.Body.String()), "paths-warnings")
-	assert.Contains(t, attr(warn, "class"), "alert-warn")
-	assert.Contains(t, text(warn), "Usenet incomplete folder does not exist yet")
-	assert.NotContains(t, text(warn), "different filesystems")
+	assert.Equal(t, missing, e.settings.Current().Paths.Usenet.Incomplete, "saved")
+	assert.Nil(t, byID(parseHTML(t, rec.Body.String()), "paths-warnings"))
 	level, _ := settingsToastOf(t, rec)
-	assert.Equal(t, "warn", level)
+	assert.Equal(t, "success", level)
 	_, statErr := os.Stat(missing)
-	assert.True(t, os.IsNotExist(statErr), "checking a folder never creates it")
+	assert.True(t, os.IsNotExist(statErr), "saving never creates the folder")
 }
 
-func TestWarningsForAFolderThatIsAFileAndOneThatCannotBeWrittenTo(t *testing.T) {
-	check := &fakeFS{file: map[string]bool{}, readOnly: map[string]bool{}}
-	_, b := settingsSignedIn(t, withPathChecker(check))
+func TestAFolderWithDotDotIsRejectedNextToItsField(t *testing.T) {
+	e, b := settingsSignedIn(t)
+	before := e.settings.Current()
 	form := pathsForm(t)
-	check.file[form.Get("torrent_complete")] = true
-	check.readOnly[form.Get("usenet_incomplete")] = true
+	form.Set("torrent_complete", "/data/torrents/../etc")
 
 	rec := b.settingsPost("/settings/paths", form)
 
-	warn := text(byID(parseHTML(t, rec.Body.String()), "paths-warnings"))
-	assert.Contains(t, warn, "Torrent complete folder is a file")
-	assert.Contains(t, warn, "Usenet incomplete folder is not writable")
-	assert.NotContains(t, check.writeProbe, form.Get("torrent_complete"), "never writes into something that is not a directory")
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	assert.Equal(t, before, e.settings.Current(), "nothing is saved")
+	doc := parseHTML(t, rec.Body.String())
+	assert.Equal(t, "/data/torrents/../etc", attr(byID(doc, "torrent-complete"), "value"), "what was typed stays")
+	assert.Contains(t, text(byID(doc, "torrent-complete-error")), "..")
+	assert.Nil(t, byID(doc, "torrent-incomplete-error"))
 }
 
-func TestWarningExplainsHardlinksWhenFoldersAreOnDifferentFilesystems(t *testing.T) {
-	_, b := settingsSignedIn(t, withPathChecker(&fakeFS{otherFS: true}))
-
-	rec := b.settingsPost("/settings/paths", pathsForm(t))
-
-	warn := text(byID(parseHTML(t, rec.Body.String()), "paths-warnings"))
-	assert.Contains(t, warn, "Usenet folders are on different filesystems")
-	assert.Contains(t, warn, "Torrent folders are on different filesystems")
-	assert.Contains(t, warn, "hardlinks")
-	assert.Contains(t, warn, "copy it instead of just moving it")
-}
-
-func TestCheckingFoldersLeavesNothingBehind(t *testing.T) {
-	_, b := settingsSignedIn(t)
+func TestNestedFoldersAreRejectedOnTheInnerField(t *testing.T) {
+	e, b := settingsSignedIn(t)
+	before := e.settings.Current()
 	form := pathsForm(t)
+	incomplete := form.Get("usenet_incomplete")
+	form.Set("usenet_complete", filepath.Join(incomplete, "done"))
 
 	rec := b.settingsPost("/settings/paths", form)
 
-	require.Equal(t, http.StatusOK, rec.Code)
-	for name := range form {
-		if name == "_csrf" {
-			continue
-		}
-		entries, err := os.ReadDir(form.Get(name))
-		require.NoError(t, err)
-		assert.Empty(t, entries, name)
-	}
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	assert.Equal(t, before, e.settings.Current(), "nothing is saved")
+	doc := parseHTML(t, rec.Body.String())
+	msg := text(byID(doc, "usenet-complete-error"))
+	assert.Contains(t, msg, "inside")
+	assert.Contains(t, msg, incomplete)
+	assert.Nil(t, byID(doc, "usenet-incomplete-error"), "the outer folder is fine")
+	assert.Equal(t, "alert", attr(byID(doc, "paths-error"), "role"))
 }
 
 func TestPlainFormPostRendersThePageAgain(t *testing.T) {

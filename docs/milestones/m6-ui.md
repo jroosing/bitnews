@@ -47,7 +47,7 @@ By the end of M6, the daemon itself serves a browser UI built with htmx and serv
 | Queue | Both Queues, with live progress, rate, ETA, state and stage. Actions: pause/resume, Download Priority, move top/bottom, change Category, remove (with a data-deletion option). Global pause per Queue and the current speed limits. |
 | History | Ready and Failed Downloads with filters (Category, kind, state) and paging. Failed rows show a readable failure reason. |
 | Download detail | Source info, files, Missing/damaged counts, Post-processing stage log, output path. Torrents also show peers, ratio and Share Limit. |
-| Settings → Paths & Categories | Per-protocol incomplete/complete roots, Category CRUD with dir overrides, and same-filesystem warnings checked when saving |
+| Settings → Paths & Categories | Per-protocol incomplete/complete roots, Category CRUD with dir overrides, and same-filesystem warnings checked when saving (changed by M7-01: shape-only validation, no filesystem checks) |
 | Settings → Usenet Servers | CRUD, Server Priority ordering, retention, connections, and a "Test" button with the specific error class. The password field is write-only. |
 | Settings → Torrent network | Listen port, DHT/PEX/LSD, MSE policy, bind interface/address per protocol (with live status), global Share Limit defaults |
 | Settings → Speed & queue | Global and per-protocol limits, Queue concurrency, `postproc_concurrency`, `min_free` |
@@ -135,8 +135,8 @@ Semantic HTML, labels on every input, and keyboard-operable actions. The layout 
 **Goal:** Configure the per-protocol roots and Categories from the UI.
 
 **Work**
-- Per-protocol incomplete/complete roots with shape-only validation (absolute, clean, not nested; see [M7-01](m7-simplification.md#m7-01-paths-are-the-users-responsibility)). No exists, writable or same-filesystem checks. The hint says to keep the complete directories and the library on one filesystem.
-- Category CRUD with an optional dir override. Note in the UI that a change only affects new Downloads.
+- Per-protocol incomplete/complete roots with validation (exists, writable), and same-filesystem warnings on save that explain the hardlink impact. *Changed by M7-01:* the roots get shape-only validation (absolute, clean, not nested; see [M7-01](m7-simplification.md#m7-01-paths-are-the-users-responsibility)) with the error shown next to the offending field. There are no exists, writable or same-filesystem checks, a missing folder saves without a warning, and bitnews creates it when the first download needs it. The hint says to keep the complete directories and the library on one filesystem (Sonarr and Radarr make the hardlinks, bitnews does not).
+- Category CRUD with an optional dir override (*changed by M7-01:* shape-only too: absolute, clean, never probed). Note in the UI that a change only affects new Downloads.
 
 **Acceptance criteria**
 - [ ] Validation errors render per field.
@@ -174,6 +174,9 @@ Semantic HTML, labels on every input, and keyboard-operable actions. The layout 
 - [ ] Every field validates and persists, and runtime-changeable settings apply without a restart (test with the fake engines).
 
 ### M6-08: Settings — security, API keys and media-manager credentials
+
+> **Superseded by [M7-04](m7-simplification.md#m7-04-a-single-api-key) / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).** The API key CRUD and the media-manager credentials parts are replaced by a single API key card (key shown as text, Copy, Rotate; [M7-05](m7-simplification.md#m7-05-security-page-key-card)). The sign-in options, hosts, proxies and password parts stand.
+
 - **Labels:** area:ui, area:auth, ready-for-agent
 - **Depends on:** M6-01, M1-12, M4-02
 

@@ -84,14 +84,18 @@ Settings is one area with a section per page: `/settings` redirects to the first
 
 ### Registry
 
-`settingsSections()` returns the `SettingsSection` entries: `Slug`, `Title`, `Icon`, `Description`, `Order` (navigation order; the lowest is where `/settings` leads), and optionally `Template`, `Data`, `Routes` and `Planned`. An entry without a `Template` renders the "Coming next" placeholder (`pages/settings_soon.html`) with its `Planned` bullets. Currently: `paths`, `servers`, `security` and the others listed in the table in `settings.go`.
+`settingsSections()` returns the `SettingsSection` entries: `Slug`, `Title`, `Icon`, `Description`, `Order` (navigation order; the lowest is where `/settings` leads), `Template` (the file below `assets/templates/pages/`, required), and optionally `Data` and `Routes`. There is no placeholder page: a section exists once it has a template. Currently: `paths`, `servers`, `security` and the others listed in the table in `settings.go`.
 
-To fill in a placeholder (for example Speed & queue):
+To add a section (for example Speed & queue):
 
 1. Create `assets/templates/pages/settings_speed.html`. Define `subtitle` (`{{.Page.Section.Description}}`) and `content`, and wrap the cards: `{{template "settings_layout_start" .Page}} ... {{template "settings_layout_end"}}`. The section's own data is `.Page.Data`.
-2. In the registry entry set `Template: "settings_speed.html"`, `Data: settingsSpeedData` (func `(s *Server, r *http.Request) (any, error)`) and `Routes: (*Server).registerSpeedRoutes`; delete `Planned`.
+2. Add a registry entry and set `Template: "settings_speed.html"`, `Data: settingsSpeedData` (func `(s *Server, r *http.Request) (any, error)`) and `Routes: (*Server).registerSpeedRoutes`.
 3. In `settings_speed.go` write the data func and `registerSpeedRoutes` (`s.handleAuthed("POST /settings/speed", ...)`). Prefix package-level names with the section so files do not collide.
 4. `make css`, then check the page in light, dark and at 390 px.
+
+### Paths & Categories
+
+Saving the folders checks their shape only, through `core.Paths.Problems` (absolute, clean, no `..`, the incomplete and complete folders of both protocols not nested), and shows each problem next to the folder at fault (422, nothing saved). It never looks at the disk: no exists, writable or same-filesystem check, no warning for a folder that is missing, and nothing is created on save (bitnews creates missing folders when the first download needs them, see ADR-0006 and M7-01). A category's folder override gets the same shape check (`pathShapeError`). The page hint tells the user to keep the complete folders and the media library on one filesystem, because Sonarr and Radarr make the hardlinks, not bitnews. Changed by M7-01; earlier versions of this page probed the folders (`pathChecker`) and warned about different filesystems.
 
 ### The settings form pattern
 
@@ -108,7 +112,7 @@ A card with one `<form>` per group of settings, so every card saves on its own:
 - Validate per field before calling the service and answer `422` with the card (htmx swaps `422`); set `Error` on each `field` (it renders the message with `aria-describedby` and `aria-invalid`), keep what the user typed and set `Dirty` so Save stays enabled. A problem that belongs to no field goes into the form's `Error`. A service error: `settingsAppError(err)` gives the `*app.Error` with its message.
 - On success send a toast with `settingsTrigger(w, "success", "Saved.", nil)` (use `"warn"` when you also show warnings) and re-render the card. Without htmx (plain POST) render the whole page with `s.renderSettingsPage(w, r, status, "speed", data)` and set `Saved`.
 - Save is disabled until a field changes (Alpine `settingsForm`, in `js/settings.js`) and shows a spinner while the request runs (the form gets `htmx-request`). Unsaved changes show "Unsaved changes".
-- Non-blocking remarks (like the folder warnings) are an `alert alert-warn` block inside the card, computed on the server after the save.
+- Non-blocking remarks (for example a note about what a saved value means for running downloads) are an `alert alert-warn` block inside the card, computed on the server after the save.
 
 ### Speed & queue and Torrent network (`settings_cards.go`)
 
@@ -124,7 +128,7 @@ Write-only secrets: never put a secret into a `value` attribute; an empty passwo
 
 ### Tests
 
-Handler tests live in `settings_test.go`, `settings_security_test.go`, `settings_paths_test.go`, `settings_categories_test.go` and `settings_servers_test.go`: `settingsSignedIn(t, opts...)` gives an env and a signed-in browser, `settingsPost` / `settingsDo` send htmx requests with the CSRF header, `withProber` and `withPathChecker` replace the connection prober and the file system checks. Add the new section's pages and fragments to `addSettingsResponses`, so the shared HTML invariant tests (no inline script or style, accessible names, unique ids) cover them.
+Handler tests live in `settings_test.go`, `settings_security_test.go`, `settings_paths_test.go`, `settings_categories_test.go` and `settings_servers_test.go`: `settingsSignedIn(t, opts...)` gives an env and a signed-in browser, `settingsPost` / `settingsDo` send htmx requests with the CSRF header, `withProber` replaces the connection prober. Add the new section's pages and fragments to `addSettingsResponses`, so the shared HTML invariant tests (no inline script or style, accessible names, unique ids) cover them.
 
 ## History, Download detail and the "New download" dialog
 
@@ -141,4 +145,4 @@ Handler tests live in `settings_test.go`, `settings_security_test.go`, `settings
 
 - **Sign-in and hosts** (`/settings/security/access`, `/hosts`): read `Settings.Current()`, replace only `Auth`, `Update`. Enabling disable-auth or LAN bypass needs an allowed host that includes the Host the browser used (else a field error, so the user cannot lock themselves out). Newly turning sign-in off, adding LAN networks, or trusting proxies while bypass is on answers `200` with a confirm card (`security_confirm`): the values come back as hidden fields plus `confirmed=1`, so confirming is a plain post and nothing is kept on the server. Cancel is `GET` of the card.
 - **Password** (`/password`): `auth.SessionService.ChangePassword` checks the current password through the login limiter (429 + `Retry-After`), applies the length rules, rehashes with the current argon2 parameters and ends the user's other sessions (`SessionRepo.DeleteForUserExcept`). Not offered to bypass or disabled-auth principals.
-- **API keys** and **media manager credentials** (`/api-keys`, `/adapters`): create answers with the card plus the show-once block (`security_secret`, `Cache-Control: no-store`); the plaintext is in that response only. Credential values for Sonarr/Radarr come from the request Host (host, port), `sabnzbd` as the URL base, and the generated key (password for qBittorrent). Revoke is `POST .../{id}/revoke` behind `hx-confirm`.
+- **API key** (`/app-key`, `settings_security_appkey.go`): one card for the one key of the app (ADR-0006). The key is plain text in the card (a `<code>` and the Copy button) and nowhere else in the HTML. The copy-ready Sonarr/Radarr values come from the request Host (host and port, rendered escaped, so a hostile `Host` header is inert), `sabnzbd` as the URL base and the fixed qBittorrent username `bitnews`. `POST /settings/security/app-key` is Rotate: without `confirmed=1` it answers with the confirm step (`security_confirm`, works without JavaScript) and changes nothing; with it, `auth.AppKeyService.Rotate` makes a new key that is valid at once on the API, SABnzbd and qBittorrent and ends the qBittorrent sessions. The key is never in a toast or the log. There are no key routes in the API.

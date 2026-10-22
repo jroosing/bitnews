@@ -199,13 +199,13 @@ func TestDisabledAuthAndLANBypassNeverReachTheQBitRoute(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
-func TestRefreshingTheKeyKillsTheQBitSessionAtOnce(t *testing.T) {
+func TestRotatingTheKeyKillsTheQBitSessionAtOnce(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBit(&nullEngine{}))
 	sid, _, _ := e.qbitLogin()
 	require.Equal(t, http.StatusOK, e.do("GET", "/api/v2/app/version", "", withCookie(sid)).Code)
 
-	_, err := e.appKey.Refresh(context.Background())
+	_, err := e.appKey.Rotate(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusForbidden, e.do("GET", "/api/v2/app/version", "", withCookie(sid)).Code)

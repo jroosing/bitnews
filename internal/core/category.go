@@ -27,8 +27,13 @@ func (c Category) Validate() error {
 	if !validCategoryName(c.Name) {
 		return fmt.Errorf("core: %q: %w", c.Name, ErrInvalidCategoryName)
 	}
-	if c.DirOverride != "" && !filepath.IsAbs(c.DirOverride) {
-		return fmt.Errorf("core: category %q: dir override %q is not an absolute path", c.Name, c.DirOverride)
+	if c.DirOverride != "" {
+		if !filepath.IsAbs(c.DirOverride) {
+			return fmt.Errorf("core: category %q: dir override %q is not an absolute path", c.Name, c.DirOverride)
+		}
+		if filepath.Clean(c.DirOverride) != c.DirOverride {
+			return fmt.Errorf("core: category %q: dir override %q is not a clean path (no \"..\", \".\" or doubled and trailing separators)", c.Name, c.DirOverride)
+		}
 	}
 	return nil
 }

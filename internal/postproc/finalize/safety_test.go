@@ -39,7 +39,11 @@ func TestCrossDeviceMoveEmitsWarning(t *testing.T) {
 	require.Equal(t, "cross_device", w[0].Kind)
 	require.Equal(t, d.ID, w[0].DownloadID)
 	require.Equal(t, out, w[0].Path)
-	require.Contains(t, w[0].Message, "hardlinks")
+	require.Contains(t, w[0].Message, "copied instead of renamed")
+	require.Contains(t, w[0].Message, "different filesystems")
+	require.Contains(t, w[0].Message, "Sonarr/Radarr")
+	require.Contains(t, w[0].Message, "complete folder")
+	require.NotContains(t, w[0].Message, "hardlinks will not work", "bitnews does not make hardlinks")
 }
 
 func TestSameDeviceMoveEmitsNoWarning(t *testing.T) {

@@ -51,13 +51,14 @@ func TestARestartKeepsTheStoredKey(t *testing.T) {
 	assert.Equal(t, first, second)
 }
 
-func TestAKeyThatCannotBeDecryptedIsReplacedByANewOne(t *testing.T) {
-	repo := &fakeAppKeys{getErr: core.ErrAppKeyUnreadable}
+func TestAStoredKeyOfTheWrongShapeIsReplacedByANewOne(t *testing.T) {
+	repo := &fakeAppKeys{key: "not-a-key", set: true}
 	e := newAppKeyEnv(t, repo)
 
 	assert.Regexp(t, `^bitnews_[a-z2-7]{52}$`, e.svc.Current().Reveal())
 	assert.Equal(t, e.svc.Current(), repo.stored())
-	assert.Contains(t, e.log.String(), "unreadable")
+	assert.Contains(t, e.log.String(), "malformed")
+	assert.NotContains(t, e.log.String(), "not-a-key")
 }
 
 func TestStartingFailsWhenTheStoreFails(t *testing.T) {
@@ -96,12 +97,12 @@ func otherChar(c byte) string {
 	return "a"
 }
 
-func TestRefreshMakesANewKeyAndRejectsTheOldOneAtOnce(t *testing.T) {
+func TestRotateMakesANewKeyAndRejectsTheOldOneAtOnce(t *testing.T) {
 	e := newAppKeyEnv(t, &fakeAppKeys{})
 	old := e.svc.Current().Reveal()
 	gen := e.svc.Generation()
 
-	got, err := e.svc.Refresh(context.Background())
+	got, err := e.svc.Rotate(context.Background())
 
 	require.NoError(t, err)
 	assert.NotEqual(t, old, got.Reveal())
@@ -113,13 +114,13 @@ func TestRefreshMakesANewKeyAndRejectsTheOldOneAtOnce(t *testing.T) {
 	assert.NotEqual(t, gen, e.svc.Generation(), "sessions bound to the old key can tell")
 }
 
-func TestAFailedRefreshKeepsTheOldKeyWorking(t *testing.T) {
+func TestAFailedRotateKeepsTheOldKeyWorking(t *testing.T) {
 	e := newAppKeyEnv(t, &fakeAppKeys{})
 	old := e.svc.Current()
 	e.repo.setErr = errors.New("disk full")
 	gen := e.svc.Generation()
 
-	_, err := e.svc.Refresh(context.Background())
+	_, err := e.svc.Rotate(context.Background())
 
 	require.Error(t, err)
 	assert.Equal(t, old, e.svc.Current())
@@ -144,7 +145,7 @@ func TestTheKeyNeverAppearsInLogsErrorsOrFormattedOutput(t *testing.T) {
 	key := e.svc.Current()
 	old := key.Reveal()
 	e.svc.Authenticate("bitnews_not-it")
-	newKey, err := e.svc.Refresh(context.Background())
+	newKey, err := e.svc.Rotate(context.Background())
 	require.NoError(t, err)
 	h := e.svc.KeyOr(denyAll)(okHandler)
 	rec := httptest.NewRecorder()
@@ -228,13 +229,13 @@ func TestKeyOrPutsTheKeyPrincipalInTheContext(t *testing.T) {
 	assert.Equal(t, auth.Principal{Kind: auth.PrincipalAPIKey}, got)
 }
 
-func TestARefreshedKeyIsRejectedByTheMiddlewareOnTheNextRequest(t *testing.T) {
+func TestARotatedKeyIsRejectedByTheMiddlewareOnTheNextRequest(t *testing.T) {
 	e := newAppKeyEnv(t, &fakeAppKeys{})
 	old := e.svc.Current().Reveal()
 	h := e.svc.KeyOr(denyAll)(okHandler)
 	require.Equal(t, http.StatusTeapot, e.request(h, "GET", bearer(old)).Code)
 
-	fresh, err := e.svc.Refresh(context.Background())
+	fresh, err := e.svc.Rotate(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusUnauthorized, e.request(h, "GET", bearer(old)).Code)

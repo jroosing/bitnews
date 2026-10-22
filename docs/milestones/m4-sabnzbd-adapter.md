@@ -139,6 +139,9 @@ What was decided, and is therefore a guess until then:
 - [ ] No real keys or private hostnames are in the repo.
 
 ### M4-02: Adapter credentials per media manager
+
+> **Superseded by [M7-04](m7-simplification.md#m7-04-a-single-api-key) / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).** Per-media-manager credentials and the `/api/v1/adapter-credentials` routes are gone: the SABnzbd `apikey` and the qBittorrent login (username `bitnews`, the key as password) both use the one app key. The work below is kept as history.
+
 - **Labels:** area:auth, area:adapter, ready-for-agent
 - **Depends on:** M1-12
 

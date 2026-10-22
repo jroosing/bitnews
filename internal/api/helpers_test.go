@@ -154,7 +154,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	uiAuth, err := auth.NewUIAuth(sessions, e.settings.Current)
 	require.NoError(t, err)
-	e.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db, e.key), auth.WithAppKeyLogger(logger))
+	e.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
 
 	appOpts := []app.Option{app.WithClock(e.clock.Now)}

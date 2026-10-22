@@ -16,16 +16,16 @@ bitnews stops checking and managing things the operating system already handles,
 
 ## One API key
 
-- There is one key, generated on first start, with a Refresh button in Settings → Security. It authenticates every client:
+- There is one key, generated on first start, shown in Settings → Security with a Copy button and a Rotate button. It authenticates every client:
   - SABnzbd: the `apikey` parameter.
   - qBittorrent: the password, with the fixed username `bitnews`.
   - Own API (`/api/v1`): `Authorization: Bearer <key>`, full access.
-- The key is stored sealed with the master key ([ADR-0004](0004-master-key-in-config-dir.md)), so Settings can show it again (Reveal, Copy). The daemon decrypts it at start and compares requests against the in-memory value in constant time.
+- The key is stored as plain text in the database and shown as is on the settings page, the way Sonarr and Radarr keep theirs. There is no encryption and no master-key involvement ([ADR-0004](0004-master-key-in-config-dir.md) only covers Usenet and archive passwords). The daemon loads it at start and compares requests against the in-memory value in constant time.
 - Named API keys, read/write scopes and per-media-manager credentials are removed, along with their tables.
 
 ## Consequences
 
-- No read-only key for scripts. Refreshing the key breaks every client until they are updated; the UI says so.
+- No read-only key for scripts. Rotating the key breaks every client until they are updated; the UI says so.
 - A typo in a path shows up at the first download instead of when saving.
 - A compose or env file written for `PUID`/`PGID` stops working. No release has shipped, so there is nothing to migrate.
-- The key is visible to anyone logged in to the UI. A copy of `bitnews.db` alone does not expose it, but the whole config directory does (as for the Usenet passwords).
+- The key is visible to anyone logged in to the UI, and a copy of `bitnews.db` exposes it. That is the same exposure Sonarr and Radarr have, and the user is responsible for protecting the config directory. Rotate the key after sharing a database copy.

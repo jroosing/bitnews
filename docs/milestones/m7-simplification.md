@@ -61,17 +61,17 @@ Remove what the operating system already does and what the user is responsible f
 - **Labels:** area:auth, area:adapter, ready-for-agent
 - **Depends on:** M1-12, M4-02, M5-10
 
-**Goal:** One sealed, refreshable key authenticates SABnzbd, qBittorrent and the own API.
+**Goal:** One plain-text, rotatable key authenticates SABnzbd, qBittorrent and the own API.
 
 **Work**
-- A migration with one `app_key` row holding the sealed key, and dropping the API-key and adapter-credential tables. The key is generated on first start. A service offers `Current`, `Refresh` and `Authenticate` (constant time, against the in-memory copy).
+- A migration with one `app_key` row holding the key as plain text, and dropping the API-key and adapter-credential tables. The key is generated on first start. A service offers `Current`, `Rotate` and `Authenticate` (constant time, against the in-memory copy).
 - SABnzbd `apikey`, qBit login (username `bitnews`, password the key) and `/api/v1` Bearer all use it, with full access. Remove scopes, named keys, per-manager credentials and the code and tests around them.
-- Refresh takes effect at once for every surface.
+- Rotate takes effect at once for every surface.
 
 **Acceptance criteria**
 - [ ] The key authenticates each of the three surfaces; a wrong key or username fails each.
-- [ ] After Refresh the old key is rejected on all three, and the new one works.
-- [ ] The key is never logged, and the stored value is sealed.
+- [ ] After Rotate the old key is rejected on all three, and the new one works.
+- [ ] The key is never logged, and it is stored as plain text, as Sonarr and Radarr do.
 
 ### M7-05: Security page key card
 - **Labels:** area:ui, area:auth, ready-for-agent
@@ -80,10 +80,10 @@ Remove what the operating system already does and what the user is responsible f
 **Goal:** Settings → Security shows the one key.
 
 **Work**
-- Replace the API keys and media-manager credentials cards with one card: masked key, Reveal, Copy, Refresh (with a confirm that says every client stops working), and copy-ready values for Sonarr/Radarr (host, port, URL base `sabnzbd`, qBit username `bitnews`).
+- Replace the API keys and media-manager credentials cards with one card: the key in plain sight, Copy and Rotate (with a confirm that says every client stops working), and copy-ready values for Sonarr/Radarr (host, port, URL base `sabnzbd`, qBit username `bitnews`).
 - Remove the show-once block and its `no-store` special case.
 - Keep the sign-in options, hosts, proxies and password cards as they are.
 
 **Acceptance criteria**
-- [ ] The key is masked in the HTML until Reveal, and Refresh needs the confirm.
+- [ ] The key is shown on the page, and Rotate needs the confirm.
 - [ ] A test confirms the other cards are unchanged and the old routes are gone.

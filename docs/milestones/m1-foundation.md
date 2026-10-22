@@ -392,6 +392,9 @@ M1 routes (more are added in later milestones):
 - [ ] Rate-limit tests use a fake clock.
 
 ### M1-12: API keys with scopes
+
+> **Superseded by [M7-04](m7-simplification.md#m7-04-a-single-api-key) / [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md).** Named API keys, scopes and the `/api/v1/api-keys` routes are gone: one app key with full access serves the own API, SABnzbd and qBittorrent. The work below is kept as history.
+
 - **Labels:** area:auth, ready-for-agent
 - **Depends on:** M1-11
 
