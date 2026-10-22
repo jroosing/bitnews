@@ -60,9 +60,12 @@ func (s *SessionService) Login(ctx context.Context, username string, password co
 	if err != nil && !errors.Is(err, core.ErrNotFound) {
 		return "", fmt.Errorf("auth: look up user: %w", err)
 	}
-	hash := s.dummyHash
-	if known {
-		hash = user.PasswordHash
+	hash := user.PasswordHash
+	if !known {
+		var herr error
+		if hash, herr = s.unknownUserHash(); herr != nil {
+			return "", fmt.Errorf("auth: dummy hash: %w", herr)
+		}
 	}
 	ok, verr := s.verify(hash, password)
 	if verr != nil {

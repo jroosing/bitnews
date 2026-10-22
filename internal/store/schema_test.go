@@ -56,8 +56,17 @@ func TestFreshDatabaseHasTheSchemaOfEveryMigration(t *testing.T) {
 	}
 	require.NoError(t, rows.Err())
 
-	assert.Equal(t, []string{"api_keys", "categories", "download_sources", "downloads", "schema_migrations", "servers", "sessions", "settings", "users"}, tables)
-	assert.Equal(t, []appliedRow{{1, "initial"}, {2, "servers"}}, applied(t, db.Reader()))
+	// Later migrations add tables of their own, so check what earlier ones
+	// created and that the applied versions are contiguous from 1. Each
+	// migration's own tests assert its tables.
+	assert.Subset(t, tables, []string{"api_keys", "categories", "download_sources", "downloads", "schema_migrations", "servers", "sessions", "settings", "users"})
+	got := applied(t, db.Reader())
+	require.GreaterOrEqual(t, len(got), 2)
+	assert.Equal(t, appliedRow{1, "initial"}, got[0])
+	assert.Equal(t, appliedRow{2, "servers"}, got[1])
+	for i, row := range got {
+		assert.Equal(t, i+1, row.Version, "applied migrations must be contiguous from 1")
+	}
 }
 
 func TestSchemaStoresARowForEachTable(t *testing.T) {

@@ -29,19 +29,33 @@ type plan struct {
 	encoded int64
 	// filesWithArticles lists the file keys that have Articles.
 	fileKeys []int
+	// names are the provisional names of the fetched files.
+	names []string
 	// segsOf counts the Articles of each fetched file.
 	segsOf map[int]int
 }
 
 // buildPlan turns n into Articles. Recovery volumes (.volNN+MM.par2) are
 // deferred: M3-07 un-defers them when Repair needs more blocks.
-func buildPlan(n *nzb.NZB) plan {
+//
+// With supplement nil the plan covers every file except the volumes. With a
+// supplement (the volumes that were un-deferred and not fetched yet, by file
+// index) it covers exactly those volumes: the Download was fetched before
+// and only needs the volumes Repair asked for.
+func buildPlan(n *nzb.NZB, supplement map[int]bool) plan {
 	p := plan{byKey: map[segKey]scheduler.Article{}, segsOf: map[int]int{}}
 	for fi, f := range n.Files {
-		if f.Kind == nzb.KindPar2Volume || len(f.Segments) == 0 {
+		if len(f.Segments) == 0 {
+			continue
+		}
+		if supplement == nil && f.Kind == nzb.KindPar2Volume {
+			continue
+		}
+		if supplement != nil && (!supplement[fi] || f.Kind != nzb.KindPar2Volume) {
 			continue
 		}
 		p.files++
+		p.names = append(p.names, f.Name)
 		p.fileKeys = append(p.fileKeys, fi)
 		for _, s := range f.Segments {
 			a := scheduler.Article{
@@ -100,3 +114,35 @@ func wipeDir(dir string) error {
 
 // fileKey converts an NZB file index to the writer's key.
 func fileKey(i int) filewriter.FileKey { return filewriter.FileKey(i) }
+
+// blobIsAbout reports whether every resolved Article of rb belongs to p.
+func blobIsAbout(rb resumeBlob, p plan) bool {
+	for _, rec := range rb.Segments {
+		if _, ok := p.byKey[rec.Key]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// removeNamed deletes the regular files directly inside dir whose names are
+// in names, which are the provisional names of the files about to be
+// fetched. It removes what an interrupted earlier run of the same files left,
+// so the writer does not create duplicates next to them. Names that are not
+// plain file names are skipped.
+func removeNamed(dir string, names []string) error {
+	for _, name := range names {
+		if name == "" || name != filepath.Base(name) || name == "." || name == ".." || strings.EqualFold(filepath.Ext(name), ".nzb") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		fi, err := os.Lstat(path)
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("runner: clear %s: %w", path, err)
+		}
+	}
+	return nil
+}

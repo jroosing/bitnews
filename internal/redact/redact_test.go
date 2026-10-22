@@ -1,6 +1,7 @@
 package redact_test
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -175,4 +176,26 @@ func TestURLKeepsOrdinaryPathSegments(t *testing.T) {
 	} {
 		assert.Equal(t, in, redact.URL(in))
 	}
+}
+
+func TestURLRedactsSecretsInsideNestedURLValues(t *testing.T) {
+	raw := "http://sab.lan/sabnzbd/api?mode=addurl&name=https%3A%2F%2Findexer.example%2Fgetnzb%2Fabc.nzb%3Fapikey%3DNESTEDSECRET%26i%3D5&apikey=OUTERSECRET&cat=tv"
+
+	got := redact.URL(raw)
+
+	assert.NotContains(t, got, "NESTEDSECRET")
+	assert.NotContains(t, got, "OUTERSECRET")
+	assert.Contains(t, got, "mode=addurl")
+	assert.Contains(t, got, "cat=tv")
+	assert.Contains(t, got, "indexer.example", "the nested host stays readable for debugging")
+}
+
+func TestURLRedactsNestedURLsThatAreNestedAgain(t *testing.T) {
+	inner := "https://c.example/x?apikey=DEEPSECRET"
+	mid := "https://b.example/y?u=" + url.QueryEscape(inner)
+	raw := "https://a.example/z?next=" + url.QueryEscape(mid)
+
+	got := redact.URL(raw)
+
+	assert.NotContains(t, got, "DEEPSECRET")
 }

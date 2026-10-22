@@ -24,6 +24,7 @@ The own API is served on the daemon's one port under `/api/v1/`. The UI (M6) use
 | setup token | The one-time token from the startup log. |
 | read / write | An API key of that scope (`Authorization: Bearer bn_...` or `X-Api-Key`), or else a UI session. A `read` key may only use GET; a `write` key may use every method. A request that carries a key is judged as a key request and never falls back to the session. |
 | session | A logged-in UI session (cookie `bitnews_session`). State-changing requests also need the `X-CSRF-Token` header from `GET /auth/session` or the login response. API keys are refused. |
+| UI principal | Like session, but the disable-auth and LAN bypass principals are accepted too (they also need the CSRF token). API keys and adapter credentials are refused with `403 session_required`, even where the bypass would let the request in without them. Used only to manage adapter credentials, so media managers can be configured when the UI runs without a login. |
 
 While first-run setup is open, every route except `POST /setup` and `GET /health` answers `503 setup_required`.
 
@@ -60,9 +61,23 @@ While first-run setup is open, every route except `POST /setup` and `GET /health
 | GET | `/api/v1/api-keys` | session only | | `200 {"items":[{"id","name","scope","created_at","last_used_at"}]}` |
 | POST | `/api/v1/api-keys` | session only | `{"name","scope":"read\|write"}` | `201` the key's fields plus `"key":"bn_..."`, shown this once |
 | DELETE | `/api/v1/api-keys/{id}` | session only | | `204` |
+| GET | `/api/v1/adapter-credentials` | UI principal | | `200 {"items":[{"id","kind","name","username"?,"created_at","last_used_at"}]}` (never a key or hash) |
+| POST | `/api/v1/adapter-credentials` | UI principal | `{"kind":"adapter_sab\|adapter_qbit","name","username"?}` | `201` the credential's fields plus `"key":"bns_..."` (or `"bnq_..."`), shown this once; `400 invalid_kind`, `invalid_name`, `invalid_username`; `409 username_taken` |
+| DELETE | `/api/v1/adapter-credentials/{id}` | UI principal | | `204`; the credential stops working with the next request |
 | GET | `/api/v1/events` | read | | `200 text/event-stream`, see below |
 
 Routes that need a session are also refused to the disable-auth and LAN bypass principals (`403 session_required`).
+
+### Adapter credentials
+
+An adapter credential authenticates one media manager (Sonarr, Radarr, Prowlarr) on one adapter, so each can be revoked on its own. The key is 256 random bits shown once, as `bns_` + base32 for `adapter_sab` and `bnq_` + base32 for `adapter_qbit`; only its SHA-256 hash is stored. `username` is set for `adapter_qbit` only: it is `[a-z0-9_-]{1,32}`, unique among qBit credentials, derived from the name when omitted (`"My Radarr"` becomes `my-radarr`), and the key is the password to configure next to it. `last_used_at` is updated at most once a minute, so the UI can show which media manager last connected.
+
+- A credential is valid on its own adapter only: `/sabnzbd/api` takes `adapter_sab`, the qBittorrent adapter takes `adapter_qbit`. Every `/api/v1` route refuses it with `401`, and `/sabnzbd/api` refuses API keys and sessions (`{"status":false,"error":"API Key Incorrect"}`).
+- The adapters never honour disable-auth or LAN bypass. The credential routes above do accept those UI principals, so a credential made under them keeps working after the bypass setting is turned off. The UI must say so.
+
+### SABnzbd adapter
+
+`/sabnzbd/api` (any method, also with a trailing slash) is the SABnzbd API emulation of [M4](milestones/m4-sabnzbd-adapter.md). It is outside the UI authentication and CSRF, and behind the setup gate (`503 setup_required` while setup is open). Its access log line holds the path and the `mode` only, because its query carries keys and, for `addurl`, the indexer's URL.
 
 ### Objects
 
@@ -161,6 +176,9 @@ data: { …Download… }
   | `removed` | `{"id"}` |
   | `settings_changed` | `{}` (fetch `/settings`) |
   | `servers_changed` | `{}` (fetch `/servers`) |
+  | `postprocess_stage` | `{"id","stage"}`, stage is `verifying`, `repairing`, `unpacking` or `finishing` |
+  | `usenet_queue_paused` | `{"reason","detail"}`, reason is `user` or `disk_full` |
+  | `usenet_queue_resumed` | `{"reason":"","detail":""}` |
 
 - If the client falls behind (its 256-event buffer fills), the server sends `event: resync` with `data: {}` and ends the stream. Reconnect and refetch.
 - **`Last-Event-ID` is not supported.** Events are not persisted, so nothing is replayed: refetch the state after every (re)connect. The stream sends no `id:` field.

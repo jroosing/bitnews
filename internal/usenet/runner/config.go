@@ -97,6 +97,9 @@ type Config struct {
 	Factory func(spec ServerSpec) nntp.ConnFactory
 	// Progress persists resume state. Nil keeps it in memory only.
 	Progress ProgressStore
+	// Volumes persists which PAR2 recovery volumes were un-deferred (M3-07).
+	// Nil keeps that in memory only.
+	Volumes VolumeStore
 	// Reports persists FetchReports so Post-processing still finds them
 	// after a restart. Nil keeps them in memory only.
 	Reports ReportStore

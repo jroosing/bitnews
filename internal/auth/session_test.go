@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"runtime"
 	"testing"
 	"time"
 
@@ -187,4 +188,19 @@ func TestRunCleanupRemovesExpiredSessionsUntilCancelled(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("RunCleanup did not stop after cancel")
 	}
+}
+
+func TestNewSessionServiceDoesNotRunArgon2AtConstruction(t *testing.T) {
+	// Production parameters (64 MiB) on purpose: no fast-params hook here.
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
+	svc, err := auth.NewSessionService(newFakeSessions(), &fakeUsers{})
+
+	runtime.ReadMemStats(&after)
+	require.NoError(t, err)
+	require.NotNil(t, svc)
+	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(16<<20),
+		"building the service must not allocate the 64 MiB argon2 working set; the unknown-user hash is made on first use")
 }

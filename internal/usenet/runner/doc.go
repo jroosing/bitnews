@@ -25,8 +25,9 @@
 // # What a fetch does
 //
 //   - All files except PAR2 recovery volumes (.volNN+MM.par2) are fetched.
-//     Recovery volumes are deferred until M3-07 un-defers them; the small
-//     index .par2 is fetched like any data file. The file key of an Article
+//     Recovery volumes are deferred until Undefer asks for them (see
+//     "Deferred recovery volumes"); the small index .par2 is fetched like
+//     any data file. The file key of an Article
 //     is the index of its file in NZB.Files.
 //   - Results are written with filewriter. Missing Articles are counted; the
 //     byte range of a Missing Article is not known before decoding (NZB
@@ -62,14 +63,36 @@
 // With Config.Progress nil the blob is only kept in memory: pause and resume
 // continue where they left off, but a restart cannot.
 //
-// Limitation until the persistent store (M2-12) is wired: after a restart
-// there is no blob, so the whole Download is fetched again. To keep the
+// Wire Config.Progress to a persistent store (store.UsenetProgressRepo) and
+// a restart resumes. Without a usable blob the fetch starts over: to keep the
 // writer from creating duplicates such as movie.mkv.1 next to the files of
-// the interrupted run, a fetch that starts without a usable blob first
-// deletes every file directly inside the working directory except the stored
-// .nzb. A blob that no longer matches the disk (files missing or truncated)
-// only resets the affected files.
+// the interrupted run, it first deletes every file directly inside the
+// working directory except the stored .nzb. A blob that no longer matches the
+// disk (files missing or truncated) only resets the affected files.
 //
 // Recover moves Downloads found Fetching back to Queued; call it before Run
 // after a restart.
+//
+// # Removing a Download's data
+//
+// Hold(ctx, id) cancels the running fetch of a Download, waits for it to
+// stop, and keeps the control loop from activating the Download again until
+// Release, its Removed event, or two minutes have passed. The daemon calls it
+// before deleting the Download's files.
+//
+// # Deferred recovery volumes
+//
+// ListDeferred, Undefer and DeferredBlocks are the fetch side of M3-07 and
+// satisfy adapt.DeferredController and the supplier adapt.Verifier wants.
+// Undefer (allowed only while the Download is PostProcessing) records the
+// chosen volumes through Config.Volumes. When the caller then moves the
+// Download from PostProcessing back to Fetching, the next fetch is a
+// supplement run: because the Download has un-deferred volumes it was
+// fetched before, so the run plans only the un-deferred volumes that are not
+// fetched yet, opens its writer without touching the earlier files, and
+// leaves the stored FetchReport and the Download's progress alone. Its
+// own resume blob protects the volumes against a restart. When it is done
+// the volumes are marked fetched, the Download is Fetched again, and
+// Post-processing starts over from its first stage. A volume counts as
+// deferred until it is fetched.
 package runner

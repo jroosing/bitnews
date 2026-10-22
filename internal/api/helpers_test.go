@@ -96,6 +96,7 @@ type env struct {
 	settings  *app.SettingsService
 	setup     *auth.Setup
 	apiKeys   *auth.APIKeyService
+	adapters  *auth.AdapterCredentialService
 	server    *api.Server
 	cfg       api.Config
 }
@@ -155,6 +156,9 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	e.apiKeys = auth.NewAPIKeyService(store.NewAPIKeyRepo(db), auth.WithAPIKeyClock(e.clock.Now), auth.WithAPIKeyLogger(logger))
 
+	e.adapters = auth.NewAdapterCredentialService(store.NewAdapterCredentialRepo(db),
+		auth.WithAdapterClock(e.clock.Now), auth.WithAdapterLogger(logger))
+
 	appOpts := []app.Option{app.WithClock(e.clock.Now)}
 	if ec.remover != nil {
 		appOpts = append(appOpts, app.WithDataRemover(ec.remover))
@@ -163,19 +167,20 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	e.sources = store.NewDownloadSourceRepo(db, e.key)
 	addOpts := append([]app.Option{app.WithLogger(logger)}, appOpts...)
 	e.cfg = api.Config{
-		Logger:     logger,
-		Version:    api.Version{Version: "1.2.3", Commit: "abc1234", GoVersion: "go9.99"},
-		Downloads:  downloadSvc,
-		Adder:      app.NewAddService(downloadSvc, e.sources, e.settings, append(addOpts, ec.addOpts...)...),
-		Categories: app.NewCategoryService(e.cats, e.downloads, e.bus, appOpts...),
-		Servers:    app.NewServerService(e.servers, e.bus, e.prober, appOpts...),
-		Settings:   e.settings,
-		Setup:      e.setup,
-		Sessions:   sessions,
-		UIAuth:     uiAuth,
-		APIKeys:    e.apiKeys,
-		Bus:        e.bus,
-		InstanceID: "instance-1",
+		Logger:             logger,
+		Version:            api.Version{Version: "1.2.3", Commit: "abc1234", GoVersion: "go9.99"},
+		Downloads:          downloadSvc,
+		Adder:              app.NewAddService(downloadSvc, e.sources, e.settings, append(addOpts, ec.addOpts...)...),
+		Categories:         app.NewCategoryService(e.cats, e.downloads, e.bus, appOpts...),
+		Servers:            app.NewServerService(e.servers, e.bus, e.prober, appOpts...),
+		Settings:           e.settings,
+		Setup:              e.setup,
+		Sessions:           sessions,
+		UIAuth:             uiAuth,
+		APIKeys:            e.apiKeys,
+		AdapterCredentials: e.adapters,
+		Bus:                e.bus,
+		InstanceID:         "instance-1",
 	}
 	if ec.mutate != nil {
 		ec.mutate(&e.cfg)
@@ -263,3 +268,9 @@ func (e *env) addDownload(name string, offset time.Duration) core.Download {
 	require.NoError(e.t, e.downloads.Create(context.Background(), d))
 	return d
 }
+
+// openAuthJSON is a settings body that turns disable-auth on for the host
+// "example.com", which httptest requests carry.
+const openAuthJSON = `{"queues":{"usenet":1,"torrent":5},
+"auth":{"disable_auth":true,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":["example.com"]},
+"paths":{"usenet":{"incomplete":"/a","complete":"/b"},"torrent":{"incomplete":"/c","complete":"/d"}}}`
