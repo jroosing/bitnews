@@ -14,6 +14,8 @@ const (
 	KindFailed           EventKind = "failed"
 	KindRemoved          EventKind = "removed"
 	KindSettingsChanged  EventKind = "settings_changed"
+	KindQueuePaused      EventKind = "queue_paused"
+	KindQueueResumed     EventKind = "queue_resumed"
 )
 
 // Event is something that happened that other parts of the daemon, and SSE
@@ -106,3 +108,26 @@ func (Removed) Kind() EventKind { return KindRemoved }
 
 // Kind implements Event.
 func (SettingsChanged) Kind() EventKind { return KindSettingsChanged }
+
+// QueuePaused says a Queue stopped starting Downloads, or gained another
+// Pause reason while stopped. Its running Downloads are back to Queued.
+type QueuePaused struct {
+	// Source is the kind of the Queue: SourceNZB or SourceTorrent.
+	Source SourceKind
+	// Reason is the Pause reason that was added, such as "user",
+	// "disk_full" or "bind_unavailable".
+	Reason string
+	// Detail is free text, for example the free and needed bytes.
+	Detail string
+}
+
+// QueueResumed says a Queue runs again: its last Pause reason was released.
+type QueueResumed struct {
+	Source SourceKind
+}
+
+// Kind implements Event.
+func (QueuePaused) Kind() EventKind { return KindQueuePaused }
+
+// Kind implements Event.
+func (QueueResumed) Kind() EventKind { return KindQueueResumed }
