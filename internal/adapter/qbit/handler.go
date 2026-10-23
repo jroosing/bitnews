@@ -17,6 +17,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // Versions the adapter reports. Sonarr and Radarr want qBittorrent 3.2.4 or
@@ -70,6 +71,9 @@ type Deps struct {
 	Torrents    TorrentSource
 	Adder       TorrentAdder
 	ShareLimits ShareLimiter
+	// View gives each Download's phase, progress, rate, ETA, ratio and
+	// Share Limit.
+	View *view.Module
 
 	// Files answers torrents/files. Without it the list is empty.
 	Files FileSource

@@ -301,6 +301,14 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	downloadService := app.NewDownloadService(downloads, categories, bus, app.WithDataRemover(remover))
 	shareLimits.downloads = downloadService
 	track := newTracker()
+	var facts torrentFacts // a nil interface when torrents are off
+	if trun != nil {
+		facts = trun
+	}
+	views, err := view.New(view.Config{Downloads: downloads, Live: liveSource{track: track, torrents: facts}, Settings: settings.Current})
+	if err != nil {
+		return nil, err
+	}
 	diskSpace := fsDiskSpace
 	if tune.FreeSpace != nil {
 		diskSpace = func(path string) (int64, int64, bool) {
@@ -325,7 +333,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		webTorrentSource = newWebTorrents(trun)
 		qbitHandler = qbit.New(qbit.Deps{
 			AppKey: appKey, Downloads: downloadService, Categories: categoryService, Settings: settings,
-			Torrents: torrents, Files: torrents, ShareLimits: torrents,
+			Torrents: torrents, Files: torrents, ShareLimits: torrents, View: views,
 			Adder:       &qbitAdder{add: adder, limits: torrents, log: log},
 			GlobalShare: qbitGlobalShare(settings.Current), Logger: log,
 		})
@@ -341,7 +349,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Logger: log, Version: deps.Version.Version,
 		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
-		Adder: adder, AppKey: appKey,
+		Adder: adder, AppKey: appKey, View: views,
 		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port},
 		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}, track: track},
 	})
@@ -365,7 +373,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Web:  webUI,
 		QBit: qbitHandler,
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
-			AppKey: appKey, Downloads: downloadService, Adder: adder,
+			AppKey: appKey, Downloads: downloadService, Adder: adder, View: views,
 			Categories: categoryService, Settings: settings,
 			StageSource: track.stage,
 			SpeedSource: func() (int64, bool) { paused, _, _ := run.Queue().Paused(); return track.speed(), paused },

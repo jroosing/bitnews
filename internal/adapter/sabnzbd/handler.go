@@ -16,6 +16,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	dlview "gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // DefaultVersion is the SABnzbd version the adapter reports. Sonarr and
@@ -48,6 +49,8 @@ type Deps struct {
 	Adder      *app.AddService
 	Categories *app.CategoryService
 	Settings   SettingsReader
+	// View gives each Download's phase, progress, rate, ETA and failure.
+	View *dlview.Module
 
 	// StageSource reports the Post-processing stage a Download is in, which
 	// decides whether its history status is Verifying, Repairing,

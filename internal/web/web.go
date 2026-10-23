@@ -11,6 +11,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // Deps is what the UI needs. Later pages add their services here; New
@@ -29,7 +30,10 @@ type Deps struct {
 	Settings *app.SettingsService
 
 	// Application services for the pages (optional until a page needs them).
-	Downloads  *app.DownloadService
+	Downloads *app.DownloadService
+	// View gives each Download's phase, progress, rate, ETA, torrent facts
+	// and failure.
+	View       *view.Module
 	Categories *app.CategoryService
 	Servers    *app.ServerService
 	Bus        *core.Bus
