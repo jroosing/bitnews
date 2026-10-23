@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"slices"
 	"testing"
+	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
@@ -156,5 +157,22 @@ func TestMovesAssignEveryDownloadAUniquePositionFromZero(t *testing.T) {
 			}
 			seen[p] = true
 		}
+	}
+}
+
+func TestCompareQueueOrderIsExportedAndOrdersByPositionThenAddedAtThenID(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	a := core.Download{ID: "a", QueuePosition: 1, AddedAt: t0}
+	b := core.Download{ID: "b", QueuePosition: 0, AddedAt: t0.Add(time.Hour)}
+	c := core.Download{ID: "c", QueuePosition: 1, AddedAt: t0}
+
+	if core.CompareQueueOrder(b, a) >= 0 {
+		t.Error("a lower position must come first")
+	}
+	if core.CompareQueueOrder(a, c) >= 0 {
+		t.Error("equal positions and times are ordered by ID")
+	}
+	if core.CompareQueueOrder(a, a) != 0 {
+		t.Error("a Download equals itself")
 	}
 }

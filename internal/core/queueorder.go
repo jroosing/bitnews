@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// compareQueueOrder orders Downloads of one Queue by QueuePosition, then
+// CompareQueueOrder orders Downloads of one Queue by QueuePosition, then
 // AddedAt, then ID, so that the order is total and deterministic even when
 // positions are duplicated or have gaps.
-func compareQueueOrder(a, b Download) int {
+func CompareQueueOrder(a, b Download) int {
 	return cmp.Or(
 		cmp.Compare(a.QueuePosition, b.QueuePosition),
 		a.AddedAt.Compare(b.AddedAt),
@@ -32,7 +32,7 @@ func MoveToTop(downloads []Download, id ID) (map[ID]int, error) {
 // an error wrapping ErrNotFound if no Download has the given id.
 func reorder(downloads []Download, id ID, target func(i, n int) int) (map[ID]int, error) {
 	ordered := slices.Clone(downloads)
-	slices.SortFunc(ordered, compareQueueOrder)
+	slices.SortFunc(ordered, CompareQueueOrder)
 	i := slices.IndexFunc(ordered, func(d Download) bool { return d.ID == id })
 	if i < 0 {
 		return nil, fmt.Errorf("core: download %q is not in the queue: %w", id, ErrNotFound)

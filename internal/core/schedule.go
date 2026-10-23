@@ -42,7 +42,7 @@ func Select(downloads []Download, limit int) (activate, deactivate []ID) {
 	slices.SortFunc(candidates, func(a, b Download) int {
 		return cmp.Or(
 			cmp.Compare(priorityRank(a.Priority), priorityRank(b.Priority)),
-			compareQueueOrder(a, b),
+			CompareQueueOrder(a, b),
 		)
 	})
 	for _, d := range candidates {
