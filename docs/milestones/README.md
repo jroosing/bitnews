@@ -130,3 +130,19 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/7) · [wiki]
 | M7-04 | [#70](https://gitlab.com/kyura4k/bitnews/-/issues/70) | A single API key | area:auth, area:adapter, ready-for-agent | done |
 | M7-05 | [#71](https://gitlab.com/kyura4k/bitnews/-/issues/71) | Security page key card | area:ui, area:auth, ready-for-agent | done |
 | M7-06 | [#72](https://gitlab.com/kyura4k/bitnews/-/issues/72) | Post-processing with 7-Zip and par2cmdline-turbo | area:postproc, area:deploy, ready-for-agent | open |
+
+### [M8 — Deep modules](m8-deep-modules.md)
+
+GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/8) · [wiki](https://gitlab.com/kyura4k/bitnews/-/wikis/milestones/m8-deep-modules)
+
+| ID | Issue | Title | Status |
+|---|---|---|---|
+| M8-01 | [#73](https://gitlab.com/kyura4k/bitnews/-/issues/73) | The Queue module | done |
+| M8-02 | [#74](https://gitlab.com/kyura4k/bitnews/-/issues/74) | The Usenet runner uses the Queue | done |
+| M8-03 | [#75](https://gitlab.com/kyura4k/bitnews/-/issues/75) | The torrent runner uses the Queue | done |
+| M8-04 | [#76](https://gitlab.com/kyura4k/bitnews/-/issues/76) | Callers use one Queue vocabulary | done |
+| M8-05 | [#77](https://gitlab.com/kyura4k/bitnews/-/issues/77) | Download view module (planned) | planned |
+| M8-06 | [#78](https://gitlab.com/kyura4k/bitnews/-/issues/78) | One Add call (planned) | planned |
+| M8-07 | [#79](https://gitlab.com/kyura4k/bitnews/-/issues/79) | Settings change under lock and one card engine (planned) | planned |
+| M8-08 | [#80](https://gitlab.com/kyura4k/bitnews/-/issues/80) | Post-processing steps implement the core ports (planned) | planned |
+| M8-09 | [#81](https://gitlab.com/kyura4k/bitnews/-/issues/81) | Torrent facts from the torrent runner (planned) | planned |

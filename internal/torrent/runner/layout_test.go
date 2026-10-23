@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 )
 
 func write(t *testing.T, path, content string) {
@@ -123,9 +124,12 @@ func TestATransientAddFailureIsRetried(t *testing.T) {
 	h.engine.FailNext("Add", errors.New("engine busy"))
 	h.start()
 
-	h.waitState(a.ID, core.StateFetching)
+	// The Queue moves the Download to Fetching before it asks for the
+	// torrent; the next pass adds it again.
+	h.eventually(func() bool { return h.runner.Managed(a.ID) }, "added on a later pass")
 
 	assert.Len(t, h.calls("Add"), 2)
+	assert.Equal(t, core.StateFetching, h.get(a.ID).State)
 }
 
 func TestAnEngineErrorFailsTheDownloadThatIsStillBeingFetched(t *testing.T) {
@@ -161,6 +165,33 @@ func TestAPermissionErrorFromTheEngineFailsTheDownloadNamingTheFolderAndTheUser(
 	assert.Equal(t, core.FailureInternal, got.FailureReason)
 	assert.Contains(t, got.FailureDetail, folder)
 	assert.Contains(t, got.FailureDetail, fmt.Sprintf("uid %d", os.Geteuid()))
+}
+
+func TestNoSpaceLeftPausesTheQueueAndRequeuesTheDownloadInsteadOfFailingIt(t *testing.T) {
+	h := newHarness(t)
+	a := h.addTorrent(withTotal(1000))
+	sub := h.bus.Subscribe(t.Context())
+	h.start()
+	h.waitState(a.ID, core.StateFetching)
+	h.setFree(10) // the disk filled behind the guard's back
+
+	h.engine.Emit(core.TorrentEvent{Kind: core.TorrentErrored, Hash: hashOf(a.ID),
+		Err: &fs.PathError{Op: "write", Path: "x", Err: syscall.ENOSPC}})
+
+	ev := waitEventOf[core.QueuePaused](t, sub)
+	assert.Equal(t, core.SourceTorrent, ev.Source)
+	assert.Equal(t, queue.ReasonDiskFull, ev.Reason)
+	h.waitState(a.ID, core.StateQueued)
+	assert.Empty(t, h.get(a.ID).FailureReason)
+	h.eventually(func() bool { return len(h.callsFor("Remove", a.ID)) == 1 }, "the errored torrent leaves the engine")
+	paused, reason, _ := h.runner.Queue().Paused()
+	assert.True(t, paused)
+	assert.Equal(t, queue.ReasonDiskFull, reason)
+
+	h.setFree(1 << 40)
+	h.waitState(a.ID, core.StateFetching)
+	waitEventOf[core.QueueResumed](t, sub)
+	assert.Len(t, h.callsFor("Add", a.ID), 2, "added again once space is back")
 }
 
 func TestInfoDescribesARegisteredTorrentFromMemory(t *testing.T) {

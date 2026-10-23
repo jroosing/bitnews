@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 )
 
 // Runner runs the torrent Queue. Create it with New and call Run once.
@@ -17,23 +18,20 @@ type Runner struct {
 	cfg    Config
 	log    *slog.Logger
 	now    func() time.Time
-	free   func(string) (uint64, error)
 	engine core.TorrentEngine
+	q      *queue.Queue
 	wake   chan struct{}
 
-	mu         sync.Mutex
-	runCtx     context.Context
-	tors       map[core.ID]*tor
-	holds      map[string]string // Queue pause reason -> detail
-	diskPaused bool
-	rateDown   int64
-	rateUp     int64
-	bad        map[core.ID]struct{} // Downloads whose torrent cannot be added
-	held       map[core.ID]time.Time
-	needSweep  bool
-	recMu      sync.Mutex // serialises read-modify-write of the records
-	throttle   *core.ProgressThrottle
-	wg         sync.WaitGroup
+	mu        sync.Mutex
+	runCtx    context.Context
+	tors      map[core.ID]*tor
+	rateDown  int64
+	rateUp    int64
+	bad       map[core.ID]struct{} // Downloads whose torrent cannot be added
+	needSweep bool
+	recMu     sync.Mutex // serialises read-modify-write of the records
+	throttle  *core.ProgressThrottle
+	wg        sync.WaitGroup
 }
 
 // New validates cfg and returns a Runner.
@@ -52,15 +50,16 @@ func New(cfg Config) (*Runner, error) {
 	case cfg.Settings == nil:
 		return nil, errors.New("torrent runner: Config.Settings is required")
 	}
-	r := &Runner{cfg: cfg, log: cfg.Logger, now: cfg.Now, free: cfg.FreeSpace, engine: cfg.Engine}
+	r := &Runner{cfg: cfg, log: cfg.Logger, now: cfg.Now, engine: cfg.Engine}
 	if r.log == nil {
 		r.log = slog.Default()
 	}
 	if r.now == nil {
 		r.now = time.Now
 	}
-	if r.free == nil {
-		r.free = fsutil.FreeBytes
+	free := cfg.FreeSpace
+	if free == nil {
+		free = fsutil.FreeBytes
 	}
 	r.cfg.PollInterval = orDefault(cfg.PollInterval, defaultPollInterval)
 	r.cfg.SampleInterval = orDefault(cfg.SampleInterval, defaultSampleInterval)
@@ -71,11 +70,21 @@ func New(cfg Config) (*Runner, error) {
 	r.throttle = core.NewProgressThrottle(r.now, orDefault(cfg.ProgressInterval, core.DefaultProgressInterval))
 	r.wake = make(chan struct{}, 1)
 	r.tors = map[core.ID]*tor{}
-	r.holds = map[string]string{}
 	r.bad = map[core.ID]struct{}{}
-	r.held = map[core.ID]time.Time{}
+	q, err := queue.New(queue.Config{
+		Source: core.SourceTorrent, Downloads: cfg.Downloads, Bus: cfg.Bus, Settings: cfg.Settings,
+		Protocol: protocol{r}, MinFree: cfg.MinFree, FreeSpace: free, Now: r.now, Wake: r.poke, Logger: r.log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("torrent runner: %w", err)
+	}
+	r.q = q
 	return r, nil
 }
+
+// Queue returns the torrent Queue: its Pause reasons, holds and state
+// changes.
+func (r *Runner) Queue() *queue.Queue { return r.q }
 
 // poke asks the control loop to run a pass soon.
 func (r *Runner) poke() {
@@ -179,19 +188,6 @@ func (r *Runner) shutdown() {
 	r.mu.Unlock()
 }
 
-// listQueue returns the Queued and Fetching torrent Downloads.
-func (r *Runner) listQueue(ctx context.Context) ([]core.Download, error) {
-	var out []core.Download
-	for _, st := range []core.State{core.StateQueued, core.StateFetching} {
-		ds, err := r.list(ctx, st)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, ds...)
-	}
-	return out, nil
-}
-
 // list returns every torrent Download in state st.
 func (r *Runner) list(ctx context.Context, st core.State) ([]core.Download, error) {
 	var out []core.Download
@@ -210,35 +206,12 @@ func (r *Runner) list(ctx context.Context, st core.State) ([]core.Download, erro
 	}
 }
 
-// setState applies c to the stored Download and publishes DownloadUpdated.
-func (r *Runner) setState(ctx context.Context, id core.ID, c core.StateChange) (core.Download, error) {
-	d, err := r.cfg.Downloads.UpdateState(ctx, id, c)
-	if err != nil {
-		return core.Download{}, err
-	}
-	r.cfg.Bus.Publish(core.DownloadUpdated{Download: d})
-	return d, nil
-}
-
 // Recover moves the torrent Downloads found Fetching back to Queued and adds
 // the torrents that are Seeding (Fetched or later, with their data still on
 // disk) to the engine again. Call it once at start-up, before Run: those
 // Downloads were interrupted by a shutdown or a crash.
 func (r *Runner) Recover(ctx context.Context) error {
-	var errs []error
-	fetching, err := r.list(ctx, core.StateFetching)
-	if err != nil {
-		return fmt.Errorf("torrent runner: recover: %w", err)
-	}
-	for _, d := range fetching {
-		if _, err := r.setState(ctx, d.ID, core.StateChange{To: core.StateQueued, At: r.now()}); err != nil {
-			errs = append(errs, fmt.Errorf("torrent runner: recover %s: %w", d.ID, err))
-		}
-	}
-	if err := r.sweep(ctx); err != nil {
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
+	return errors.Join(r.q.Recover(ctx), r.sweep(ctx))
 }
 
 // SetRateLimits sets the global download and upload limits of the torrent

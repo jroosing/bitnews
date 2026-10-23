@@ -55,7 +55,7 @@ func (r *Runner) onFetched(ctx context.Context, t *tor) {
 		return
 	case core.StateQueued:
 		// Complete before the Queue activated it (data was there already).
-		if d, err = r.setState(ctx, t.id, core.StateChange{To: core.StateFetching, At: r.now()}); err != nil {
+		if d, err = r.q.SetState(ctx, t.id, core.StateChange{To: core.StateFetching, At: r.now()}); err != nil {
 			r.log.Warn("torrent runner: cannot activate a complete download", "id", t.id, "err", err)
 			return
 		}
@@ -72,7 +72,7 @@ func (r *Runner) onFetched(ctx context.Context, t *tor) {
 	if ctx.Err() != nil {
 		return
 	}
-	if _, err := r.setState(ctx, t.id, core.StateChange{To: core.StateFetched, At: r.now()}); err != nil {
+	if _, err := r.q.SetState(ctx, t.id, core.StateChange{To: core.StateFetched, At: r.now()}); err != nil {
 		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrIllegalTransition) {
 			r.log.Warn("torrent runner: cannot mark the download Fetched", "id", t.id, "err", err)
 		}

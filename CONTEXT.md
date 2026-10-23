@@ -54,6 +54,10 @@ _Avoid_: Failed article, 430
 The ordered set of one protocol's Downloads that are not yet Fetched. Usenet and torrents each have their own Queue with its own concurrency limit.
 _Avoid_: List, backlog
 
+**Pause reason**:
+Why a Queue is not starting Downloads: the user paused it, the disk is too full, or the network binding of its protocol is down. Each reason is held separately, and the Queue runs again only when none is held.
+_Avoid_: Pause state, paused flag
+
 **Download Priority**:
 The rank of a Download within its Queue: force, high, normal or low. A force Download ignores the Queue's concurrency limit.
 _Avoid_: Priority (bare), order, position

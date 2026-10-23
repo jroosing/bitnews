@@ -193,8 +193,8 @@ data: { …Download… }
   | `settings_changed` | `{}` (fetch `/settings`) |
   | `servers_changed` | `{}` (fetch `/servers`) |
   | `postprocess_stage` | `{"id","stage"}`, stage is `verifying`, `repairing`, `unpacking` or `finishing` |
-  | `usenet_queue_paused` | `{"reason","detail"}`, reason is `user` or `disk_full` |
-  | `usenet_queue_resumed` | `{"reason":"","detail":""}` |
+  | `usenet_queue_paused`, `torrent_queue_paused` | `{"reason","detail"}`, reason is `user`, `disk_full` or `bind_unavailable`; sent when a reason is added |
+  | `usenet_queue_resumed`, `torrent_queue_resumed` | `{"reason":"","detail":""}`; sent when the last reason is released |
 
 - If the client falls behind (its 256-event buffer fills), the server sends `event: resync` with `data: {}` and ends the stream. Reconnect and refetch.
 - **`Last-Event-ID` is not supported.** Events are not persisted, so nothing is replayed: refetch the state after every (re)connect. The stream sends no `id:` field.

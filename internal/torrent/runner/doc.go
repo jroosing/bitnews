@@ -1,21 +1,22 @@
-// Package runner is the torrent Queue runner. It decides, with core.Select,
-// which torrent Downloads are active, drives the TorrentEngine for them, moves
-// a Fetched torrent to its complete location without a rehash, keeps Seeding
-// and enforces the Share Limits.
+// Package runner is the torrent Queue runner. Its Queue (internal/queue)
+// decides, with core.Select, which torrent Downloads are active; the runner
+// drives the TorrentEngine for them, moves a Fetched torrent to its complete
+// location without a rehash, keeps Seeding and enforces the Share Limits.
 //
 // # Control loop
 //
 // Run reacts to the Bus events (every lifecycle event, SettingsChanged,
 // Removed) and to the engine's events, and as a fallback polls every
-// Config.PollInterval (10 s). Each pass lists the Queued and Fetching torrent
-// Downloads and applies core.Select with the torrent limit. A Seeding torrent
-// is Fetched or later, so it never counts against the limit. A chosen Queued
-// Download is added to the engine (or resumed) and becomes Fetching; a
-// Fetching Download that is no longer chosen (lower priority, a new limit,
-// paused) is paused in the engine, which keeps its pieces, and goes back to
-// Queued. The poll also sweeps: it adds the torrents of Fetched, Post-processing,
-// Ready and (after Fetched) Failed Downloads to the engine when they are not
-// there, and drops the torrents whose Download is gone.
+// Config.PollInterval (10 s). Each pass is a Queue pass (queue.Reconcile):
+// it lists the Queued and Fetching torrent Downloads and applies core.Select
+// with the torrent limit. A Seeding torrent is Fetched or later, or complete
+// and waiting for its Fetched step, so it never counts against the limit. A
+// chosen Queued Download is added to the engine (or resumed) and becomes
+// Fetching; a Fetching Download that is no longer chosen (lower priority, a
+// new limit, paused) is paused in the engine, which keeps its pieces, and
+// goes back to Queued. The poll also sweeps: it adds the torrents of Fetched,
+// Post-processing, Ready and (after Fetched) Failed Downloads to the engine
+// when they are not there, and drops the torrents whose Download is gone.
 //
 // A torrent's directory is its Download's directory: the one that holds the
 // stored .torrent file, <torrent incomplete>/<id> until the move to complete.
@@ -66,20 +67,22 @@
 //
 // # Queue pause, speed limit, disk guard
 //
-// PauseQueue and ResumeQueue pause the Queue as a user; PauseQueueFor takes
-// another reason (the daemon uses bind_unavailable) and the Queue runs again
-// when every reason is released. SetRateLimits sets the engine's global
-// limits. Before a Download is activated, and every Config.DiskCheckInterval
-// while torrents run, the free space of the torrent incomplete root must cover
-// the remaining bytes plus min_free; otherwise the Queue is paused with reason
-// disk_full and resumes by itself. Seeding is never paused by the Queue.
+// Queue returns the torrent Queue, which holds the Pause reasons (user,
+// disk_full, bind_unavailable) and publishes core.QueuePaused and
+// core.QueueResumed. SetRateLimits sets the engine's global limits. Before a
+// Download is activated, and every Config.DiskCheckInterval while torrents
+// run, the free space of the torrent incomplete root must cover the remaining
+// bytes plus min_free; otherwise the Queue is paused with reason disk_full and
+// resumes by itself. A torrent whose engine reports "no space left" pauses
+// the Queue the same way: it leaves the engine and its Download goes back to
+// Queued instead of failing. Seeding is never paused by the Queue.
 //
 // # Restart, removal and the layout helpers
 //
 // Recover moves Fetching Downloads back to Queued and adds the Seeding
-// torrents to the engine; call it before Run. Hold stops and drops a torrent
-// (the engine closes its files, nothing is deleted) and keeps it out until
-// Release, the Removed event or two minutes pass; the daemon calls it before
+// torrents to the engine; call it before Run. Hold (through the Queue) stops
+// and drops a torrent (the engine closes its files, nothing is deleted) and
+// keeps it out until Release, the Removed event or two minutes pass; the daemon calls it before
 // deleting a Download's files. Dir, ContentDir and Managed tell the daemon
 // where a Download's files are: ContentDir is the torrent's own root
 // directory inside the Download directory (the Unpacker works there, and

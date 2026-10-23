@@ -181,16 +181,15 @@ func TestRunnerQueueEventsRefreshTheLists(t *testing.T) {
 	s := q.openStream(t, "?rows=1")
 	s.until("status")
 
-	for _, kind := range []core.EventKind{web.KindUsenetQueuePaused, web.KindTorrentQueueResumed} {
-		q.bus.Publish(kindEvent(kind))
+	for _, ev := range []core.Event{
+		core.QueuePaused{Source: core.SourceNZB, Reason: "user"}, core.QueueResumed{Source: core.SourceNZB},
+		core.QueuePaused{Source: core.SourceTorrent, Reason: "disk_full"}, core.QueueResumed{Source: core.SourceTorrent},
+	} {
+		q.bus.Publish(ev)
 		q.flush()
-		assert.Equal(t, "refresh", s.until("refresh").Name, kind)
+		assert.Equal(t, "refresh", s.until("refresh").Name, ev.Kind())
 	}
 }
-
-type kindEvent core.EventKind
-
-func (k kindEvent) Kind() core.EventKind { return core.EventKind(k) }
 
 func TestStreamWithoutRowsOnlyCarriesTheStatus(t *testing.T) {
 	q := newQueueEnv(t)

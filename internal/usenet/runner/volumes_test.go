@@ -234,7 +234,7 @@ func TestUndeferredVolumesSurviveARestartOfTheRunner(t *testing.T) {
 	require.NoError(t, err)
 
 	r = h.start()
-	require.NoError(t, r.Recover(context.Background()))
+	require.NoError(t, r.Queue().Recover(context.Background()))
 	h.waitState(d.ID, core.StateFetched)
 
 	for _, id := range h.idsOf(fx, "movie.mkv") {
@@ -338,7 +338,7 @@ func TestResumeWithTheSQLiteStoreRefetchesOnlyWhatWasNotSavedAfterACrash(t *test
 	require.NoError(t, err, "a periodic save reached the database")
 
 	r := h.start()
-	require.NoError(t, r.Recover(context.Background()))
+	require.NoError(t, r.Queue().Recover(context.Background()))
 	h.waitState(d.ID, core.StateFetched)
 
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))

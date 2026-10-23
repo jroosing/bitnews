@@ -82,9 +82,7 @@ type jobState struct {
 	// space checked next.
 	nextSave, nextDisk, nextDB time.Time
 	rate                       *rateWindow
-	// root is the incomplete root the disk guard looks at, total the
-	// Download's size in bytes.
-	root  string
+	// total is the Download's size in bytes.
 	total int64
 
 	// Counted for this run only, to recognize unusable Servers.
@@ -197,9 +195,6 @@ func (r *Runner) fetchOne(ctx context.Context, j *job, d core.Download) {
 	if st.total == 0 {
 		st.total = p.encoded
 	}
-	if s, err := r.cfg.Settings(ctx); err == nil {
-		st.root = s.Paths.Usenet.Incomplete
-	}
 	for {
 		remaining := p.remaining(st.seg)
 		if len(remaining) == 0 {
@@ -248,7 +243,7 @@ func (r *Runner) fetchOne(ctx context.Context, j *job, d core.Download) {
 		if errors.Is(err, syscall.ENOSPC) {
 			// The disk filled up behind the guard's back.
 			r.stopped(ctx, d, w, st)
-			r.pauseDisk("the disk is full: " + err.Error())
+			r.q.DiskFull("the disk is full: " + err.Error())
 			r.requeue(ctx, j, d, 0)
 			return
 		}
@@ -359,12 +354,9 @@ func (r *Runner) onResult(ctx context.Context, j *job, id core.ID, stop context.
 		r.storeDoneBytes(ctx, id, done, 0)
 	}
 
-	if diskDue && st.root != "" {
-		if ok, detail := r.diskFits(ctx, st.root, remaining); !ok {
-			r.pauseDisk(detail)
-			j.cancel(errDiskFull)
-			return
-		}
+	if diskDue && !r.q.Fits(ctx, remaining) {
+		j.cancel(errDiskFull)
+		return
 	}
 	if saveDue {
 		bctx, cancel := bgCtx(ctx)
@@ -381,7 +373,7 @@ func (r *Runner) fail(ctx context.Context, j *job, d core.Download, reason core.
 	bctx, cancel := bgCtx(ctx)
 	defer cancel()
 	_ = r.store.Delete(bctx, d.ID)
-	_, err := r.setState(bctx, d.ID, core.StateChange{
+	_, err := r.q.SetState(bctx, d.ID, core.StateChange{
 		To: core.StateFailed, At: r.clock.Now(), FailureReason: reason, FailureDetail: detail,
 	})
 	if err != nil {
@@ -402,7 +394,7 @@ func (r *Runner) requeue(ctx context.Context, j *job, d core.Download, wait time
 		r.cooldown[d.ID] = r.clock.Now().Add(wait)
 		r.mu.Unlock()
 	}
-	if _, err := r.setState(bctx, d.ID, core.StateChange{To: core.StateQueued, At: r.clock.Now()}); err != nil {
+	if _, err := r.q.SetState(bctx, d.ID, core.StateChange{To: core.StateQueued, At: r.clock.Now()}); err != nil {
 		r.log.Warn("usenet runner: cannot requeue download", "id", d.ID, "err", err)
 	}
 }
@@ -467,7 +459,7 @@ func (r *Runner) complete(ctx context.Context, j *job, d core.Download, p plan, 
 			}
 		}
 	}
-	if _, err := r.setState(bctx, d.ID, core.StateChange{To: core.StateFetched, At: r.clock.Now()}); err != nil {
+	if _, err := r.q.SetState(bctx, d.ID, core.StateChange{To: core.StateFetched, At: r.clock.Now()}); err != nil {
 		r.log.Warn("usenet runner: cannot mark download fetched", "id", d.ID, "err", err)
 		return
 	}

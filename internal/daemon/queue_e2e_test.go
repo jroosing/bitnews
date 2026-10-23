@@ -14,9 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/torrent/runner"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
-	urunner "gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -197,11 +196,7 @@ func TestE2EWebQueueRowActionsAffectTheDownloads(t *testing.T) {
 // The web package does not import the runners, so it names their queue
 // events by string. This pins those names.
 func TestWebQueueEventKindsMatchTheRunners(t *testing.T) {
-	assert.Equal(t, urunner.KindQueuePaused, web.KindUsenetQueuePaused)
-	assert.Equal(t, urunner.KindQueueResumed, web.KindUsenetQueueResumed)
-	assert.Equal(t, runner.KindQueuePaused, web.KindTorrentQueuePaused)
-	assert.Equal(t, runner.KindQueueResumed, web.KindTorrentQueueResumed)
-	assert.Equal(t, urunner.ReasonUser, web.PauseReasonUser)
-	assert.Equal(t, urunner.ReasonDiskFull, web.PauseReasonDiskFull)
-	assert.Equal(t, runner.ReasonBindUnavailable, web.PauseReasonBindUnavailable)
+	assert.Equal(t, queue.ReasonUser, web.PauseReasonUser)
+	assert.Equal(t, queue.ReasonDiskFull, web.PauseReasonDiskFull)
+	assert.Equal(t, queue.ReasonBindUnavailable, web.PauseReasonBindUnavailable)
 }

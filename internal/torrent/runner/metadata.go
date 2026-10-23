@@ -22,7 +22,7 @@ func (r *Runner) reconcileMetadata(ctx context.Context) {
 		}
 		return
 	}
-	queuePaused, _ := r.QueuePaused()
+	queuePaused, _, _ := r.q.Paused()
 	for _, d := range ds {
 		if r.isBad(d.ID) {
 			continue
@@ -80,7 +80,7 @@ func (r *Runner) onMetadata(ctx context.Context, t *tor) {
 	if err := r.cfg.Downloads.UpdateDisplay(ctx, t.id, st.Name, st.Size); err != nil && !errors.Is(err, core.ErrNotFound) {
 		r.log.Warn("torrent runner: cannot store the name", "id", t.id, "err", err)
 	}
-	if _, err := r.setState(ctx, t.id, core.StateChange{To: core.StateQueued, At: r.now()}); err != nil {
+	if _, err := r.q.SetState(ctx, t.id, core.StateChange{To: core.StateQueued, At: r.now()}); err != nil {
 		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrIllegalTransition) {
 			r.log.Warn("torrent runner: cannot queue the download", "id", t.id, "err", err)
 		}

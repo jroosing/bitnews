@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 )
 
 // Many torrents finish while the limit changes, the Queue pauses and
@@ -44,9 +45,9 @@ func TestStressManyTorrentsWhileTheQueueIsPokedFromAllSides(t *testing.T) {
 	})
 	wg.Go(func() { // pokes the Queue
 		for i := range 30 {
-			h.runner.PauseQueue()
+			h.runner.Queue().Pause(queue.ReasonUser, "")
 			time.Sleep(2 * time.Millisecond)
-			h.runner.ResumeQueue()
+			h.runner.Queue().Resume(queue.ReasonUser)
 			h.setSettings(func(s *core.Settings) { s.Queues.Torrent = 1 + i%7 })
 			h.bus.Publish(core.SettingsChanged{})
 			h.runner.SetRateLimits(int64(i)*100, 0)

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 )
@@ -342,38 +343,6 @@ func TestDownloadGoesBackToQueuedWhenEveryServerRejectsTheLogin(t *testing.T) {
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))
 }
 
-func TestDiskGuardHoldsTheQueueUntilSpaceIsBack(t *testing.T) {
-	h := newHarness(t)
-	srv := h.addServer("main", 0, 2)
-	files := map[string][]byte{"movie.mkv": payload(60_000, 1)}
-	fx := nntptest.BuildFixture(t, files, 10_000)
-	fx.Install(srv)
-	h.setFree(1 << 30) // less than the 5 GiB default min_free
-	rec := h.record()
-	d := h.addDownload("movie", fx, func(d *core.Download) { d.TotalBytes = 60_000 })
-	r := h.start()
-
-	require.Eventually(t, func() bool { p, _ := r.QueuePaused(); return p }, 10*time.Second, time.Millisecond)
-	paused, reason := r.QueuePaused()
-	assert.True(t, paused)
-	assert.Equal(t, runner.ReasonDiskFull, reason)
-	time.Sleep(150 * time.Millisecond)
-	assert.Equal(t, core.StateQueued, h.get(d.ID).State)
-	assert.Zero(t, srv.TotalRequests())
-	assert.GreaterOrEqual(t, indexOf(rec.all(), func(ev core.Event) bool {
-		p, ok := ev.(runner.QueuePaused)
-		return ok && p.Reason == runner.ReasonDiskFull
-	}), 0)
-
-	h.setFree(10 << 30)
-
-	h.waitState(d.ID, core.StateFetched)
-	assert.Equal(t, files, readDir(t, h.dirFor(d)))
-	paused, _ = r.QueuePaused()
-	assert.False(t, paused)
-	assert.GreaterOrEqual(t, indexOf(rec.all(), func(ev core.Event) bool { _, ok := ev.(runner.QueueResumed); return ok }), 0)
-}
-
 func TestDiskGuardPausesARunningDownloadAndResumesItLater(t *testing.T) {
 	h := newHarness(t)
 	h.cfg.DiskCheckInterval = 20 * time.Millisecond
@@ -389,9 +358,9 @@ func TestDiskGuardPausesARunningDownloadAndResumesItLater(t *testing.T) {
 	h.setFree(1 << 20)
 
 	h.waitState(d.ID, core.StateQueued)
-	paused, reason := r.QueuePaused()
+	paused, reason, _ := r.Queue().Paused()
 	assert.True(t, paused)
-	assert.Equal(t, runner.ReasonDiskFull, reason)
+	assert.Equal(t, queue.ReasonDiskFull, reason)
 	atPause := stable(t, srv.TotalRequests)
 	assert.Less(t, atPause, 40)
 
@@ -401,7 +370,7 @@ func TestDiskGuardPausesARunningDownloadAndResumesItLater(t *testing.T) {
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))
 }
 
-func TestPauseQueueAndResumeQueue(t *testing.T) {
+func TestPausingTheQueueStopsTheFetchAndResumingContinuesIt(t *testing.T) {
 	h := newHarness(t)
 	srv := h.addServer("main", 0, 1)
 	srv.SetLatency(5 * time.Millisecond)
@@ -412,46 +381,16 @@ func TestPauseQueueAndResumeQueue(t *testing.T) {
 	r := h.start()
 	require.Eventually(t, func() bool { return srv.TotalRequests() >= 5 }, 10*time.Second, time.Millisecond)
 
-	r.PauseQueue()
+	r.Queue().Pause(queue.ReasonUser, "")
 
 	h.waitState(d.ID, core.StateQueued)
-	paused, reason := r.QueuePaused()
-	assert.True(t, paused)
-	assert.Equal(t, runner.ReasonUser, reason)
 	stable(t, srv.TotalRequests)
 	assert.Equal(t, core.StateQueued, h.get(d.ID).State)
 
-	r.ResumeQueue()
+	r.Queue().Resume(queue.ReasonUser)
 
 	h.waitState(d.ID, core.StateFetched)
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))
-}
-
-func TestRecoverMovesFetchingDownloadsBackToQueued(t *testing.T) {
-	h := newHarness(t)
-	h.addServer("main", 0, 1)
-	fx := nntptest.BuildFixture(t, map[string][]byte{"a.bin": payload(1_000, 1)}, 10_000)
-	interrupted := h.addDownload("interrupted", fx, func(d *core.Download) { d.State = core.StateFetching })
-	queued := h.addDownload("queued", fx)
-	other := h.addDownload("torrent", fx, func(d *core.Download) {
-		d.State = core.StateFetching
-		d.SourceKind = core.SourceTorrent
-	})
-	r, err := runner.New(h.cfg)
-	require.NoError(t, err)
-	rec := h.record()
-
-	require.NoError(t, r.Recover(context.Background()))
-
-	assert.Equal(t, core.StateQueued, h.get(interrupted.ID).State)
-	assert.Equal(t, core.StateQueued, h.get(queued.ID).State)
-	assert.Equal(t, core.StateFetching, h.get(other.ID).State, "torrents are not ours")
-	require.Eventually(t, func() bool {
-		return indexOf(rec.all(), func(ev core.Event) bool {
-			u, ok := ev.(core.DownloadUpdated)
-			return ok && u.Download.ID == interrupted.ID && u.Download.State == core.StateQueued
-		}) >= 0
-	}, 5*time.Second, time.Millisecond)
 }
 
 func progressOf(rec *recorder, id core.ID) []core.DownloadProgress {
@@ -600,7 +539,7 @@ func TestResumeAfterACrashRefetchesOnlyWhatWasNotSaved(t *testing.T) {
 	require.Less(t, firstRun, 102)
 
 	r := h.start()
-	require.NoError(t, r.Recover(context.Background()))
+	require.NoError(t, r.Queue().Recover(context.Background()))
 	h.waitState(d.ID, core.StateFetched)
 
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))
@@ -799,21 +738,31 @@ func TestHoldStopsTheFetchAndKeepsTheDownloadFromRestartingUntilReleased(t *test
 	r := h.start()
 	require.Eventually(t, func() bool { return srv.TotalRequests() >= 5 }, 10*time.Second, time.Millisecond)
 
-	require.NoError(t, r.Hold(context.Background(), d.ID))
+	require.NoError(t, r.Queue().Hold(context.Background(), d.ID))
 
 	atHold := srv.TotalRequests()
 	time.Sleep(200 * time.Millisecond) // several control-loop passes
 	assert.Equal(t, atHold, srv.TotalRequests(), "no request after Hold returned")
 	assert.NotEqual(t, core.StateFetched, h.get(d.ID).State)
 
-	r.Release(d.ID)
+	r.Queue().Release(d.ID)
 	h.waitState(d.ID, core.StateFetched)
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))
 }
 
-func TestHoldOfADownloadWithoutAJobReturnsAtOnce(t *testing.T) {
+func TestTheRemovedEventOfAHeldDownloadEndsItsHold(t *testing.T) {
 	h := newHarness(t)
+	srv := h.addServer("main", 0, 1)
+	fx := nntptest.BuildFixture(t, map[string][]byte{"a.bin": payload(1_000, 1)}, 10_000)
+	fx.Install(srv)
+	h.cfg.PollInterval = time.Hour // only the Removed event can end the hold
+	d := h.addDownload("a", fx)
 	r := h.start()
+	h.waitState(d.ID, core.StateFetched) // Run is subscribed to the bus
+	id := core.NewID()
+	require.NoError(t, r.Queue().Hold(context.Background(), id))
 
-	require.NoError(t, r.Hold(context.Background(), core.NewID()))
+	h.bus.Publish(core.Removed{ID: id})
+
+	require.Eventually(t, func() bool { return !r.Queue().Held(id) }, 10*time.Second, time.Millisecond)
 }

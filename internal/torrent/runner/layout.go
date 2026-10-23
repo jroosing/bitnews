@@ -97,7 +97,9 @@ func contentRoot(dir string, skip map[string]struct{}) string {
 // onTorrentError handles an error the engine reports about a torrent. A
 // Download that is still being fetched fails and its torrent leaves the
 // engine (the files stay); one that was Fetched keeps what it has and the
-// error is only logged, because Ready and Seeding do not depend on it.
+// error is only logged, because Ready and Seeding do not depend on it. A full
+// disk does not fail the Download: the Queue pauses with disk_full and the
+// Download waits Queued until the space is back.
 func (r *Runner) onTorrentError(ctx context.Context, t *tor, cause error) {
 	r.log.Warn("torrent runner: the engine reports an error", "id", t.id, "err", cause)
 	if r.isFetched(t.id) {
@@ -112,12 +114,14 @@ func (r *Runner) onTorrentError(ctx context.Context, t *tor, cause error) {
 	default:
 		return
 	}
+	if errors.Is(cause, core.ErrDiskFull) || errors.Is(cause, syscall.ENOSPC) {
+		r.diskFull(ctx, t.id, cause)
+		return
+	}
 	reason, detail := core.FailureInternal, "the torrent engine reported an error"
 	switch {
 	case errors.Is(cause, core.ErrInvalidTorrentSpec):
 		reason, detail = core.FailureSourceInvalid, "the torrent cannot be used"
-	case errors.Is(cause, core.ErrDiskFull), errors.Is(cause, syscall.ENOSPC):
-		reason, detail = core.FailureDiskFull, "not enough free disk space"
 	case errors.Is(cause, fs.ErrPermission):
 		// Name the folder and the user id: the usual fix is a chown or a
 		// different `user:` in the container.
@@ -125,6 +129,20 @@ func (r *Runner) onTorrentError(ctx context.Context, t *tor, cause error) {
 	}
 	r.fail(ctx, t.id, reason, detail)
 	r.drop(ctx, t.id)
+}
+
+// diskFull pauses the Queue for a torrent that ran out of disk space. The
+// engine's torrent is dead after an error, so it leaves the engine (its
+// files and verified pieces stay) and the Download goes back to Queued; the
+// Queue adds it again once the space is back.
+func (r *Runner) diskFull(ctx context.Context, id core.ID, cause error) {
+	// Pause first, so no pass starts the Download again in between.
+	r.q.DiskFull("the disk is full: " + cause.Error())
+	r.drop(ctx, id)
+	_, err := r.q.SetState(context.WithoutCancel(ctx), id, core.StateChange{To: core.StateQueued, At: r.now()})
+	if err != nil && !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrIllegalTransition) {
+		r.log.Warn("torrent runner: cannot requeue the download", "id", id, "err", err)
+	}
 }
 
 // Info is a snapshot of what the runner knows about a torrent in the engine,

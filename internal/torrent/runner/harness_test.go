@@ -259,10 +259,7 @@ func (h *harness) stop() {
 
 type dlOpt func(*core.Download)
 
-func withState(s core.State) dlOpt { return func(d *core.Download) { d.State = s } }
-func withPriority(p core.DownloadPriority) dlOpt {
-	return func(d *core.Download) { d.Priority = p }
-}
+func withState(s core.State) dlOpt   { return func(d *core.Download) { d.State = s } }
 func withPosition(n int) dlOpt       { return func(d *core.Download) { d.QueuePosition = n } }
 func withPaused() dlOpt              { return func(d *core.Download) { d.Paused = true } }
 func withName(n string) dlOpt        { return func(d *core.Download) { d.Name = n } }
@@ -350,9 +347,24 @@ func (h *harness) eventually(cond func() bool, msg string, args ...any) {
 	require.Eventually(h.t, cond, 10*time.Second, 5*time.Millisecond, append([]any{msg}, args...)...)
 }
 
+// waitState waits until the Download is in state want. For Fetching it also
+// waits until the engine runs the torrent: the Queue moves a Download to
+// Fetching before it asks the runner to start it.
 func (h *harness) waitState(id core.ID, want core.State) {
 	h.t.Helper()
-	h.eventually(func() bool { return h.get(id).State == want }, "download %s did not reach %s (now %s)", id, want, h.get(id).State)
+	h.eventually(func() bool {
+		return h.get(id).State == want && (want != core.StateFetching || h.runningInEngine(id))
+	}, "download %s did not reach %s (now %s)", id, want, h.get(id).State)
+}
+
+// runningInEngine reports whether the runner has registered the torrent and
+// the engine is not holding it paused.
+func (h *harness) runningInEngine(id core.ID) bool {
+	if h.runner == nil || !h.runner.Managed(id) {
+		return false
+	}
+	st, err := h.engine.Stats(hashOf(id))
+	return err == nil && st.State != core.TorrentPaused
 }
 
 // calls returns the engine calls of one method.

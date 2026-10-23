@@ -18,9 +18,9 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
-func newSpeedApplier(s *core.Settings) (*speedApplier, *fakeUsenetQueue, *fakeTorrentQueue, *webRuntime) {
-	u, tq := &fakeUsenetQueue{}, &fakeTorrentQueue{}
-	rt := newWebRuntime(u, tq, nil, nil, newTracker())
+func newSpeedApplier(s *core.Settings) (*speedApplier, *fakeUsenetLimiter, *fakeTorrentRunner, *webRuntime) {
+	u, tq := &fakeUsenetLimiter{}, &fakeTorrentRunner{}
+	rt := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), u, tq, nil, nil, newTracker())
 	return &speedApplier{settings: func() core.Settings { return *s }, target: rt}, u, tq, rt
 }
 

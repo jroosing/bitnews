@@ -215,7 +215,7 @@ func (r *Runner) addFailed(ctx context.Context, d core.Download, err error) {
 
 // fail moves the Download to Failed and publishes the events.
 func (r *Runner) fail(ctx context.Context, id core.ID, reason core.FailureReason, detail string) {
-	d, err := r.setState(ctx, id, core.StateChange{To: core.StateFailed, At: r.now(), FailureReason: reason, FailureDetail: detail})
+	d, err := r.q.SetState(ctx, id, core.StateChange{To: core.StateFailed, At: r.now(), FailureReason: reason, FailureDetail: detail})
 	if err != nil {
 		if !errors.Is(err, core.ErrNotFound) && !errors.Is(err, core.ErrIllegalTransition) {
 			r.log.Warn("torrent runner: cannot fail the download", "id", id, "err", err)

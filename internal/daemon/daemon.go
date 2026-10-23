@@ -23,6 +23,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/netbind"
 	"gitlab.com/kyura4k/gitnews/internal/postproc/adapt"
 	"gitlab.com/kyura4k/gitnews/internal/postproc/finalize"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 	"gitlab.com/kyura4k/gitnews/internal/store"
 	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
@@ -294,7 +295,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		prober = app.NewNNTPProber()
 	}
 	remover := &dataRemover{
-		settings: settings.Current, categories: categories, holder: run, dirFor: dirFor, log: log,
+		settings: settings.Current, categories: categories, holder: queueHolder{run.Queue()}, dirFor: dirFor, log: log,
 		torrentHolder: torrentHolder, torrentDir: torrentDir,
 	}
 	downloadService := app.NewDownloadService(downloads, categories, bus, app.WithDataRemover(remover))
@@ -330,7 +331,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		})
 	}
 	serverService := app.NewServerService(servers, bus, prober)
-	runtime := newWebRuntime(run, torrentRunnerOrNil(trun), engine, downloads, track)
+	runtime := newWebRuntime(queuesOf(run, trun), run, torrentRunnerOrNil(trun), engine, downloads, track)
 	// The speed limits of the Settings are in force from the start, before
 	// the runners run (the torrent runner passes them to its engine then).
 	speed := &speedApplier{settings: settings.Current, target: runtime}
@@ -367,7 +368,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 			AppKey: appKey, Downloads: downloadService, Adder: adder,
 			Categories: categoryService, Settings: settings,
 			StageSource: track.stage,
-			SpeedSource: func() (int64, bool) { paused, _ := run.QueuePaused(); return track.speed(), paused },
+			SpeedSource: func() (int64, bool) { paused, _, _ := run.Queue().Paused(); return track.speed(), paused },
 			DiskSpace:   diskSpace,
 			Logger:      log,
 		}),
@@ -404,25 +405,15 @@ func networkSwitches(n core.NetworkSettings, usenet *runner.Runner, torrents *tr
 			Interval: tune.BindingInterval, Pause: k.onPause, Resume: k.onResume,
 		})})
 	}
-	add("usenet", n.Usenet, &bindingKillswitch{
-		name: "usenet", log: log,
-		pause: func(string) bool {
-			if paused, _ := usenet.QueuePaused(); paused {
-				return false // somebody else paused it: not ours to resume
-			}
-			usenet.PauseQueue()
-			return true
-		},
-		resume: usenet.ResumeQueue,
-	})
+	add("usenet", n.Usenet, usenetKillswitch(usenet.Queue(), log))
 	if torrents != nil {
 		add("torrent", n.Torrent, &bindingKillswitch{
 			name: "torrent", log: log,
 			pause: func(reason string) bool {
-				torrents.PauseQueueFor(trunner.ReasonBindUnavailable, reason)
+				torrents.Queue().Pause(queue.ReasonBindUnavailable, reason)
 				return true
 			},
-			resume: func() { torrents.ResumeQueueFor(trunner.ReasonBindUnavailable) },
+			resume: func() { torrents.Queue().Resume(queue.ReasonBindUnavailable) },
 		})
 	}
 	return out
@@ -522,7 +513,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if !d.ran.CompareAndSwap(false, true) {
 		return errors.New("daemon: Run called twice")
 	}
-	if err := d.runner.Recover(ctx); err != nil && ctx.Err() == nil {
+	if err := d.runner.Queue().Recover(ctx); err != nil && ctx.Err() == nil {
 		// Downloads that could not be requeued are picked up by the
 		// runner's own loop as orphans.
 		d.log.Error("usenet recover failed", "err", err)
@@ -624,9 +615,19 @@ func fsDiskSpace(path string) (free, total int64, ok bool) {
 
 // torrentRunnerOrNil converts the torrent runner to the interface the UI's
 // runtime needs, keeping a nil runner a nil interface.
-func torrentRunnerOrNil(r *trunner.Runner) torrentQueue {
+func torrentRunnerOrNil(r *trunner.Runner) torrentRunner {
 	if r == nil {
 		return nil
 	}
 	return r
+}
+
+// queuesOf maps each Source kind to its Queue; torrents are absent when the
+// torrent side is off.
+func queuesOf(usenet *runner.Runner, torrents *trunner.Runner) map[core.SourceKind]queueControl {
+	qs := map[core.SourceKind]queueControl{core.SourceNZB: usenet.Queue()}
+	if torrents != nil {
+		qs[core.SourceTorrent] = torrents.Queue()
+	}
+	return qs
 }

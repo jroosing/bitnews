@@ -32,7 +32,7 @@ func (r *Runner) sweep(ctx context.Context) error {
 			if !seeding || (st == core.StateFailed && d.FetchedAt.IsZero()) {
 				continue
 			}
-			if r.lookup(d.ID) != nil || r.isBad(d.ID) || r.isHeld(d.ID) {
+			if r.lookup(d.ID) != nil || r.isBad(d.ID) || r.q.Held(d.ID) {
 				continue
 			}
 			if err := r.registerOne(ctx, d); err != nil {
