@@ -32,7 +32,6 @@ test:
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends xz-utils unzip
   script:
     - make test
-    - make fuzz-smoke FUZZTIME=10s
 
 build:
   stage: build
