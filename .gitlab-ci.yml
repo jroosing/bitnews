@@ -48,6 +48,10 @@ build:
 # cross-compiles on the build host, so no QEMU emulation is needed.
 docker-image:
   stage: image
+  # Registry timeouts on shared runners are usually gone on a second try.
+  retry:
+    max: 2
+    when: script_failure
   image: docker:27.5.1
   services:
     - docker:27.5.1-dind
@@ -61,6 +65,15 @@ docker-image:
     # buildx refuses to build a builder straight from the dind TLS environment
     # (DOCKER_HOST and DOCKER_TLS_VERIFY): give it a context made from it.
     - docker context create ci-context
+    # The builder boots a moby/buildkit container. Docker Hub often times out
+    # on shared runners, so pull it with retries (and from Google's mirror as a
+    # fallback) before buildx needs it.
+    - |
+      pull() { for i in 1 2 3 4; do docker pull "$1" && return 0; sleep $((i * 5)); done; return 1; }
+      pull moby/buildkit:buildx-stable-1 || {
+        pull mirror.gcr.io/moby/buildkit:buildx-stable-1 &&
+        docker tag mirror.gcr.io/moby/buildkit:buildx-stable-1 moby/buildkit:buildx-stable-1
+      }
     - docker buildx create --name ci-builder --driver docker-container --use ci-context
   script:
     - |
