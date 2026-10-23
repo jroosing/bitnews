@@ -12,36 +12,24 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
-// usenetQueue is what webRuntime needs of the Usenet runner.
-type usenetQueue interface {
-	PauseQueue()
-	ResumeQueue()
-	QueuePaused() (paused bool, reason string)
+// queueControl is the pause side of a Queue; *queue.Queue implements it.
+type queueControl interface {
+	Pause(reason, detail string)
+	Resume(reason string)
+	Paused() (paused bool, reason, detail string)
+}
+
+// usenetLimiter is what webRuntime needs of the Usenet runner besides its
+// Queue.
+type usenetLimiter interface {
 	SetSpeedLimit(bytesPerSecond int64)
 }
 
-// torrentQueue is what webRuntime needs of the torrent runner.
-type torrentQueue interface {
-	PauseQueue()
-	ResumeQueue()
-	QueuePaused() (paused bool, reason string)
+// torrentRunner is what webRuntime needs of the torrent runner besides its
+// Queue.
+type torrentRunner interface {
 	SetRateLimits(down, up int64)
 	Info(id core.ID) (trunner.Info, bool)
-}
-
-var (
-	_ torrentQueue = torrentRuntime{}
-)
-
-// torrentRuntime gives webRuntime the torrent runner with the user's pause
-// of its Queue.
-type torrentRuntime struct{ *trunner.Runner }
-
-func (t torrentRuntime) PauseQueue()  { t.Queue().Pause(queue.ReasonUser, "") }
-func (t torrentRuntime) ResumeQueue() { t.Queue().Resume(queue.ReasonUser) }
-func (t torrentRuntime) QueuePaused() (paused bool, reason string) {
-	paused, reason, _ = t.Queue().Paused()
-	return paused, reason
 }
 
 // webRuntime implements web.RuntimeSource for the queue page: speeds and
@@ -50,8 +38,9 @@ func (t torrentRuntime) QueuePaused() (paused bool, reason string) {
 // limits are not persisted: the runners start unlimited, and what the UI set
 // is remembered here only to show it again.
 type webRuntime struct {
-	usenet    usenetQueue
-	torrents  torrentQueue // nil when torrents are off
+	queues    map[core.SourceKind]queueControl // no torrent entry when torrents are off
+	usenet    usenetLimiter
+	torrents  torrentRunner // nil when torrents are off
 	engine    core.TorrentEngine
 	downloads core.DownloadRepo
 	track     *tracker
@@ -65,10 +54,11 @@ type webRuntime struct {
 
 var _ web.RuntimeSource = (*webRuntime)(nil)
 
-// newWebRuntime builds the source. torrents and engine may be nil.
-func newWebRuntime(usenet usenetQueue, torrents torrentQueue, engine core.TorrentEngine, downloads core.DownloadRepo, track *tracker) *webRuntime {
+// newWebRuntime builds the source. torrents and engine may be nil, and then
+// queues has no torrent entry.
+func newWebRuntime(queues map[core.SourceKind]queueControl, usenet usenetLimiter, torrents torrentRunner, engine core.TorrentEngine, downloads core.DownloadRepo, track *tracker) *webRuntime {
 	return &webRuntime{
-		usenet: usenet, torrents: torrents, engine: engine, downloads: downloads, track: track,
+		queues: queues, usenet: usenet, torrents: torrents, engine: engine, downloads: downloads, track: track,
 		now: time.Now, limits: map[core.SourceKind][2]int64{},
 	}
 }
@@ -118,35 +108,23 @@ func (w *webRuntime) uploadRate() int64 {
 }
 
 func (w *webRuntime) QueueState(kind core.SourceKind) web.QueueState {
-	switch kind {
-	case core.SourceNZB:
-		paused, reason := w.usenet.QueuePaused()
-		return web.QueueState{Available: true, Paused: paused, Reason: reason}
-	case core.SourceTorrent:
-		if w.torrents == nil {
-			return web.QueueState{}
-		}
-		paused, reason := w.torrents.QueuePaused()
-		return web.QueueState{Available: true, Paused: paused, Reason: reason}
+	q, ok := w.queues[kind]
+	if !ok {
+		return web.QueueState{}
 	}
-	return web.QueueState{}
+	paused, reason, _ := q.Paused()
+	return web.QueueState{Available: true, Paused: paused, Reason: reason}
 }
 
 func (w *webRuntime) PauseQueue(kind core.SourceKind) {
-	switch {
-	case kind == core.SourceNZB:
-		w.usenet.PauseQueue()
-	case kind == core.SourceTorrent && w.torrents != nil:
-		w.torrents.PauseQueue()
+	if q, ok := w.queues[kind]; ok {
+		q.Pause(queue.ReasonUser, "")
 	}
 }
 
 func (w *webRuntime) ResumeQueue(kind core.SourceKind) {
-	switch {
-	case kind == core.SourceNZB:
-		w.usenet.ResumeQueue()
-	case kind == core.SourceTorrent && w.torrents != nil:
-		w.torrents.ResumeQueue()
+	if q, ok := w.queues[kind]; ok {
+		q.Resume(queue.ReasonUser)
 	}
 }
 

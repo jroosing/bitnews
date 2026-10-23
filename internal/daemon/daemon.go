@@ -295,7 +295,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		prober = app.NewNNTPProber()
 	}
 	remover := &dataRemover{
-		settings: settings.Current, categories: categories, holder: usenetRuntime{run}, dirFor: dirFor, log: log,
+		settings: settings.Current, categories: categories, holder: queueHolder{run.Queue()}, dirFor: dirFor, log: log,
 		torrentHolder: torrentHolder, torrentDir: torrentDir,
 	}
 	downloadService := app.NewDownloadService(downloads, categories, bus, app.WithDataRemover(remover))
@@ -331,7 +331,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		})
 	}
 	serverService := app.NewServerService(servers, bus, prober)
-	runtime := newWebRuntime(usenetRuntime{run}, torrentRunnerOrNil(trun), engine, downloads, track)
+	runtime := newWebRuntime(queuesOf(run, trun), run, torrentRunnerOrNil(trun), engine, downloads, track)
 	// The speed limits of the Settings are in force from the start, before
 	// the runners run (the torrent runner passes them to its engine then).
 	speed := &speedApplier{settings: settings.Current, target: runtime}
@@ -615,9 +615,19 @@ func fsDiskSpace(path string) (free, total int64, ok bool) {
 
 // torrentRunnerOrNil converts the torrent runner to the interface the UI's
 // runtime needs, keeping a nil runner a nil interface.
-func torrentRunnerOrNil(r *trunner.Runner) torrentQueue {
+func torrentRunnerOrNil(r *trunner.Runner) torrentRunner {
 	if r == nil {
 		return nil
 	}
-	return torrentRuntime{r}
+	return r
+}
+
+// queuesOf maps each Source kind to its Queue; torrents are absent when the
+// torrent side is off.
+func queuesOf(usenet *runner.Runner, torrents *trunner.Runner) map[core.SourceKind]queueControl {
+	qs := map[core.SourceKind]queueControl{core.SourceNZB: usenet.Queue()}
+	if torrents != nil {
+		qs[core.SourceTorrent] = torrents.Queue()
+	}
+	return qs
 }

@@ -241,16 +241,20 @@ func TestEventStreamDeliversPostProcessingAndQueueEvents(t *testing.T) {
 	e.bus.Publish(core.PostProcessStage{ID: "dl1", Stage: core.StageRepairing})
 	e.bus.Publish(core.QueuePaused{Source: core.SourceNZB, Reason: "disk_full", Detail: "10 bytes free, 20 needed"})
 	e.bus.Publish(core.QueueResumed{Source: core.SourceNZB})
+	e.bus.Publish(core.QueuePaused{Source: core.SourceTorrent, Reason: "bind_unavailable"})
 
 	stage, _ := c.next(t)
 	paused, _ := c.next(t)
 	resumed, _ := c.next(t)
+	torrentPaused, _ := c.next(t)
 	assert.Equal(t, "postprocess_stage", stage.Name)
 	assert.Equal(t, map[string]any{"id": "dl1", "stage": "repairing"}, stage.json(t))
 	assert.Equal(t, "usenet_queue_paused", paused.Name)
 	assert.Equal(t, map[string]any{"reason": "disk_full", "detail": "10 bytes free, 20 needed"}, paused.json(t))
 	assert.Equal(t, "usenet_queue_resumed", resumed.Name)
 	assert.Equal(t, map[string]any{"reason": "", "detail": ""}, resumed.json(t))
+	assert.Equal(t, "torrent_queue_paused", torrentPaused.Name)
+	assert.Equal(t, map[string]any{"reason": "bind_unavailable", "detail": ""}, torrentPaused.json(t))
 }
 
 func TestEventStreamDoesNotReplayEventsFromBeforeConnectingOrHonourLastEventID(t *testing.T) {

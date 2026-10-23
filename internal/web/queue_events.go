@@ -75,15 +75,6 @@ func (c LiveConfig) withDefaults() LiveConfig {
 // asks for a refresh of the lists.
 const maxPending = 256
 
-// The kinds of the runners' queue events. The web package does not import
-// the runners; the daemon tests pin these to the runners' constants.
-const (
-	KindUsenetQueuePaused   core.EventKind = "usenet_queue_paused"
-	KindUsenetQueueResumed  core.EventKind = "usenet_queue_resumed"
-	KindTorrentQueuePaused  core.EventKind = "torrent_queue_paused"
-	KindTorrentQueueResumed core.EventKind = "torrent_queue_resumed"
-)
-
 func (s *Server) registerLive() {
 	s.live.cfg = s.Live.withDefaults()
 	s.handleAuthed("GET /ui/events", s.getLiveEvents)
@@ -133,7 +124,7 @@ func (b *batch) note(ev core.Event) {
 		}
 	default:
 		switch ev.Kind() {
-		case KindUsenetQueuePaused, KindUsenetQueueResumed, KindTorrentQueuePaused, KindTorrentQueueResumed:
+		case core.KindQueuePaused, core.KindQueueResumed:
 			b.refresh = true
 		}
 	}

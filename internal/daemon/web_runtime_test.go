@@ -13,34 +13,45 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
-type fakeUsenetQueue struct {
+// fakeQueue is a queueControl that remembers what it was asked.
+type fakeQueue struct {
 	paused bool
 	reason string
-	limit  int64
+	detail string
 	calls  []string
 }
 
-func (f *fakeUsenetQueue) PauseQueue() {
-	f.paused, f.reason = true, "user"
-	f.calls = append(f.calls, "pause")
+func (f *fakeQueue) Pause(reason, detail string) {
+	f.paused, f.reason, f.detail = true, reason, detail
+	f.calls = append(f.calls, "pause "+reason)
 }
-func (f *fakeUsenetQueue) ResumeQueue() {
+func (f *fakeQueue) Resume(reason string) {
 	f.paused, f.reason = false, ""
-	f.calls = append(f.calls, "resume")
+	f.calls = append(f.calls, "resume "+reason)
 }
-func (f *fakeUsenetQueue) QueuePaused() (bool, string) { return f.paused, f.reason }
-func (f *fakeUsenetQueue) SetSpeedLimit(n int64)       { f.limit = n }
+func (f *fakeQueue) Paused() (bool, string, string) { return f.paused, f.reason, f.detail }
 
-type fakeTorrentQueue struct {
-	fakeUsenetQueue
+type fakeUsenetLimiter struct{ limit int64 }
+
+func (f *fakeUsenetLimiter) SetSpeedLimit(n int64) { f.limit = n }
+
+type fakeTorrentRunner struct {
 	down, up int64
 	hashes   map[core.ID]trunner.Info
 }
 
-func (f *fakeTorrentQueue) SetRateLimits(down, up int64) { f.down, f.up = down, up }
-func (f *fakeTorrentQueue) Info(id core.ID) (trunner.Info, bool) {
+func (f *fakeTorrentRunner) SetRateLimits(down, up int64) { f.down, f.up = down, up }
+func (f *fakeTorrentRunner) Info(id core.ID) (trunner.Info, bool) {
 	i, ok := f.hashes[id]
 	return i, ok
+}
+
+func queues(u, t *fakeQueue) map[core.SourceKind]queueControl {
+	m := map[core.SourceKind]queueControl{core.SourceNZB: u}
+	if t != nil {
+		m[core.SourceTorrent] = t
+	}
+	return m
 }
 
 type statsEngine struct {
@@ -73,8 +84,8 @@ func (r listRepo) List(_ context.Context, q core.DownloadQuery) ([]core.Download
 func hash(b byte) core.InfoHash { return core.InfoHash{b} }
 
 func TestWebRuntimeQueueStateAndControlsFollowTheRunners(t *testing.T) {
-	u, tq := &fakeUsenetQueue{}, &fakeTorrentQueue{}
-	w := newWebRuntime(u, tq, nil, nil, newTracker())
+	u, tq := &fakeQueue{}, &fakeQueue{}
+	w := newWebRuntime(queues(u, tq), &fakeUsenetLimiter{}, &fakeTorrentRunner{}, nil, nil, newTracker())
 
 	assert.Equal(t, web.QueueState{Available: true}, w.QueueState(core.SourceNZB))
 	w.PauseQueue(core.SourceNZB)
@@ -83,13 +94,13 @@ func TestWebRuntimeQueueStateAndControlsFollowTheRunners(t *testing.T) {
 	assert.True(t, tq.paused)
 	w.ResumeQueue(core.SourceTorrent)
 	assert.False(t, tq.paused)
-	assert.Equal(t, []string{"pause", "resume"}, tq.calls)
+	assert.Equal(t, []string{"pause user", "resume user"}, tq.calls)
 	assert.Equal(t, web.QueueState{}, w.QueueState("other"))
 }
 
 func TestWebRuntimeWithoutTorrentsHasNoTorrentQueue(t *testing.T) {
-	u := &fakeUsenetQueue{}
-	w := newWebRuntime(u, nil, nil, nil, newTracker())
+	u := &fakeQueue{}
+	w := newWebRuntime(queues(u, nil), &fakeUsenetLimiter{}, nil, nil, nil, newTracker())
 
 	assert.Equal(t, web.QueueState{}, w.QueueState(core.SourceTorrent), "not available")
 	w.PauseQueue(core.SourceTorrent)
@@ -103,8 +114,8 @@ func TestWebRuntimeWithoutTorrentsHasNoTorrentQueue(t *testing.T) {
 }
 
 func TestWebRuntimeSpeedLimitsReachTheRunnersAndAreRemembered(t *testing.T) {
-	u, tq := &fakeUsenetQueue{}, &fakeTorrentQueue{}
-	w := newWebRuntime(u, tq, nil, nil, newTracker())
+	u, tq := &fakeUsenetLimiter{}, &fakeTorrentRunner{}
+	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), u, tq, nil, nil, newTracker())
 
 	w.SetSpeedLimit(core.SourceNZB, 5<<20, 99)
 	w.SetSpeedLimit(core.SourceTorrent, 2<<20, 1<<20)
@@ -125,9 +136,9 @@ func TestWebRuntimeLiveCombinesTrackerAndEngine(t *testing.T) {
 	tr := newTracker()
 	tr.apply(core.PostProcessStage{ID: "nzb", Stage: core.StageVerifying})
 	tr.apply(core.DownloadProgress{ID: "nzb", BytesPerSecond: 1234})
-	tq := &fakeTorrentQueue{hashes: map[core.ID]trunner.Info{"tor": {Hash: hash(1), BaseUploaded: 500}}}
+	tq := &fakeTorrentRunner{hashes: map[core.ID]trunner.Info{"tor": {Hash: hash(1), BaseUploaded: 500}}}
 	eng := &statsEngine{stats: map[core.InfoHash]core.TorrentStats{hash(1): {Size: 1000, Uploaded: 1500, UpRate: 77, Peers: 4, Seeds: 2}}}
-	w := newWebRuntime(&fakeUsenetQueue{}, tq, eng, nil, tr)
+	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), &fakeUsenetLimiter{}, tq, eng, nil, tr)
 
 	nzb := w.Live("nzb")
 	assert.Equal(t, core.StageVerifying, nzb.Stage)
@@ -148,13 +159,13 @@ func TestWebRuntimeRatesSumTheTrackerAndEveryTorrentUpload(t *testing.T) {
 	tr := newTracker()
 	tr.apply(core.DownloadProgress{ID: "a", BytesPerSecond: 100})
 	tr.apply(core.DownloadProgress{ID: "b", BytesPerSecond: 50})
-	tq := &fakeTorrentQueue{hashes: map[core.ID]trunner.Info{"t1": {Hash: hash(1)}, "t2": {Hash: hash(2)}}}
+	tq := &fakeTorrentRunner{hashes: map[core.ID]trunner.Info{"t1": {Hash: hash(1)}, "t2": {Hash: hash(2)}}}
 	eng := &statsEngine{stats: map[core.InfoHash]core.TorrentStats{hash(1): {UpRate: 10}, hash(2): {UpRate: 5}}}
 	repo := listRepo{byState: map[core.State][]core.Download{
 		core.StateFetched: {{ID: "t1"}}, core.StateReady: {{ID: "t2"}, {ID: "gone"}},
 	}}
 	now := time.Now()
-	w := newWebRuntime(&fakeUsenetQueue{}, tq, eng, repo, tr)
+	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), &fakeUsenetLimiter{}, tq, eng, repo, tr)
 	w.now = func() time.Time { return now }
 
 	down, up := w.Rates()

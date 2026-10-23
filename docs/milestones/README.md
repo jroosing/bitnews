@@ -137,10 +137,10 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/8) · [wiki]
 
 | ID | Issue | Title | Status |
 |---|---|---|---|
-| M8-01 | [#73](https://gitlab.com/kyura4k/bitnews/-/issues/73) | The Queue module | open |
-| M8-02 | [#74](https://gitlab.com/kyura4k/bitnews/-/issues/74) | The Usenet runner uses the Queue | open |
-| M8-03 | [#75](https://gitlab.com/kyura4k/bitnews/-/issues/75) | The torrent runner uses the Queue | open |
-| M8-04 | [#76](https://gitlab.com/kyura4k/bitnews/-/issues/76) | Callers use one Queue vocabulary | open |
+| M8-01 | [#73](https://gitlab.com/kyura4k/bitnews/-/issues/73) | The Queue module | done |
+| M8-02 | [#74](https://gitlab.com/kyura4k/bitnews/-/issues/74) | The Usenet runner uses the Queue | done |
+| M8-03 | [#75](https://gitlab.com/kyura4k/bitnews/-/issues/75) | The torrent runner uses the Queue | done |
+| M8-04 | [#76](https://gitlab.com/kyura4k/bitnews/-/issues/76) | Callers use one Queue vocabulary | done |
 | M8-05 | [#77](https://gitlab.com/kyura4k/bitnews/-/issues/77) | Download view module (planned) | planned |
 | M8-06 | [#78](https://gitlab.com/kyura4k/bitnews/-/issues/78) | One Add call (planned) | planned |
 | M8-07 | [#79](https://gitlab.com/kyura4k/bitnews/-/issues/79) | Settings change under lock and one card engine (planned) | planned |

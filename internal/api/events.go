@@ -105,7 +105,7 @@ func sendEvent(send func(string, ...any) bool, name string, payload any) bool {
 // eventPayload maps a core event to its SSE name and JSON payload. Settings
 // changes carry no payload: receivers fetch the settings. postprocess_stage
 // says which Post-processing stage a Download entered, and
-// usenet_queue_paused and usenet_queue_resumed report the Usenet Queue.
+// usenet_queue_paused and usenet_queue_resumed, and the torrent_queue_ pair, report the Queues.
 func eventPayload(ev core.Event) (name string, payload any, ok bool) {
 	name = string(ev.Kind())
 	switch e := ev.(type) {
@@ -143,18 +143,29 @@ func eventPayload(ev core.Event) (name string, payload any, ok bool) {
 			Stage core.Stage `json:"stage"`
 		}{e.ID, e.Stage}, true
 	case core.QueuePaused:
-		if e.Source == core.SourceNZB {
-			return "usenet_queue_paused", queuePayload{e.Reason, e.Detail}, true
+		if prefix, ok := queueEventPrefix(e.Source); ok {
+			return prefix + "_queue_paused", queuePayload{e.Reason, e.Detail}, true
 		}
 	case core.QueueResumed:
-		if e.Source == core.SourceNZB {
-			return "usenet_queue_resumed", queuePayload{}, true
+		if prefix, ok := queueEventPrefix(e.Source); ok {
+			return prefix + "_queue_resumed", queuePayload{}, true
 		}
 	}
 	return "", nil, false
 }
 
-// queuePayload is the payload of the Usenet Queue events. A resumed Queue
+// queueEventPrefix names the Queue of a Source kind in event names.
+func queueEventPrefix(k core.SourceKind) (string, bool) {
+	switch k {
+	case core.SourceNZB:
+		return "usenet", true
+	case core.SourceTorrent:
+		return "torrent", true
+	}
+	return "", false
+}
+
+// queuePayload is the payload of the Queue events. A resumed Queue
 // has no reason or detail; the fields are there so one shape serves both.
 type queuePayload struct {
 	Reason string `json:"reason"`

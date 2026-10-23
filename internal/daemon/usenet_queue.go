@@ -6,27 +6,15 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/queue"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 )
 
-// usenetRuntime gives webRuntime the Usenet runner with the user's pause of
-// its Queue, and the data remover the Queue's holds.
-type usenetRuntime struct{ *runner.Runner }
+// queueHolder gives the data remover the holds of a Queue.
+type queueHolder struct{ q *queue.Queue }
 
-var (
-	_ usenetQueue = usenetRuntime{}
-	_ fetchHolder = usenetRuntime{}
-)
+var _ fetchHolder = queueHolder{}
 
-func (u usenetRuntime) PauseQueue()  { u.Queue().Pause(queue.ReasonUser, "") }
-func (u usenetRuntime) ResumeQueue() { u.Queue().Resume(queue.ReasonUser) }
-func (u usenetRuntime) QueuePaused() (paused bool, reason string) {
-	paused, reason, _ = u.Queue().Paused()
-	return paused, reason
-}
-
-func (u usenetRuntime) Hold(ctx context.Context, id core.ID) error { return u.Queue().Hold(ctx, id) }
-func (u usenetRuntime) Release(id core.ID)                         { u.Queue().Release(id) }
+func (h queueHolder) Hold(ctx context.Context, id core.ID) error { return h.q.Hold(ctx, id) }
+func (h queueHolder) Release(id core.ID)                         { h.q.Release(id) }
 
 // usenetKillswitch pauses the Usenet Queue with queue.ReasonBindUnavailable
 // while the bound interface or address is gone, and releases that reason

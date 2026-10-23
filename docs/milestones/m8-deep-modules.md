@@ -24,6 +24,12 @@ Concentrate logic that is duplicated per protocol and per transport into deep mo
 
 The protocol adapter (the seam) is: `Prepare(ctx) (canStart bool)`, `Exclude(id) bool`, `Running(id) bool`, `Start(ctx, d) error` (`ErrNotNow` to skip for this pass), `Stop(ctx, id)`, `Abandon(ctx, id) error`.
 
+## Implementation notes
+
+- **Protocol interface as built:** `Prepare`, `Exclude`, `Running`, `Start`, `Stop`, `Abandon`. The Usenet runner uses `Exclude` for Downloads in a failure cooldown, so they stay Queued instead of being moved to Fetching with nothing running. The torrent runner's `Running` means "registered in the engine", so `Hold` also reaches torrents paused for the Queue or by a Share Limit.
+- **Events:** `core.QueuePaused{Source, Reason, Detail}` is published when a reason is added and `core.QueueResumed{Source}` when the last is released. The own API streams them as `usenet_queue_paused|resumed` and `torrent_queue_paused|resumed` (the torrent pair is new).
+- **Drift fixes:** the Usenet kill switch pauses with `bind_unavailable` instead of faking a user pause; a resume is announced only when no reason is left; a torrent that hits "no space left" pauses its Queue and goes back to Queued instead of failing.
+
 ## Issues
 
 ### M8-01: The Queue module
