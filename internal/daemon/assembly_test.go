@@ -29,7 +29,7 @@ var (
 	_ runner.NZBSource         = nzbSource{}
 	_ adapt.DeferredController = (*runner.Runner)(nil)
 	_ core.FetchReporter       = (*runner.Runner)(nil)
-	_ fetchHolder              = (*runner.Runner)(nil)
+	_ fetchHolder              = usenetRuntime{}
 	_ core.FS                  = osFS{}
 )
 

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 )
 
 // streamWriteTimeout bounds each single write to an event stream, so a client
@@ -143,10 +142,14 @@ func eventPayload(ev core.Event) (name string, payload any, ok bool) {
 			ID    core.ID    `json:"id"`
 			Stage core.Stage `json:"stage"`
 		}{e.ID, e.Stage}, true
-	case runner.QueuePaused:
-		return name, queuePayload{e.Reason, e.Detail}, true
-	case runner.QueueResumed:
-		return name, queuePayload{}, true
+	case core.QueuePaused:
+		if e.Source == core.SourceNZB {
+			return "usenet_queue_paused", queuePayload{e.Reason, e.Detail}, true
+		}
+	case core.QueueResumed:
+		if e.Source == core.SourceNZB {
+			return "usenet_queue_resumed", queuePayload{}, true
+		}
 	}
 	return "", nil, false
 }

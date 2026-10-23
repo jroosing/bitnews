@@ -186,6 +186,11 @@ func TestRunnerQueueEventsRefreshTheLists(t *testing.T) {
 		q.flush()
 		assert.Equal(t, "refresh", s.until("refresh").Name, kind)
 	}
+	for _, ev := range []core.Event{core.QueuePaused{Source: core.SourceNZB, Reason: "user"}, core.QueueResumed{Source: core.SourceNZB}} {
+		q.bus.Publish(ev)
+		q.flush()
+		assert.Equal(t, "refresh", s.until("refresh").Name, ev.Kind())
+	}
 }
 
 type kindEvent core.EventKind

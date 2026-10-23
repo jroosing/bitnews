@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 	"gitlab.com/kyura4k/gitnews/internal/store"
 	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -30,9 +30,19 @@ type torrentQueue interface {
 }
 
 var (
-	_ usenetQueue  = (*runner.Runner)(nil)
-	_ torrentQueue = (*trunner.Runner)(nil)
+	_ torrentQueue = torrentRuntime{}
 )
+
+// torrentRuntime gives webRuntime the torrent runner with the user's pause
+// of its Queue.
+type torrentRuntime struct{ *trunner.Runner }
+
+func (t torrentRuntime) PauseQueue()  { t.Queue().Pause(queue.ReasonUser, "") }
+func (t torrentRuntime) ResumeQueue() { t.Queue().Resume(queue.ReasonUser) }
+func (t torrentRuntime) QueuePaused() (paused bool, reason string) {
+	paused, reason, _ = t.Queue().Paused()
+	return paused, reason
+}
 
 // webRuntime implements web.RuntimeSource for the queue page: speeds and
 // stages from the event tracker, Queue pause and speed limits through the

@@ -40,7 +40,7 @@ type Config struct {
 	Remover Remover
 
 	// MinFree returns the free space in bytes that must stay free on top of
-	// a Download's remaining bytes. Nil means DefaultMinFree.
+	// a Download's remaining bytes. Nil means core.DefaultMinFree.
 	MinFree func(ctx context.Context) (uint64, error)
 	// FreeSpace reports the free bytes of the filesystem holding path. The
 	// default is fsutil.FreeBytes; where that is unsupported
@@ -74,9 +74,6 @@ type Config struct {
 
 // Defaults.
 const (
-	// DefaultMinFree is the min_free default: 5 GiB.
-	DefaultMinFree uint64 = 5 << 30
-
 	defaultPollInterval      = 10 * time.Second
 	defaultSampleInterval    = time.Second
 	defaultDoneBytesInterval = 2 * time.Second

@@ -122,7 +122,7 @@ func (b *batch) note(ev core.Event) {
 			return
 		}
 		b.stages[e.ID] = e.Stage
-	case core.DownloadAdded, core.DownloadUpdated, core.Fetched, core.Ready, core.Failed:
+	case core.DownloadAdded, core.DownloadUpdated, core.Fetched, core.Ready, core.Failed, core.QueuePaused, core.QueueResumed:
 		b.refresh = true
 	case core.Removed:
 		b.refresh = true

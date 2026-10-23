@@ -3,13 +3,13 @@ package runner
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 )
 
 // Why a job's context was cancelled (context.Cause).
@@ -25,7 +25,7 @@ type Runner struct {
 	cfg      Config
 	log      *slog.Logger
 	clock    Clock
-	free     func(string) (uint64, error)
+	q        *queue.Queue
 	pools    *poolSet
 	throttle *core.ProgressThrottle
 	store    ProgressStore
@@ -36,10 +36,7 @@ type Runner struct {
 	mu          sync.Mutex
 	runCtx      context.Context
 	jobs        map[core.ID]*job
-	userPaused  bool
-	diskPaused  bool
 	cooldown    map[core.ID]time.Time
-	held        map[core.ID]time.Time
 	reports     map[core.ID]FetchDetail
 	noServerLog time.Time
 	wg          sync.WaitGroup
@@ -61,15 +58,16 @@ func New(cfg Config) (*Runner, error) {
 	case cfg.Settings == nil:
 		return nil, errors.New("runner: Config.Settings is required")
 	}
-	r := &Runner{cfg: cfg, log: cfg.Logger, clock: cfg.Clock, free: cfg.FreeSpace, store: cfg.Progress}
+	r := &Runner{cfg: cfg, log: cfg.Logger, clock: cfg.Clock, store: cfg.Progress}
 	if r.log == nil {
 		r.log = slog.Default()
 	}
 	if r.clock == nil {
 		r.clock = systemClock{}
 	}
-	if r.free == nil {
-		r.free = fsutil.FreeBytes
+	free := cfg.FreeSpace
+	if free == nil {
+		free = fsutil.FreeBytes
 	}
 	if r.store == nil {
 		r.store = newMemStore()
@@ -93,10 +91,21 @@ func New(cfg Config) (*Runner, error) {
 	r.wake = make(chan struct{}, 1)
 	r.jobs = map[core.ID]*job{}
 	r.cooldown = map[core.ID]time.Time{}
-	r.held = map[core.ID]time.Time{}
 	r.reports = map[core.ID]FetchDetail{}
+	q, err := queue.New(queue.Config{
+		Source: core.SourceNZB, Downloads: cfg.Downloads, Bus: cfg.Bus, Settings: cfg.Settings,
+		Protocol: protocol{r}, MinFree: cfg.MinFree, FreeSpace: free,
+		Now: r.clock.Now, Wake: r.poke, Logger: r.log,
+	})
+	if err != nil {
+		return nil, err
+	}
+	r.q = q
 	return r, nil
 }
+
+// Queue returns the Usenet Queue: its pause reasons, holds and recovery.
+func (r *Runner) Queue() *queue.Queue { return r.q }
 
 func orDefault(d, def time.Duration) time.Duration {
 	if d <= 0 {
@@ -131,7 +140,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	ticker := time.NewTicker(r.cfg.PollInterval)
 	defer ticker.Stop()
 
-	r.reconcile(ctx)
+	r.q.Reconcile(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -143,7 +152,7 @@ func (r *Runner) Run(ctx context.Context) error {
 				}
 				// The bus dropped us for being slow: we missed events.
 				sub = r.cfg.Bus.Subscribe(ctx)
-				r.reconcile(ctx)
+				r.q.Reconcile(ctx)
 				continue
 			}
 			if ev.Kind().IsProgress() {
@@ -151,13 +160,13 @@ func (r *Runner) Run(ctx context.Context) error {
 			}
 			if rm, isRm := ev.(core.Removed); isRm {
 				r.cancelJob(rm.ID, errRemoved)
-				r.Release(rm.ID)
+				r.q.Release(rm.ID)
 			}
-			r.reconcile(ctx)
+			r.q.Reconcile(ctx)
 		case <-ticker.C:
-			r.reconcile(ctx)
+			r.q.Reconcile(ctx)
 		case <-r.wake:
-			r.reconcile(ctx)
+			r.q.Reconcile(ctx)
 		}
 	}
 }
@@ -183,63 +192,4 @@ func (r *Runner) cancelJob(id core.ID, cause error) {
 	if j != nil {
 		j.cancel(cause)
 	}
-}
-
-// listQueue returns the Queued and Fetching NZB Downloads.
-func (r *Runner) listQueue(ctx context.Context) ([]core.Download, error) {
-	var out []core.Download
-	for _, st := range []core.State{core.StateQueued, core.StateFetching} {
-		after := ""
-		for {
-			page, next, err := r.cfg.Downloads.List(ctx, core.DownloadQuery{
-				State: st, SourceKind: core.SourceNZB, After: after, Limit: 200,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("runner: list %s downloads: %w", st, err)
-			}
-			out = append(out, page...)
-			if next == "" {
-				break
-			}
-			after = next
-		}
-	}
-	return out, nil
-}
-
-// setState applies c to the stored Download and publishes DownloadUpdated.
-// It must not be tied to a context that is being cancelled.
-func (r *Runner) setState(ctx context.Context, id core.ID, c core.StateChange) (core.Download, error) {
-	d, err := r.cfg.Downloads.UpdateState(ctx, id, c)
-	if err != nil {
-		return core.Download{}, err
-	}
-	r.cfg.Bus.Publish(core.DownloadUpdated{Download: d})
-	return d, nil
-}
-
-// Recover moves the Usenet Downloads found Fetching back to Queued. Call it
-// once at start-up, before Run: those Downloads were interrupted by a
-// shutdown or a crash.
-func (r *Runner) Recover(ctx context.Context) error {
-	var errs []error
-	for after := ""; ; {
-		page, next, err := r.cfg.Downloads.List(ctx, core.DownloadQuery{
-			State: core.StateFetching, SourceKind: core.SourceNZB, After: after, Limit: 200,
-		})
-		if err != nil {
-			return fmt.Errorf("runner: recover: %w", err)
-		}
-		for _, d := range page {
-			_, err := r.setState(ctx, d.ID, core.StateChange{To: core.StateQueued, At: r.clock.Now()})
-			if err != nil {
-				errs = append(errs, fmt.Errorf("runner: recover %s: %w", d.ID, err))
-			}
-		}
-		if next == "" {
-			break
-		}
-		after = next
-	}
-	return errors.Join(errs...)
 }

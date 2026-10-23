@@ -45,14 +45,17 @@
 //
 // # Pause, speed limit and disk guard
 //
-// core.Download.Paused is honoured through core.Select. PauseQueue and
-// ResumeQueue pause the whole Queue at run time. SetSpeedLimit applies a
+// The Queue's policy lives in internal/queue (ADR-0008): Queue returns it.
+// The runner implements queue.Protocol and calls Queue.Reconcile on each
+// pass of its control loop; the Queue decides what runs (core.Select, the
+// Pause reasons, holds, orphans) and the runner keeps the Servers, the jobs,
+// the cooldown after a failure and the speed limit. SetSpeedLimit applies a
 // token bucket to the bytes received from the network. Before a Download is
-// activated, and every Config.DiskCheckInterval while it runs, the free space
-// of the incomplete root must be at least the remaining bytes plus min_free
-// (default 5 GiB). Otherwise the Queue is paused with reason disk_full, the
-// event QueuePaused is published and the Queue resumes by itself when the
-// space is back. QueuePaused reports the state for the API.
+// activated the Queue's disk guard checks the free space of the incomplete
+// root; every Config.DiskCheckInterval while it runs the runner asks the
+// Queue again (Queue.Fits), and a write that fails with "no space left"
+// pauses the Queue with disk_full (Queue.DiskFull) and requeues the
+// Download.
 //
 // # Resume and restart
 //
@@ -70,15 +73,16 @@
 // working directory except the stored .nzb. A blob that no longer matches the
 // disk (files missing or truncated) only resets the affected files.
 //
-// Recover moves Downloads found Fetching back to Queued; call it before Run
-// after a restart.
+// Queue().Recover moves Downloads found Fetching back to Queued; call it
+// before Run after a restart.
 //
 // # Removing a Download's data
 //
-// Hold(ctx, id) cancels the running fetch of a Download, waits for it to
-// stop, and keeps the control loop from activating the Download again until
-// Release, its Removed event, or two minutes have passed. The daemon calls it
-// before deleting the Download's files.
+// Queue().Hold(ctx, id) cancels the running fetch of a Download as if it
+// were removed (its resume state goes), waits for it to stop, and keeps the
+// Download from being activated again until Release, its Removed event, or
+// two minutes have passed. The daemon calls it before deleting the
+// Download's files.
 //
 // # Deferred recovery volumes
 //

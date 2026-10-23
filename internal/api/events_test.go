@@ -18,7 +18,6 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/api"
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 )
 
 // None of the event stream tests run in parallel: the goroutine-leak checks
@@ -240,8 +239,8 @@ func TestEventStreamDeliversPostProcessingAndQueueEvents(t *testing.T) {
 	require.Equal(t, "hello", hello.Name)
 
 	e.bus.Publish(core.PostProcessStage{ID: "dl1", Stage: core.StageRepairing})
-	e.bus.Publish(runner.QueuePaused{Reason: runner.ReasonDiskFull, Detail: "10 bytes free, 20 needed"})
-	e.bus.Publish(runner.QueueResumed{})
+	e.bus.Publish(core.QueuePaused{Source: core.SourceNZB, Reason: "disk_full", Detail: "10 bytes free, 20 needed"})
+	e.bus.Publish(core.QueueResumed{Source: core.SourceNZB})
 
 	stage, _ := c.next(t)
 	paused, _ := c.next(t)

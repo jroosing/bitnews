@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/torrent/runner"
+	"gitlab.com/kyura4k/gitnews/internal/queue"
 )
 
 func TestActivatesQueuedTorrentsUpToTheLimitAndAddsThemToTheEngine(t *testing.T) {
@@ -29,31 +29,6 @@ func TestActivatesQueuedTorrentsUpToTheLimitAndAddsThemToTheEngine(t *testing.T)
 	assert.Equal(t, torrentBytes(a.ID), adds[0].Spec.Metainfo)
 	assert.Equal(t, filepath.Join(h.incomplete, string(a.ID)), adds[0].Spec.StorageDir, "the directory of the stored .torrent")
 	assert.False(t, adds[0].Spec.Paused)
-}
-
-func TestHigherPriorityTakesTheSlotFirst(t *testing.T) {
-	h := newHarness(t)
-	h.setSettings(func(s *core.Settings) { s.Queues.Torrent = 1 })
-	first := h.addTorrent(withPosition(0))
-	second := h.addTorrent(withPosition(1))
-	urgent := h.addTorrent(withPosition(2), withPriority(core.DownloadPriorityHigh))
-
-	h.start()
-	h.waitState(urgent.ID, core.StateFetching)
-
-	assert.Equal(t, []core.State{core.StateQueued, core.StateQueued}, h.states(first.ID, second.ID))
-	require.Len(t, h.calls("Add"), 1)
-}
-
-func TestForceIgnoresTheLimit(t *testing.T) {
-	h := newHarness(t)
-	h.setSettings(func(s *core.Settings) { s.Queues.Torrent = 1 })
-	a := h.addTorrent()
-	b := h.addTorrent(withPriority(core.DownloadPriorityForce))
-
-	h.start()
-	h.waitState(a.ID, core.StateFetching)
-	h.waitState(b.ID, core.StateFetching)
 }
 
 func TestSeedingTorrentsDoNotCountAgainstTheLimit(t *testing.T) {
@@ -109,17 +84,6 @@ func TestPausingADownloadPausesItsTorrentAndResumingContinuesIt(t *testing.T) {
 	assert.Len(t, h.callsFor("Add", a.ID), 1)
 }
 
-func TestRecoverMovesFetchingDownloadsBackToQueued(t *testing.T) {
-	h := newHarness(t)
-	a := h.addTorrent(withState(core.StateFetching))
-	b := h.addTorrent(withState(core.StateQueued))
-	h.build()
-
-	require.NoError(t, h.runner.Recover(t.Context()))
-
-	assert.Equal(t, []core.State{core.StateQueued, core.StateQueued}, h.states(a.ID, b.ID))
-}
-
 func TestRecoverAddsSeedingTorrentsBackToTheEngine(t *testing.T) {
 	h := newHarness(t)
 	fetched := h.addTorrent(withState(core.StateFetched))
@@ -163,24 +127,20 @@ func TestPausingTheQueuePausesRunningTorrentsAndResumingStartsThemAgain(t *testi
 	h.waitState(a.ID, core.StateFetching)
 	h.waitState(b.ID, core.StateFetching)
 
-	h.runner.PauseQueue()
+	h.runner.Queue().Pause(queue.ReasonUser, "")
 	h.waitState(a.ID, core.StateQueued)
 	h.waitState(b.ID, core.StateQueued)
 
-	paused, reason := h.runner.QueuePaused()
-	assert.True(t, paused)
-	assert.Equal(t, runner.ReasonUser, reason)
 	assert.Len(t, h.callsFor("Pause", a.ID), 1)
-	assert.Equal(t, runner.QueuePaused{Reason: runner.ReasonUser}, waitEventOf[runner.QueuePaused](t, sub))
+	assert.Equal(t, core.QueuePaused{Source: core.SourceTorrent, Reason: queue.ReasonUser}, waitEventOf[core.QueuePaused](t, sub))
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, []core.State{core.StateQueued, core.StateQueued}, h.states(a.ID, b.ID), "nothing is activated while paused")
 
-	h.runner.ResumeQueue()
+	h.runner.Queue().Resume(queue.ReasonUser)
 	h.waitState(a.ID, core.StateFetching)
 	h.waitState(b.ID, core.StateFetching)
-	waitEventOf[runner.QueueResumed](t, sub)
-	paused, _ = h.runner.QueuePaused()
-	assert.False(t, paused)
+	waitEventOf[core.QueueResumed](t, sub)
+	assert.Len(t, h.callsFor("Resume", a.ID), 1, "the paused torrent is resumed, not added again")
 }
 
 func TestSpeedLimitsGoToTheEngineAtStartAndWhenChanged(t *testing.T) {
@@ -201,29 +161,6 @@ func TestSpeedLimitsGoToTheEngineAtStartAndWhenChanged(t *testing.T) {
 	}, "unlimited reaches the engine")
 }
 
-func TestDiskGuardKeepsTheQueueFromStartingAndResumesWhenSpaceIsBack(t *testing.T) {
-	h := newHarness(t)
-	h.cfg.MinFree = func(context.Context) (uint64, error) { return 100, nil }
-	h.setFree(500) // needs 1000 remaining + 100
-	a := h.addTorrent(withTotal(1000))
-	sub := h.bus.Subscribe(t.Context())
-	h.start()
-
-	ev := waitEventOf[runner.QueuePaused](t, sub)
-	assert.Equal(t, runner.ReasonDiskFull, ev.Reason)
-	paused, reason := h.runner.QueuePaused()
-	assert.True(t, paused)
-	assert.Equal(t, runner.ReasonDiskFull, reason)
-	assert.Equal(t, core.StateQueued, h.get(a.ID).State)
-	assert.Empty(t, h.calls("Add"))
-
-	h.setFree(5000)
-	h.waitState(a.ID, core.StateFetching)
-	waitEventOf[runner.QueueResumed](t, sub)
-	paused, _ = h.runner.QueuePaused()
-	assert.False(t, paused)
-}
-
 func TestDiskGuardPausesRunningTorrentsWhenTheDiskFills(t *testing.T) {
 	h := newHarness(t)
 	h.cfg.MinFree = func(context.Context) (uint64, error) { return 100, nil }
@@ -235,10 +172,13 @@ func TestDiskGuardPausesRunningTorrentsWhenTheDiskFills(t *testing.T) {
 	h.setFree(10)
 
 	h.waitState(a.ID, core.StateQueued)
-	paused, reason := h.runner.QueuePaused()
+	paused, reason, _ := h.runner.Queue().Paused()
 	assert.True(t, paused)
-	assert.Equal(t, runner.ReasonDiskFull, reason)
+	assert.Equal(t, queue.ReasonDiskFull, reason)
 	assert.NotEmpty(t, h.callsFor("Pause", a.ID))
+
+	h.setFree(1 << 40)
+	h.waitState(a.ID, core.StateFetching)
 }
 
 // waitEventOf returns the next event of type E on sub.
@@ -461,13 +401,6 @@ func TestHoldStopsTheTorrentAndKeepsItOutUntilReleased(t *testing.T) {
 	h.runner.Release(b.ID)
 
 	h.eventually(func() bool { return len(h.callsFor("Add", a.ID)) == 2 && len(h.callsFor("Add", b.ID)) == 2 }, "added again after Release")
-}
-
-func TestHoldOfAnUnknownDownloadReturnsAtOnce(t *testing.T) {
-	h := newHarness(t)
-	h.start()
-
-	require.NoError(t, h.runner.Hold(t.Context(), core.NewID()))
 }
 
 func TestHoldEndsWithTheRemovedEvent(t *testing.T) {

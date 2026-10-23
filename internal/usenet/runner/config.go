@@ -90,7 +90,7 @@ type Config struct {
 	Settings func(ctx context.Context) (core.Settings, error)
 	// MinFree returns the free space in bytes that must stay free on top of
 	// a Download's remaining bytes (the min_free setting). Nil means
-	// DefaultMinFree.
+	// core.DefaultMinFree.
 	MinFree func(ctx context.Context) (uint64, error)
 	// Factory opens connections to a Server. The default dials with strict
 	// TLS (nntp.DialFactory); tests inject in-memory servers.
@@ -129,9 +129,6 @@ type Config struct {
 
 // Defaults.
 const (
-	// DefaultMinFree is the min_free default: 5 GiB.
-	DefaultMinFree = core.DefaultMinFree
-
 	defaultPollInterval      = 10 * time.Second
 	defaultDiskCheckInterval = 30 * time.Second
 	defaultSaveInterval      = 10 * time.Second
