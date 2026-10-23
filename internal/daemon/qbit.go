@@ -18,23 +18,20 @@ import (
 )
 
 // qbitTorrents implements qbit.TorrentSource, qbit.FileSource and
-// qbit.ShareLimiter over the Download repository, the torrent runner and the
-// engine. List is called on every poll of a media manager, so it touches no
-// disk: a registered torrent is described from the runner's memory and the
-// engine's stats, and the info hash of a Download is read once (it never
-// changes) and remembered.
+// qbit.ShareLimiter over the Download repository and the torrent runner,
+// whose Facts answer everything about a torrent. List is called on every poll
+// of a media manager, so it touches no disk: Facts of a torrent in the engine
+// come from memory, and the Download of an info hash is found once and
+// remembered.
 type qbitTorrents struct {
 	downloads core.DownloadRepo
 	sources   core.TorrentSourceRepo
-	records   core.TorrentRecordRepo
-	engine    core.TorrentEngine
 	run       *trunner.Runner
 	settings  func() core.Settings
 	log       *slog.Logger
 
-	mu     sync.Mutex
-	hashes map[core.ID]core.InfoHash
-	ids    map[core.InfoHash]core.ID
+	mu  sync.Mutex
+	ids map[core.InfoHash]core.ID
 }
 
 var (
@@ -44,30 +41,19 @@ var (
 	_ qbit.TorrentAdder  = (*qbitAdder)(nil)
 )
 
-func newQBitTorrents(downloads core.DownloadRepo, sources core.TorrentSourceRepo, records core.TorrentRecordRepo,
-	engine core.TorrentEngine, run *trunner.Runner, settings func() core.Settings, log *slog.Logger) *qbitTorrents {
+func newQBitTorrents(downloads core.DownloadRepo, sources core.TorrentSourceRepo, run *trunner.Runner,
+	settings func() core.Settings, log *slog.Logger) *qbitTorrents {
 	return &qbitTorrents{
-		downloads: downloads, sources: sources, records: records, engine: engine, run: run, settings: settings, log: log,
-		hashes: map[core.ID]core.InfoHash{}, ids: map[core.InfoHash]core.ID{},
+		downloads: downloads, sources: sources, run: run, settings: settings, log: log,
+		ids: map[core.InfoHash]core.ID{},
 	}
 }
 
-// hashOf returns the info hash of the Download, remembering it.
-func (q *qbitTorrents) hashOf(ctx context.Context, id core.ID) (core.InfoHash, error) {
+// remember notes the Download of an info hash.
+func (q *qbitTorrents) remember(h core.InfoHash, id core.ID) {
 	q.mu.Lock()
-	h, ok := q.hashes[id]
+	q.ids[h] = id
 	q.mu.Unlock()
-	if ok {
-		return h, nil
-	}
-	src, err := q.sources.Get(ctx, id)
-	if err != nil && !(errors.Is(err, core.ErrSecretUnavailable) && !src.InfoHash.IsZero()) {
-		return core.InfoHash{}, err
-	}
-	q.mu.Lock()
-	q.hashes[id], q.ids[src.InfoHash] = src.InfoHash, id
-	q.mu.Unlock()
-	return src.InfoHash, nil
 }
 
 // downloadOf finds the Download of an info hash.
@@ -84,14 +70,11 @@ func (q *qbitTorrents) downloadOf(ctx context.Context, h core.InfoHash) (core.Do
 			return core.Download{}, false, err
 		}
 		id = src.DownloadID
-		q.mu.Lock()
-		q.hashes[id], q.ids[h] = h, id
-		q.mu.Unlock()
+		q.remember(h, id)
 	}
 	d, err := q.downloads.Get(ctx, id)
 	if errors.Is(err, core.ErrNotFound) {
 		q.mu.Lock()
-		delete(q.hashes, id)
 		delete(q.ids, h)
 		q.mu.Unlock()
 		return core.Download{}, false, nil
@@ -108,8 +91,8 @@ func (q *qbitTorrents) List(ctx context.Context) ([]qbit.TorrentView, error) {
 			return nil, err
 		}
 		for _, d := range page {
-			v, err := q.view(ctx, d, false)
-			if err != nil {
+			v, ok, err := q.view(ctx, d, false)
+			if err != nil || !ok {
 				q.log.Debug("qbit: torrent skipped", "id", d.ID, "err", err)
 				continue
 			}
@@ -132,69 +115,35 @@ func (q *qbitTorrents) Get(ctx context.Context, hash string) (qbit.TorrentView, 
 	if err != nil || !ok {
 		return qbit.TorrentView{}, false, err
 	}
-	v, err := q.view(ctx, d, true)
-	if err != nil {
-		return qbit.TorrentView{}, false, err
-	}
-	return v, true, nil
+	return q.view(ctx, d, true)
 }
 
-// view describes the torrent of d. full also finds the content directory on
-// disk, which List must not do.
-func (q *qbitTorrents) view(ctx context.Context, d core.Download, full bool) (qbit.TorrentView, error) {
-	h, err := q.hashOf(ctx, d.ID)
-	if err != nil {
-		return qbit.TorrentView{}, err
+// view translates the Facts of d's torrent to the adapter's form. full also
+// finds the content directory on disk, which List must not do.
+func (q *qbitTorrents) view(ctx context.Context, d core.Download, full bool) (qbit.TorrentView, bool, error) {
+	f, ok, err := q.run.Facts(ctx, d.ID)
+	if err != nil || !ok {
+		return qbit.TorrentView{}, false, err
 	}
-	global := q.settings().Seeding
+	q.remember(f.Hash, d.ID)
 	v := qbit.TorrentView{
-		DownloadID: d.ID, InfoHash: h.String(), Name: d.Name, Size: d.TotalBytes, DoneBytes: d.DoneBytes,
+		DownloadID: d.ID, InfoHash: f.Hash.String(), Name: f.Name, Size: f.Size, DoneBytes: f.DoneBytes,
 		AddedAt: d.AddedAt, CompletedAt: d.FetchedAt,
+		DownRate: f.DownRate, UpRate: f.UpRate, Peers: f.Peers, Seeds: f.Seeds, Private: f.Private,
+		Uploaded: f.Uploaded, SeedingTime: f.SeedingTime, Ratio: f.Ratio,
+		Paused:     f.LimitPaused,
+		ShareLimit: shareLimitView(q.settings().Seeding, f.OwnRatioLimit, f.OwnSeedingTimeLimit),
 	}
-	var ratioLimit *float64
-	var timeLimit *time.Duration
-	var baseUp int64
-	var baseSeed time.Duration
-	info, registered := q.run.Info(d.ID)
-	if registered {
-		ratioLimit, timeLimit, baseUp, baseSeed = info.RatioLimit, info.SeedingTimeLimit, info.BaseUploaded, info.BaseSeeding
-		v.Paused = info.LimitPaused
-		v.ContentPath = info.Dir
-		v.SavePath = filepath.Dir(info.Dir)
-		if st, err := q.engine.Stats(h); err == nil {
-			if st.Name != "" {
-				v.Name = st.Name
-			}
-			if st.Size > 0 {
-				v.Size = st.Size
-			}
-			v.DoneBytes = st.DoneBytes
-			v.DownRate, v.UpRate = st.DownRate, st.UpRate
-			v.Peers, v.Seeds = st.Peers, st.Seeds
-			v.Private = st.Private
-			v.Uploaded = baseUp + st.Uploaded
-			v.SeedingTime = baseSeed + st.SeedingTime
-		} else {
-			v.Uploaded, v.SeedingTime = baseUp, baseSeed
-		}
-	} else if rec, err := q.records.Get(ctx, d.ID); err == nil {
-		ratioLimit, timeLimit = rec.RatioLimit, rec.SeedingTimeLimit
-		v.Uploaded, v.SeedingTime = rec.Uploaded, rec.SeedingTime
-		if rec.Moved && rec.Location != "" {
-			v.ContentPath, v.SavePath = rec.Location, filepath.Dir(rec.Location)
-		}
+	if f.Dir != "" {
+		v.ContentPath, v.SavePath = f.Dir, filepath.Dir(f.Dir)
 	}
 	if !d.FetchedAt.IsZero() && v.Size > 0 {
 		v.DoneBytes = v.Size
 	}
-	if v.Size > 0 {
-		v.Ratio = float64(v.Uploaded) / float64(v.Size)
-	}
-	v.ShareLimit = shareLimitView(global, ratioLimit, timeLimit)
-	if full && registered {
+	if full && f.Registered {
 		v.ContentPath = q.run.ContentDir(d)
 	}
-	return v, nil
+	return v, true, nil
 }
 
 // shareLimitView converts a Download's own limit and the global default to
@@ -232,23 +181,23 @@ func (q *qbitTorrents) Files(ctx context.Context, hash string) ([]qbit.TorrentFi
 	if err != nil || !ok {
 		return nil, false, err
 	}
-	st, err := q.engine.Stats(h)
+	f, ok, err := q.run.Facts(ctx, d.ID)
 	if err != nil {
-		if errors.Is(err, core.ErrNotFound) {
-			return nil, true, nil // known, but not in the engine (yet)
-		}
 		return nil, false, err
+	}
+	if !ok || !f.Live {
+		return nil, true, nil // known, but not in the engine (yet)
 	}
 	progress := 0.0
 	switch {
 	case !d.FetchedAt.IsZero():
 		progress = 1
-	case st.Size > 0:
-		progress = float64(st.DoneBytes) / float64(st.Size)
+	case f.Size > 0:
+		progress = float64(f.DoneBytes) / float64(f.Size)
 	}
-	files := make([]qbit.TorrentFile, len(st.Files))
-	for i, f := range st.Files {
-		files[i] = qbit.TorrentFile{Name: f.Path, Size: f.Size, Progress: progress}
+	files := make([]qbit.TorrentFile, len(f.Files))
+	for i, file := range f.Files {
+		files[i] = qbit.TorrentFile{Name: file.Path, Size: file.Size, Progress: progress}
 	}
 	return files, true, nil
 }

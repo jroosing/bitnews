@@ -194,39 +194,7 @@ func TestNoSpaceLeftPausesTheQueueAndRequeuesTheDownloadInsteadOfFailingIt(t *te
 	assert.Len(t, h.callsFor("Add", a.ID), 2, "added again once space is back")
 }
 
-func TestInfoDescribesARegisteredTorrentFromMemory(t *testing.T) {
-	h := newHarness(t)
-	h.setSettings(func(s *core.Settings) { s.Seeding.RatioLimit = 1 })
-	a := h.addSeeding()
-	require.NoError(t, h.records.Upsert(t.Context(), core.TorrentRecord{
-		DownloadID: a.ID, Uploaded: 600, SeedingTime: 90 * time.Second, RatioLimit: ptr(2.0),
-	}))
-	h.start()
-	h.waitInEngine(a.ID)
-
-	info, ok := h.runner.Info(a.ID)
-
-	require.True(t, ok)
-	assert.Equal(t, hashOf(a.ID), info.Hash)
-	assert.Equal(t, filepath.Join(h.incomplete, string(a.ID)), info.Dir)
-	assert.EqualValues(t, 600, info.BaseUploaded)
-	assert.Equal(t, 90*time.Second, info.BaseSeeding)
-	assert.Equal(t, ptr(2.0), info.RatioLimit)
-	assert.Nil(t, info.SeedingTimeLimit)
-	assert.True(t, info.Fetched)
-	assert.False(t, info.LimitPaused)
-}
-
-func TestInfoOfAnUnknownDownloadIsNotOK(t *testing.T) {
-	h := newHarness(t)
-	h.build()
-
-	_, ok := h.runner.Info(core.NewID())
-
-	assert.False(t, ok)
-}
-
-func TestInfoShowsALimitPausedTorrentAndFollowsSetShareLimit(t *testing.T) {
+func TestFactsShowALimitPausedTorrentAndFollowSetShareLimit(t *testing.T) {
 	h := newHarness(t)
 	a := h.addSeeding()
 	h.start()
@@ -235,8 +203,10 @@ func TestInfoShowsALimitPausedTorrentAndFollowsSetShareLimit(t *testing.T) {
 
 	require.NoError(t, h.runner.SetShareLimit(t.Context(), a.ID, core.ShareLimit{Ratio: 0.5, SeedingTime: -1}))
 
-	info, _ := h.runner.Info(a.ID)
-	assert.True(t, info.LimitPaused)
-	assert.Equal(t, ptr(0.5), info.RatioLimit)
-	assert.Equal(t, ptr(time.Duration(-1)), info.SeedingTimeLimit, "unlimited is a negative duration")
+	f, ok, err := h.runner.Facts(t.Context(), a.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.True(t, f.LimitPaused)
+	assert.Equal(t, ptr(0.5), f.OwnRatioLimit)
+	assert.Equal(t, ptr(time.Duration(-1)), f.OwnSeedingTimeLimit, "unlimited is a negative duration")
 }

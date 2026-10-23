@@ -3,10 +3,8 @@ package daemon
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
@@ -37,13 +35,15 @@ func (f *fakeUsenetLimiter) SetSpeedLimit(n int64) { f.limit = n }
 
 type fakeTorrentRunner struct {
 	down, up int64
-	hashes   map[core.ID]trunner.Info
+	upRate   int64
+	facts    map[core.ID]trunner.Facts
 }
 
 func (f *fakeTorrentRunner) SetRateLimits(down, up int64) { f.down, f.up = down, up }
-func (f *fakeTorrentRunner) Info(id core.ID) (trunner.Info, bool) {
-	i, ok := f.hashes[id]
-	return i, ok
+func (f *fakeTorrentRunner) UploadRate() int64            { return f.upRate }
+func (f *fakeTorrentRunner) Facts(_ context.Context, id core.ID) (trunner.Facts, bool, error) {
+	fa, ok := f.facts[id]
+	return fa, ok, nil
 }
 
 func queues(u, t *fakeQueue) map[core.SourceKind]queueControl {
@@ -54,38 +54,9 @@ func queues(u, t *fakeQueue) map[core.SourceKind]queueControl {
 	return m
 }
 
-type statsEngine struct {
-	core.TorrentEngine
-	stats map[core.InfoHash]core.TorrentStats
-	calls int
-}
-
-func (e *statsEngine) Stats(h core.InfoHash) (core.TorrentStats, error) {
-	e.calls++
-	st, ok := e.stats[h]
-	if !ok {
-		return core.TorrentStats{}, core.ErrNotFound
-	}
-	return st, nil
-}
-
-type listRepo struct {
-	core.DownloadRepo
-	byState map[core.State][]core.Download
-}
-
-func (r listRepo) List(_ context.Context, q core.DownloadQuery) ([]core.Download, string, error) {
-	if q.SourceKind != core.SourceTorrent {
-		return nil, "", nil
-	}
-	return r.byState[q.State], "", nil
-}
-
-func hash(b byte) core.InfoHash { return core.InfoHash{b} }
-
 func TestWebRuntimeQueueStateAndControlsFollowTheRunners(t *testing.T) {
 	u, tq := &fakeQueue{}, &fakeQueue{}
-	w := newWebRuntime(queues(u, tq), &fakeUsenetLimiter{}, &fakeTorrentRunner{}, nil, nil, newTracker())
+	w := newWebRuntime(queues(u, tq), &fakeUsenetLimiter{}, &fakeTorrentRunner{}, newTracker())
 
 	assert.Equal(t, web.QueueState{Available: true}, w.QueueState(core.SourceNZB))
 	w.PauseQueue(core.SourceNZB)
@@ -100,7 +71,7 @@ func TestWebRuntimeQueueStateAndControlsFollowTheRunners(t *testing.T) {
 
 func TestWebRuntimeWithoutTorrentsHasNoTorrentQueue(t *testing.T) {
 	u := &fakeQueue{}
-	w := newWebRuntime(queues(u, nil), &fakeUsenetLimiter{}, nil, nil, nil, newTracker())
+	w := newWebRuntime(queues(u, nil), &fakeUsenetLimiter{}, nil, newTracker())
 
 	assert.Equal(t, web.QueueState{}, w.QueueState(core.SourceTorrent), "not available")
 	w.PauseQueue(core.SourceTorrent)
@@ -115,7 +86,7 @@ func TestWebRuntimeWithoutTorrentsHasNoTorrentQueue(t *testing.T) {
 
 func TestWebRuntimeSpeedLimitsReachTheRunnersAndAreRemembered(t *testing.T) {
 	u, tq := &fakeUsenetLimiter{}, &fakeTorrentRunner{}
-	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), u, tq, nil, nil, newTracker())
+	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), u, tq, newTracker())
 
 	w.SetSpeedLimit(core.SourceNZB, 5<<20, 99)
 	w.SetSpeedLimit(core.SourceTorrent, 2<<20, 1<<20)
@@ -132,13 +103,15 @@ func TestWebRuntimeSpeedLimitsReachTheRunnersAndAreRemembered(t *testing.T) {
 	assert.Zero(t, u.limit, "a negative limit is no limit")
 }
 
-func TestWebRuntimeLiveCombinesTrackerAndEngine(t *testing.T) {
+func TestWebRuntimeLiveCombinesTrackerAndTorrentFacts(t *testing.T) {
 	tr := newTracker()
 	tr.apply(core.PostProcessStage{ID: "nzb", Stage: core.StageVerifying})
 	tr.apply(core.DownloadProgress{ID: "nzb", BytesPerSecond: 1234})
-	tq := &fakeTorrentRunner{hashes: map[core.ID]trunner.Info{"tor": {Hash: hash(1), BaseUploaded: 500}}}
-	eng := &statsEngine{stats: map[core.InfoHash]core.TorrentStats{hash(1): {Size: 1000, Uploaded: 1500, UpRate: 77, Peers: 4, Seeds: 2}}}
-	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), &fakeUsenetLimiter{}, tq, eng, nil, tr)
+	tq := &fakeTorrentRunner{facts: map[core.ID]trunner.Facts{
+		"tor":    {Registered: true, Live: true, UpRate: 77, Peers: 4, Seeds: 2, Ratio: 2},
+		"stored": {Uploaded: 500, Ratio: 0.5}, // not in the engine
+	}}
+	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), &fakeUsenetLimiter{}, tq, tr)
 
 	nzb := w.Live("nzb")
 	assert.Equal(t, core.StageVerifying, nzb.Stage)
@@ -150,33 +123,20 @@ func TestWebRuntimeLiveCombinesTrackerAndEngine(t *testing.T) {
 	assert.Equal(t, int64(77), tor.UpRate)
 	assert.Equal(t, 4, tor.Peers)
 	assert.Equal(t, 2, tor.Seeds)
-	assert.InDelta(t, 2.0, tor.Ratio, 0.001, "(earlier runs + this one) over the size")
+	assert.InDelta(t, 2.0, tor.Ratio, 0.001)
 
-	assert.False(t, w.Live("unknown").Torrent, "not a torrent the runner holds")
+	assert.False(t, w.Live("stored").Torrent, "no live numbers for a torrent outside the engine")
+	assert.False(t, w.Live("unknown").Torrent, "not a torrent")
 }
 
-func TestWebRuntimeRatesSumTheTrackerAndEveryTorrentUpload(t *testing.T) {
+func TestWebRuntimeRatesSumTheTrackerAndTheTorrentUpload(t *testing.T) {
 	tr := newTracker()
 	tr.apply(core.DownloadProgress{ID: "a", BytesPerSecond: 100})
 	tr.apply(core.DownloadProgress{ID: "b", BytesPerSecond: 50})
-	tq := &fakeTorrentRunner{hashes: map[core.ID]trunner.Info{"t1": {Hash: hash(1)}, "t2": {Hash: hash(2)}}}
-	eng := &statsEngine{stats: map[core.InfoHash]core.TorrentStats{hash(1): {UpRate: 10}, hash(2): {UpRate: 5}}}
-	repo := listRepo{byState: map[core.State][]core.Download{
-		core.StateFetched: {{ID: "t1"}}, core.StateReady: {{ID: "t2"}, {ID: "gone"}},
-	}}
-	now := time.Now()
-	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), &fakeUsenetLimiter{}, tq, eng, repo, tr)
-	w.now = func() time.Time { return now }
+	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), &fakeUsenetLimiter{}, &fakeTorrentRunner{upRate: 15}, tr)
 
 	down, up := w.Rates()
 
 	assert.Equal(t, int64(150), down)
-	assert.Equal(t, int64(15), up, "a seeding Ready torrent uploads too")
-	callsBefore := eng.calls
-	_, _ = w.Rates()
-	assert.Equal(t, callsBefore, eng.calls, "cached for a second")
-	now = now.Add(2 * time.Second)
-	_, up = w.Rates()
-	require.Greater(t, eng.calls, callsBefore)
 	assert.Equal(t, int64(15), up)
 }

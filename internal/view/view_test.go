@@ -139,7 +139,7 @@ func TestTheShareLimitIsTheGlobalDefaultUnlessTheDownloadHasItsOwn(t *testing.T)
 		"global":  {Torrent: &view.TorrentLive{}},
 		"ratio":   {Torrent: &view.TorrentLive{OwnRatio: &ratio}},
 		"both":    {Torrent: &view.TorrentLive{OwnRatio: &ratio, OwnSeedingTime: &seeding}},
-		"nolimit": {Torrent: &view.TorrentLive{OwnRatio: ptr(-1.0), OwnSeedingTime: ptr(time.Duration(-1))}},
+		"nolimit": {Torrent: &view.TorrentLive{OwnRatio: new(-1.0), OwnSeedingTime: ptr(time.Duration(-1))}},
 	}
 	m, err := view.New(view.Config{Live: live, Settings: func() core.Settings { return settings }})
 	require.NoError(t, err)
@@ -153,7 +153,8 @@ func TestTheShareLimitIsTheGlobalDefaultUnlessTheDownloadHasItsOwn(t *testing.T)
 	assert.Equal(t, view.ShareLimit{Ratio: -1, Seeding: -1}, of("nolimit"))
 }
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }
 
 func TestAFailedDownloadCarriesItsReasonAndACleanedDetail(t *testing.T) {
 	m := newModule(t, fakeLive{})

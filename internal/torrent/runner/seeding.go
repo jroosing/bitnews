@@ -87,6 +87,7 @@ func (r *Runner) drop(ctx context.Context, id core.ID) {
 	r.mu.Lock()
 	t := r.tors[id]
 	delete(r.tors, id)
+	delete(r.hashes, id)
 	r.mu.Unlock()
 	if t == nil {
 		return

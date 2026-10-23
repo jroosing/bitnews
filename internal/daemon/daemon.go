@@ -321,8 +321,8 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	var qbitHandler http.Handler
 	var webTorrentSource web.TorrentSource
 	if trun != nil {
-		torrents := newQBitTorrents(downloads, torrentSources, torrentRecords, engine, trun, settings.Current, log)
-		webTorrentSource = newWebTorrents(torrents)
+		torrents := newQBitTorrents(downloads, torrentSources, trun, settings.Current, log)
+		webTorrentSource = newWebTorrents(trun)
 		qbitHandler = qbit.New(qbit.Deps{
 			AppKey: appKey, Downloads: downloadService, Categories: categoryService, Settings: settings,
 			Torrents: torrents, Files: torrents, ShareLimits: torrents,
@@ -331,7 +331,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		})
 	}
 	serverService := app.NewServerService(servers, bus, prober)
-	runtime := newWebRuntime(queuesOf(run, trun), run, torrentRunnerOrNil(trun), engine, downloads, track)
+	runtime := newWebRuntime(queuesOf(run, trun), run, torrentRunnerOrNil(trun), track)
 	// The speed limits of the Settings are in force from the start, before
 	// the runners run (the torrent runner passes them to its engine then).
 	speed := &speedApplier{settings: settings.Current, target: runtime}

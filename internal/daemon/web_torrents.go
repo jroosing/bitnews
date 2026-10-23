@@ -2,77 +2,54 @@ package daemon
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
-// webTorrents implements web.TorrentSource for the Download detail page over
-// the same pieces the qBittorrent adapter uses: the remembered info hashes,
-// the torrent runner's in-memory snapshot, the engine's stats and the stored
-// torrent record. Nothing here touches the disk besides the repositories.
-type webTorrents struct{ q *qbitTorrents }
+// webTorrents implements web.TorrentSource for the Download detail page on
+// the torrent runner's Facts.
+type webTorrents struct{ run *trunner.Runner }
 
 var _ web.TorrentSource = webTorrents{}
 
 // newWebTorrents returns the TorrentSource of the web UI, or nil (torrents
-// are off) when there is no torrent side.
-func newWebTorrents(q *qbitTorrents) web.TorrentSource {
-	if q == nil {
+// are off) when there is no torrent runner.
+func newWebTorrents(run *trunner.Runner) web.TorrentSource {
+	if run == nil {
 		return nil
 	}
-	return webTorrents{q: q}
+	return webTorrents{run: run}
 }
 
 // Torrent implements web.TorrentSource.
 func (w webTorrents) Torrent(ctx context.Context, id core.ID) (web.TorrentFacts, bool, error) {
-	q := w.q
-	h, err := q.hashOf(ctx, id)
-	if errors.Is(err, core.ErrNotFound) {
-		return web.TorrentFacts{}, false, nil
-	}
-	if err != nil {
+	f, ok, err := w.run.Facts(ctx, id)
+	if err != nil || !ok {
 		return web.TorrentFacts{}, false, err
 	}
-	f := web.TorrentFacts{InfoHash: h.String()}
-	if info, registered := q.run.Info(id); registered {
-		f.Registered, f.LimitPaused = true, info.LimitPaused
-		f.OwnRatio, f.OwnSeedingTime = info.RatioLimit, info.SeedingTimeLimit
-		f.Uploaded, f.SeedingTime = info.BaseUploaded, info.BaseSeeding
-		if st, err := q.engine.Stats(info.Hash); err == nil {
-			f.Private, f.Size = st.Private, st.Size
-			f.Peers, f.Seeds, f.DownRate, f.UpRate = st.Peers, st.Seeds, st.DownRate, st.UpRate
-			f.Uploaded += st.Uploaded
-			f.SeedingTime += st.SeedingTime
-			f.Files = make([]web.TorrentFile, len(st.Files))
-			for i, file := range st.Files {
-				f.Files[i] = web.TorrentFile{Path: file.Path, Size: file.Size}
-			}
-		}
-	} else if rec, err := q.records.Get(ctx, id); err == nil {
-		f.OwnRatio, f.OwnSeedingTime = rec.RatioLimit, rec.SeedingTimeLimit
-		f.Uploaded, f.SeedingTime = rec.Uploaded, rec.SeedingTime
-	} else if !errors.Is(err, core.ErrNotFound) {
-		return web.TorrentFacts{}, false, err
+	out := web.TorrentFacts{
+		InfoHash: f.Hash.String(), Registered: f.Registered, LimitPaused: f.LimitPaused,
+		OwnRatio: f.OwnRatioLimit, OwnSeedingTime: f.OwnSeedingTimeLimit,
+		Private: f.Private, Size: f.Size, Peers: f.Peers, Seeds: f.Seeds, DownRate: f.DownRate, UpRate: f.UpRate,
+		Uploaded: f.Uploaded, SeedingTime: f.SeedingTime, Ratio: f.Ratio,
 	}
-	if f.Size == 0 {
-		if d, err := q.downloads.Get(ctx, id); err == nil {
-			f.Size = d.TotalBytes
+	if f.Live {
+		out.Files = make([]web.TorrentFile, len(f.Files))
+		for i, file := range f.Files {
+			out.Files[i] = web.TorrentFile{Path: file.Path, Size: file.Size}
 		}
 	}
-	if f.Size > 0 {
-		f.Ratio = float64(f.Uploaded) / float64(f.Size)
-	}
-	return f, true, nil
+	return out, true, nil
 }
 
 // SetShareLimit implements web.TorrentSource.
 func (w webTorrents) SetShareLimit(ctx context.Context, id core.ID, c web.ShareLimitChange) error {
 	if c.UseDefault {
-		return w.q.run.ClearShareLimit(ctx, id)
+		return w.run.ClearShareLimit(ctx, id)
 	}
 	l := core.UnlimitedShareLimit()
 	if c.Ratio >= 0 {
@@ -81,7 +58,7 @@ func (w webTorrents) SetShareLimit(ctx context.Context, id core.ID, c web.ShareL
 	if c.Minutes >= 0 {
 		l.SeedingTime = time.Duration(c.Minutes) * time.Minute
 	}
-	return w.q.run.SetShareLimit(ctx, id, l)
+	return w.run.SetShareLimit(ctx, id, l)
 }
 
 // webDetail implements web.DetailSource: the Article report of the Usenet
