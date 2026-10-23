@@ -15,10 +15,10 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 )
 
-// settingsSlugs are the five sections in navigation order.
-var settingsSlugs = []string{"paths", "servers", "speed", "torrent", "security"}
+// settingsSlugs are the six sections in navigation order.
+var settingsSlugs = []string{"paths", "servers", "speed", "postprocessing", "torrent", "security"}
 
-var settingsTitles = []string{"Paths & Categories", "Usenet servers", "Speed & queue", "Torrent network", "Security"}
+var settingsTitles = []string{"Paths & Categories", "Usenet servers", "Speed & queue", "Post-processing", "Torrent network", "Security"}
 
 func settingsSignedIn(t *testing.T, opts ...envOption) (*env, *browser) {
 	t.Helper()
@@ -75,7 +75,7 @@ func TestSettingsRequiresASession(t *testing.T) {
 	}
 }
 
-func TestSettingsNavListsAllFiveSectionsAndMarksTheCurrentOne(t *testing.T) {
+func TestSettingsNavListsAllSectionsAndMarksTheCurrentOne(t *testing.T) {
 	_, b := settingsSignedIn(t)
 
 	for i, slug := range settingsSlugs {
@@ -84,7 +84,7 @@ func TestSettingsNavListsAllFiveSectionsAndMarksTheCurrentOne(t *testing.T) {
 
 		nav := settingsNav(t, rec.Body.String())
 		links := findAll(nav, func(n *html.Node) bool { return n.Data == "a" })
-		require.Len(t, links, 5, slug)
+		require.Len(t, links, len(settingsSlugs), slug)
 		var current []string
 		for j, a := range links {
 			assert.Equal(t, "/settings/"+settingsSlugs[j], attr(a, "href"))
@@ -182,4 +182,5 @@ func addSettingsResponses(t *testing.T, out map[string]*httptest.ResponseRecorde
 	out["POST server row test (password unavailable)"] = b.settingsPost("/settings/servers/"+string(srv.ID)+"/test", nil)
 	addSecurityResponses(t, e, b, out)
 	addTransferResponses(t, out)
+	addPostProcessingResponses(t, out)
 }

@@ -358,3 +358,23 @@ func TestAddedDownloadsAppearInTheQueue(t *testing.T) {
 	assert.Equal(t, "Queued", q.Queue.Slots[0].Status)
 	assert.Equal(t, fmt.Sprint("SABnzbd_nzo_", s.only().ID), q.Queue.Slots[0].NzoID)
 }
+
+func TestAddFileCleansTheNzbnameWhenCleanNamesIsOn(t *testing.T) {
+	s := newStack(t)
+	ctx := context.Background()
+	cur := s.settings.Current()
+	cur.PostProcess.CleanNames = true
+	require.NoError(t, s.settings.Update(ctx, cur))
+
+	s.upload("mode=addfile&nzbname=Some.Show.S01E01.1080p-GRP-Obfuscated", "x.nzb", plainNZB)
+
+	assert.Equal(t, "Some.Show.S01E01.1080p-GRP", s.only().Name)
+}
+
+func TestAddFileKeepsTheNzbnameWhenCleanNamesIsOff(t *testing.T) {
+	s := newStack(t)
+
+	s.upload("mode=addfile&nzbname=Some.Show.S01E01.1080p-GRP-Obfuscated", "x.nzb", plainNZB)
+
+	assert.Equal(t, "Some.Show.S01E01.1080p-GRP-Obfuscated", s.only().Name)
+}

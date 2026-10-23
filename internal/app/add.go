@@ -18,6 +18,7 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"gitlab.com/kyura4k/gitnews/internal/postproc/tidy"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nzb"
 )
 
@@ -209,6 +210,12 @@ func (s *AddService) Add(ctx context.Context, st *StagedNZB, req AddRequest) (d 
 	}
 
 	name, suffixPassword := resolveName(req, st.nzb, st.id)
+	if s.settings.Current().PostProcess.CleanNames {
+		// Clean.py as a built-in option (ADR-0009): read per add, applied
+		// to the final name, which feeds the Download, the stored NZB file
+		// and the output folder. Torrents never come through here.
+		name = tidy.Clean(name)
+	}
 	password := firstNonEmpty(req.Password.Reveal(), strings.TrimSpace(st.nzb.Meta.Password), suffixPassword)
 
 	finalPath := filepath.Join(st.dir, nzbFileName(name))
