@@ -70,10 +70,43 @@ The protocol adapter (the seam) is: `Prepare(ctx) (canStart bool)`, `Exclude(id)
 - [ ] `api` and `web` no longer import `usenet/runner` or `torrent/runner` for events.
 - [ ] The daemon's queue glue (`webRuntime` pause and state) asks the Queue of the Download's kind.
 
-### M8-05: Download view module (planned)
+### M8-09: Torrent facts from the torrent runner
+- **Labels:** area:torrent, ready-for-agent
+- **Depends on:** M8-03
+
+**Goal:** the torrent runner answers everything known about one torrent in one call, so nobody outside it adds the engine's counters to the stored bases again.
+
+**Work**
+- `Runner.Facts(ctx, id) (Facts, bool, error)`: the info hash, name and size (engine, else the Download's), done bytes, rates, peers, seeds, private flag, uploaded and seeding time (stored base plus the engine's counter, or the stored record when the torrent is not registered), the Download's own Share Limit halves, whether a Share Limit paused it, its content directory and its files. `ok` is false for a Download that has no torrent.
+- `qbitTorrents.view`, `webTorrents.Torrent` and `webRuntime.Live` (with its upload-rate scan) use it; their copies of the merge go.
+
+**Acceptance criteria**
+- [ ] Unit tests on the runner's fake engine cover registered, unregistered (stored record) and unknown torrents, including the ratio inputs.
+- [ ] `engine.Stats` is no longer called outside the torrent runner and the engine package.
+
+### M8-05: Download view module
+- **Labels:** area:core, area:adapter, area:ui, ready-for-agent
+- **Depends on:** M8-09
+
+**Goal:** one module turns a Download row and what is live about it into a protocol-neutral view, and the SABnzbd and qBittorrent adapters and the UI only translate that view to their wire formats.
+
+**Interface (`internal/view`)**
+- `New(Config{Downloads, Live, Settings})`, with `Live` the one source of live facts (stage, rates, torrent facts) that the daemon implements on the tracker and `Runner.Facts`.
+- `Of(ctx, d) View` and `Queue(ctx, kind) ([]View, error)` (the in-queue Downloads of a kind, in queue order, all pages).
+- `View` holds the Download, its `Phase` (waiting, metadata, paused, downloading, verifying, repairing, unpacking, finishing, ready, failed), whether it is in a Queue, done and total bytes, progress (0 to 1), rates, ETA, the Post-processing stage, the torrent facts (hash, peers, seeds, uploaded, seeding time, ratio, effective Share Limit) and the failure (reason and cleaned detail).
+- Helpers: `CleanDetail` (URL redaction, control characters, 300 bytes), `PriorityLabel`, `StageLabel`; `core.State.InQueue()` and the exported queue order.
+
+**Work**
+- Build the module test-first. Then move each transport onto it: SABnzbd (`classify`, queue and history slots), qBittorrent (`state`, progress, ETA, ratio, share limit), the UI (queue rows, history, detail), deleting their own copies of the in-queue set, queue order, progress, ETA, stage and priority labels, failure cleaning and URL redaction.
+- One stage word: the UI's "Extracting" and "Unpacking" become one.
+
+**Acceptance criteria**
+- [ ] A shared test publishes the same Downloads through the view and checks each transport's output for state, progress and ETA.
+- [ ] No transport computes the in-queue set, queue order, ETA or ratio itself.
+- [ ] The adapters' and the UI's behaviour tests pass (rewritten only where they asserted a deleted helper).
+
 ### M8-06: One Add call (planned)
 ### M8-07: Settings change under lock and one card engine (planned)
 ### M8-08: Post-processing steps implement the core ports (planned)
-### M8-09: Torrent facts from the torrent runner (planned)
 
 See ADR-0008 for what each is about; each gets a design pass and a spec here before it starts.
