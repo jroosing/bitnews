@@ -40,7 +40,11 @@ func TestOnlyInternalTorrentImportsAnacrolix(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			if name := d.Name(); name == ".git" || name == "node_modules" || name == "bin" || name == "dist" {
+			// Skip what is not the module's own source: hidden directories
+			// (.git, and in CI the Go module cache .go and build cache
+			// .cache, which sit inside the checkout and hold anacrolix's own
+			// source) and build output.
+			if name := d.Name(); path != root && strings.HasPrefix(name, ".") || name == "node_modules" || name == "bin" || name == "dist" {
 				return filepath.SkipDir
 			}
 			return nil
