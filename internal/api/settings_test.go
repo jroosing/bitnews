@@ -16,7 +16,8 @@ const settingsJSON = `{"queues":{"usenet":2,"torrent":4,"postproc_concurrency":0
 "network":{"usenet":{"interface":"","address":"10.2.0.2"},"torrent":{"interface":"wg0","address":""}},
 "seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0},
 "speed":{"global":{"down_kbps":0,"up_kbps":0},"usenet":{"down_kbps":0,"up_kbps":0},"torrent":{"down_kbps":0,"up_kbps":0}},
-"torrent":{"listen_port":0,"disable_dht":false,"disable_pex":false,"lsd":false,"mse":""}}`
+"torrent":{"listen_port":0,"disable_dht":false,"disable_pex":false,"lsd":false,"mse":""},
+"postprocess":{"clean_names":false,"underscores_to_dots":false}}`
 
 func TestGetSettingsReturnsDefaultsWithEmptyArraysNotNull(t *testing.T) {
 	t.Parallel()
@@ -31,7 +32,8 @@ func TestGetSettingsReturnsDefaultsWithEmptyArraysNotNull(t *testing.T) {
 "network":{"usenet":{"interface":"","address":""},"torrent":{"interface":"","address":""}},
 "seeding":{"action":"pause","ratio_limit":0,"seeding_time_minutes":0},
 "speed":{"global":{"down_kbps":0,"up_kbps":0},"usenet":{"down_kbps":0,"up_kbps":0},"torrent":{"down_kbps":0,"up_kbps":0}},
-"torrent":{"listen_port":0,"disable_dht":false,"disable_pex":false,"lsd":false,"mse":""}}`, rec.Body.String())
+"torrent":{"listen_port":0,"disable_dht":false,"disable_pex":false,"lsd":false,"mse":""},
+"postprocess":{"clean_names":false,"underscores_to_dots":false}}`, rec.Body.String())
 	assert.Equal(t, http.StatusUnauthorized, e.do("GET", "/api/v1/settings", "").Code)
 }
 

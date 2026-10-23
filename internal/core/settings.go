@@ -23,6 +23,9 @@ type Settings struct {
 	// Torrent holds the torrent engine's network options. They apply after a
 	// restart.
 	Torrent TorrentSettings `json:"torrent"`
+	// PostProcess holds the optional name tidying of NZB Downloads (both off
+	// by default).
+	PostProcess PostProcessOptions `json:"postprocess"`
 }
 
 // QueueLimits is the concurrency limit of each Queue: how many non-force
