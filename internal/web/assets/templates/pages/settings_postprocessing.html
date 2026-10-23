@@ -1,0 +1,36 @@
+{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">{{.Page.Section.Description}}</p>{{end}}
+
+{{define "content"}}
+{{template "settings_layout_start" .Page}}
+{{template "postprocessing_names_card" .Page.Data.names}}
+<p class="px-1 text-sm text-fg-muted">Both apply to the next download. They change nothing about downloads that are already added. The rules are the ones from the TRaSH guides' scripts, built into bitnews: there are no scripts to install.</p>
+{{template "settings_layout_end"}}
+{{end}}
+
+{{/* One option: the switch, then when it runs, an example and a note. Keys: ID, Name, Label, Help, Checked, When, Before, After, Note. */}}
+{{define "postprocessing_option"}}
+<div class="min-w-0 rounded-xl border border-line px-4 py-4">
+  {{template "switch_field" dict "ID" .ID "Name" .Name "Label" .Label "Help" .Help "Checked" .Checked}}
+  <dl class="mt-4 space-y-2 border-t border-line pt-3 text-sm">
+    <div>
+      <dt class="font-medium text-fg">When it runs</dt>
+      <dd class="text-fg-muted">{{.When}}</dd>
+    </div>
+    <div>
+      <dt class="font-medium text-fg">Example</dt>
+      <dd class="text-fg-muted"><code class="break-all text-fg">{{.Before}}</code> becomes <code class="break-all text-fg">{{.After}}</code></dd>
+    </div>
+    <div>
+      <dt class="font-medium text-fg">Good to know</dt>
+      <dd class="text-fg-muted">{{.Note}}</dd>
+    </div>
+  </dl>
+</div>
+{{end}}
+
+{{define "postprocessing_names_card"}}
+{{template "settings_form_start" dict "ID" "postprocessing" "Action" "/settings/postprocessing" "Title" "Tidy names" "Subtitle" "Two optional clean-ups for NZB downloads. Both are off until you turn them on." "CSRF" .CSRF "Error" .Error "Saved" .Saved "Dirty" .Dirty}}
+  {{template "postprocessing_option" dict "ID" "clean-names" "Name" "clean_names" "Label" "Clean release names" "Help" "Removes the tags bots add to the end of a release name, such as -NZBGeek, -Obfuscated or [eztv], when an NZB is added." "Checked" (index .V "clean_names") "When" "As soon as an NZB is added, before anything is downloaded (like SABnzbd's Clean.py pre-queue script from the TRaSH guides)." "Before" "Show.S01E01.1080p-GRP-Obfuscated" "After" "Show.S01E01.1080p-GRP" "Note" "The cleaned name is the name of the download and of its folder. Torrents are never renamed."}}
+  {{template "postprocessing_option" dict "ID" "underscores-to-dots" "Name" "underscores_to_dots" "Label" "Dots instead of underscores" "Help" "Replaces underscores with dots in the names of the files and folders of a finished download." "Checked" (index .V "underscores_to_dots") "When" "After unpacking, just before the download is moved to the complete folder (like the replace_for.py category script from the TRaSH guides)." "Before" "Show_S01E01_1080p.mkv" "After" "Show.S01E01.1080p.mkv" "Note" "Only NZB downloads. A torrent's files are never renamed, because they are being seeded."}}
+{{template "settings_form_end" dict "Label" "Save options"}}
+{{end}}

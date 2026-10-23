@@ -15,6 +15,7 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"gitlab.com/kyura4k/gitnews/internal/postproc/tidy"
 )
 
 // MarkerName is the file written inside the final dir to make Finish
@@ -127,6 +128,7 @@ func (f *Finisher) Finish(ctx context.Context, d core.Download, dir, unpackedDir
 		if err := cleanUsenet(ctx, dir, unpackedDir); err != nil {
 			return "", err
 		}
+		f.dotUnderscores(ctx, d, dir)
 	}
 
 	// Already where it belongs (a torrent the engine relocated, or equal
@@ -156,6 +158,27 @@ func (f *Finisher) Finish(ctx context.Context, d core.Download, dir, unpackedDir
 		return "", fmt.Errorf("finalize: %w", fsutil.WriteError(err))
 	}
 	return dst, nil
+}
+
+// dotUnderscores is the UnderscoresToDots option (replace_for.py, ADR-0009):
+// it renames the top-level entries of dir, which by now holds the merged
+// Unpack output, so the media manager sees the dotted names. It runs for NZB
+// Downloads only (a torrent's files are being seeded) and before the marker
+// and the move. A failure is logged and never fails the Download; a retry
+// after a crash finds nothing left to rename. Renames are logged at info
+// level, not sent to Warn: they are not warnings.
+func (f *Finisher) dotUnderscores(ctx context.Context, d core.Download, dir string) {
+	s, err := f.deps.Settings(ctx)
+	if err != nil || !s.PostProcess.UnderscoresToDots {
+		return // destination already read the Settings; a failure there surfaced
+	}
+	renames, err := tidy.DotUnderscores(dir)
+	for _, r := range renames {
+		f.log.InfoContext(ctx, "finalize: renamed underscores to dots", "download", string(d.ID), "from", r.From, "to", r.To)
+	}
+	if err != nil {
+		f.log.WarnContext(ctx, "finalize: could not rename underscores to dots", "download", string(d.ID), "error", err)
+	}
 }
 
 // Destination returns the directory Finish would move d to, before a name

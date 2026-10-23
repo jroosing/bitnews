@@ -84,7 +84,7 @@ Settings is one area with a section per page: `/settings` redirects to the first
 
 ### Registry
 
-`settingsSections()` returns the `SettingsSection` entries: `Slug`, `Title`, `Icon`, `Description`, `Order` (navigation order; the lowest is where `/settings` leads), `Template` (the file below `assets/templates/pages/`, required), and optionally `Data` and `Routes`. There is no placeholder page: a section exists once it has a template. Currently: `paths`, `servers`, `security` and the others listed in the table in `settings.go`.
+`settingsSections()` returns the `SettingsSection` entries: `Slug`, `Title`, `Icon`, `Description`, `Order` (navigation order; the lowest is where `/settings` leads), `Template` (the file below `assets/templates/pages/`, required), and optionally `Data` and `Routes`. There is no placeholder page: a section exists once it has a template. Currently, in navigation order: `paths`, `servers`, `speed`, `postprocessing`, `torrent` and `security`.
 
 To add a section (for example Speed & queue):
 
@@ -119,6 +119,10 @@ A card with one `<form>` per group of settings, so every card saves on its own:
 These two sections are made of several cards that each edit one slice of `core.Settings`. `settings_cards.go` holds the shared machinery: a `settingsCard` says how to turn the Settings into form values (`values`), how to parse and validate the form into a copy of the current Settings (`read`, one message per field name), optionally which saved values still wait for a restart (`restart`, compared with `Deps.Config.Started()`) and an extra view (`view`). `registerCards` adds the POST route; `cardPage` builds `.Page.Data` as a map keyed by card (`{{template "speed_queue_card" .Page.Data.queue}}`). The card templates read `.V` / `.E` (values and errors by field name), so a failed save shows exactly what was typed. Numbers are parsed by `wholeNumber` / `decimalNumber`, which accept plain ASCII digits only.
 
 `Deps.Config` (`ConfigSource`) is optional: it gives the settings the daemon started with (for the "Saved, waiting for a restart" notes) and the live status of the Usenet and torrent network bindings (bound, unavailable and why, not bound). Speed limits, queue sizes, `min_free` and the Share Limit defaults apply at once (the daemon reacts to `core.SettingsChanged`); the torrent engine options, the network bindings and post-processing concurrency are read at start-up.
+
+### Post-processing (`settings_postprocessing.go`)
+
+One card on the card engine with two switches that edit `Settings.PostProcess`: `clean_names` (strip bot tags from an NZB's name when it is added) and `underscores_to_dots` (rename the result's top-level names after Unpack). A switch is a checkbox, so the form has no invalid state: an unticked box is simply absent and means off. The options apply to the next download, so the card has no restart note. Each switch is a `postprocessing_option` block in `settings_postprocessing.html`: the switch with its help, then when it runs, an example and a note.
 
 ### Rows, dialogs and probes
 

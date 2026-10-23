@@ -51,3 +51,8 @@ Offer the two TRaSH SABnzbd scripts as built-in toggles ([ADR-0009](../adr/0009-
 
 **Acceptance criteria**
 - [ ] Both switches save through the card pattern and persist; the help text shows the before and after example and when each runs.
+
+## Implementation notes
+
+- **Clean names** is in `AddService.Add` (`internal/app/add.go`), right after `resolveName`: `tidy.Clean(name)` when `settings.Current().PostProcess.CleanNames` is on, read per Add. The cleaned name feeds the Download name, the stored `<name>.nzb` and the output folder. The own API, the UI and the SABnzbd adapter (`addfile`, `addurl`, `nzbname`) all end in `Add`; `AddTorrent` (files, magnets, qBittorrent) never calls Clean.
+- **Dots for underscores** is in `Finisher.Finish` (`internal/postproc/finalize/finalize.go`), `dotUnderscores`: for NZB Downloads only, right after `cleanUsenet` (so the root already holds the merged Unpack output) and before `writeMarker` and the move. Each rename is logged at info level (not sent to the `Warn` sink, which is for warnings); a rename error is logged and the Download carries on. A retry after a crash finds nothing left to rename.

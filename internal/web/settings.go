@@ -56,6 +56,7 @@ func settingsSections() []SettingsSection {
 			Template:    "settings_servers.html", Data: settingsServersData, Routes: (*Server).registerServerRoutes,
 		},
 		speedSection(),
+		postprocessingSection(),
 		torrentSection(),
 		securitySection(),
 	}
