@@ -146,3 +146,13 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/8) · [wiki]
 | M8-07 | [#79](https://gitlab.com/kyura4k/bitnews/-/issues/79) | Settings change under lock and one card engine (planned) | planned |
 | M8-08 | [#80](https://gitlab.com/kyura4k/bitnews/-/issues/80) | Post-processing steps implement the core ports (planned) | planned |
 | M8-09 | [#81](https://gitlab.com/kyura4k/bitnews/-/issues/81) | Torrent facts from the torrent runner (planned) | planned |
+
+### [M9 — Post-processing options](m9-postprocess-options.md)
+
+GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/9) · [wiki](https://gitlab.com/kyura4k/bitnews/-/wikis/milestones/m9-postprocess-options)
+
+| ID | Issue | Title | Status |
+|---|---|---|---|
+| M9-01 | [#82](https://gitlab.com/kyura4k/bitnews/-/issues/82) | The rename module | open |
+| M9-02 | [#83](https://gitlab.com/kyura4k/bitnews/-/issues/83) | Settings and hooks | open |
+| M9-03 | [#84](https://gitlab.com/kyura4k/bitnews/-/issues/84) | The Settings page | open |
