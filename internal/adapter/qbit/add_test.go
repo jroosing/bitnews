@@ -409,7 +409,7 @@ func TestAddedDownloadAppearsWithTheRightCategoryAndPausedFlag(t *testing.T) {
 	hash := s.info(sid, "")[0].Hash
 
 	assert.Equal(t, 40, len(hash))
-	d, err := s.dls.Get(t.Context(), s.engine.views[hash].DownloadID)
+	d, err := s.dls.Get(t.Context(), s.engine.torrents[hash].DownloadID)
 	require.NoError(t, err)
 	assert.True(t, d.Paused)
 	assert.Equal(t, core.SourceTorrent, d.SourceKind)

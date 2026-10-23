@@ -186,3 +186,21 @@ func TestCleanDetailCapsTheLengthOnARuneBoundary(t *testing.T) {
 }
 
 func isValidUTF8(s string) bool { return []rune(s) != nil && string([]rune(s)) == s }
+
+func TestCleanDetailDropsInvisibleFormatCharacters(t *testing.T) {
+	got := view.CleanDetail("name\u202egpj.exe\u200b ok")
+
+	assert.NotContains(t, got, "\u202e")
+	assert.NotContains(t, got, "\u200b")
+	assert.Contains(t, got, "ok")
+}
+
+func TestAFetchedTorrentIsCompleteAgainstTheEnginesSize(t *testing.T) {
+	m := newModule(t, fakeLive{"d1": {Torrent: &view.TorrentLive{Size: 2000}}})
+
+	v := m.Of(context.Background(), dl(core.StateReady, func(d *core.Download) { d.SourceKind = core.SourceTorrent }))
+
+	assert.Equal(t, int64(2000), v.Total)
+	assert.Equal(t, v.Total, v.Done, "done matches the total shown")
+	assert.Equal(t, 1.0, v.Progress)
+}

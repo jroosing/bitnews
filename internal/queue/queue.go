@@ -364,18 +364,35 @@ func (q *Queue) diskHeld() bool {
 }
 
 // nextFits reports whether the Download that would be started next fits on
-// disk again.
+// disk again: the first one Select chose, else the first unpaused one in queue
+// order (a fetch that failed with "no space left" is still Fetching when the
+// guard is checked).
 func (q *Queue) nextFits(ctx context.Context, root string, ds []core.Download, activate []core.ID) bool {
 	var remaining int64
+	var next *core.Download
 	if len(activate) > 0 {
-		for _, d := range ds {
-			if d.ID == activate[0] {
-				remaining = d.TotalBytes - d.DoneBytes
+		next = downloadByID(ds, activate[0])
+	} else {
+		for i := range ds {
+			if !ds[i].Paused && (next == nil || core.CompareQueueOrder(ds[i], *next) < 0) {
+				next = &ds[i]
 			}
 		}
 	}
+	if next != nil {
+		remaining = next.TotalBytes - next.DoneBytes
+	}
 	ok, _ := q.fits(ctx, root, remaining)
 	return ok
+}
+
+func downloadByID(ds []core.Download, id core.ID) *core.Download {
+	for i := range ds {
+		if ds[i].ID == id {
+			return &ds[i]
+		}
+	}
+	return nil
 }
 
 // fits applies the disk guard: root must have at least remaining plus

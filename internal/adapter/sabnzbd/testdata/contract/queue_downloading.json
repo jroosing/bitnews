@@ -1,7 +1,7 @@
 {
   "name": "a downloading slot and a paused one",
   "provenance": "hand-written from the SABnzbd API docs and from what Sonarr/Radarr are known to parse; NOT recorded; replace with M4-01 recordings",
-  "description": "10 MiB/s: 2048 MiB left of the first slot is 204 s; the queue's 4096 MiB left is 409 s. The paused slot has no time left.",
+  "description": "The first slot downloads at 10 MiB/s of its own: its 2048 MiB left is 204 s. The queue's 4096 MiB left at the global 10 MiB/s is 409 s. The paused slot has no time left.",
   "seed": [
     {
       "op": "category",
@@ -18,7 +18,8 @@
       "state": "fetching",
       "category": "tv",
       "total": 3221225472,
-      "done": 1073741824
+      "done": 1073741824,
+      "bytes_per_sec": 10485760
     },
     {
       "op": "download",

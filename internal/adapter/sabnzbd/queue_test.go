@@ -72,7 +72,8 @@ func TestQueueSlotFields(t *testing.T) {
 	tv := s.category("tv")
 	d := s.seed("Show.S01E01", inState(core.StateFetching), sized(3<<30, 1<<30), inCategory(tv.ID),
 		func(d *core.Download) { d.Priority = core.DownloadPriorityHigh })
-	s.setSpeed(10<<20, false) // 10 MiB/s
+	s.setRate(d.ID, 10<<20)   // 10 MiB/s of its own
+	s.setSpeed(10<<20, false) // and 10 MiB/s for the whole queue
 
 	q := s.queue("")
 
@@ -96,6 +97,27 @@ func TestQueueSlotFields(t *testing.T) {
 	assert.Equal(t, "10240.00", q.Queue.KBPerSec)
 	assert.Equal(t, "0:03:24", q.Queue.TimeLeft)
 	assert.Equal(t, sabnzbd.DefaultVersion, q.Queue.Version)
+}
+
+// TestQueueSlotTimeLeftUsesTheDownloadsOwnRate: each slot's time left is
+// its own rest at its own rate, not the queue-wide speed; a slot that is not
+// downloading has none.
+func TestQueueSlotTimeLeftUsesTheDownloadsOwnRate(t *testing.T) {
+	s := newStack(t)
+	fast := s.seed("fast", inState(core.StateFetching), sized(30<<20, 10<<20))
+	slow := s.seed("slow", inState(core.StateFetching), sized(30<<20, 10<<20))
+	s.seed("waiting", sized(30<<20, 0))
+	s.setRate(fast.ID, 4<<20)
+	s.setRate(slow.ID, 1<<20)
+	s.setSpeed(5<<20, false)
+
+	q := s.queue("")
+
+	require.Len(t, q.Queue.Slots, 3)
+	assert.Equal(t, "0:00:05", q.Queue.Slots[0].TimeLeft, "20 MiB at 4 MiB/s")
+	assert.Equal(t, "0:00:20", q.Queue.Slots[1].TimeLeft, "20 MiB at 1 MiB/s")
+	assert.Equal(t, "0:00:00", q.Queue.Slots[2].TimeLeft, "not downloading")
+	assert.Equal(t, "0:00:14", q.Queue.TimeLeft, "the queue's 70 MiB at the global 5 MiB/s")
 }
 
 func TestQueueUncategorisedSlotsShowTheDefaultCategory(t *testing.T) {

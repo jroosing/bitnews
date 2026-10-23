@@ -7,7 +7,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
-// tracker follows the bus for the SABnzbd adapter: the Post-processing stage
+// tracker follows the bus for the live source: the Post-processing stage
 // of each Download (core.PostProcessStage, cleared when the Download is
 // Ready, Failed or removed, or leaves Post-processing) and the current rate
 // of each Download being fetched (core.DownloadProgress, cleared when it is
@@ -24,7 +24,7 @@ func newTracker() *tracker {
 	return &tracker{stages: map[core.ID]core.Stage{}, rates: map[core.ID]int64{}}
 }
 
-// stage is the SABnzbd adapter's StageSource.
+// stage is the Post-processing stage a Download is in, if known.
 func (t *tracker) stage(id core.ID) (core.Stage, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

@@ -183,8 +183,8 @@ func (m *Module) Of(ctx context.Context, d core.Download) View {
 	if d.State == core.StateFailed {
 		v.Failure = &Failure{Reason: d.FailureReason, Detail: CleanDetail(d.FailureDetail)}
 	}
-	if !v.InQueue && d.State != core.StateFailed && d.TotalBytes > 0 {
-		v.Done = d.TotalBytes // Fetched or later: all the data is there
+	if !v.InQueue && d.State != core.StateFailed && v.Total > 0 {
+		v.Done = v.Total // Fetched or later: all the data is there
 	}
 	switch {
 	case d.State == core.StateFetched || d.State == core.StatePostProcessing || d.State == core.StateReady:

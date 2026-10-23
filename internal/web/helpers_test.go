@@ -23,6 +23,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/store"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -97,8 +98,39 @@ type env struct {
 	setup      *auth.Setup
 	sessions   *auth.SessionService
 	appKey     *auth.AppKeyService
-	handler    http.Handler
-	token      string // the setup token, when setup is open
+	// live is what the view module knows about each Download beyond its row.
+	live    *fakeLive
+	handler http.Handler
+	token   string // the setup token, when setup is open
+}
+
+// fakeLive is the view module's LiveSource in the tests: the stage, rates
+// and torrent facts of each Download, as the test sets them.
+type fakeLive struct {
+	mu sync.Mutex
+	m  map[core.ID]view.Live
+}
+
+func newFakeLive() *fakeLive { return &fakeLive{m: map[core.ID]view.Live{}} }
+
+func (f *fakeLive) Live(_ context.Context, d core.Download) view.Live {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.m[d.ID]
+}
+
+func (f *fakeLive) set(id core.ID, l view.Live) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.m[id] = l
+}
+
+// newView is a real view module over the test store and live.
+func newView(t *testing.T, downloads core.DownloadRepo, live view.LiveSource, settings *app.SettingsService) *view.Module {
+	t.Helper()
+	m, err := view.New(view.Config{Downloads: downloads, Live: live, Settings: settings.Current})
+	require.NoError(t, err)
+	return m
 }
 
 type envOption func(*envConfig)
@@ -135,7 +167,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	e := &env{t: t, clock: &clock{t: epoch.Add(24 * time.Hour)}, log: &syncBuffer{}}
+	e := &env{t: t, clock: &clock{t: epoch.Add(24 * time.Hour)}, log: &syncBuffer{}, live: newFakeLive()}
 	logger := slog.New(slog.NewTextHandler(e.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	bus := core.NewBus()
 	users := store.NewUserRepo(db)
@@ -169,11 +201,12 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	serverSvc := app.NewServerService(servers, bus, ec.prober, appOpts...)
 	e.servers, e.cats = serverSvc, catSvc
 	adder := app.NewAddService(downloadSvc, sources, e.settings, append(appOpts, app.WithLogger(logger))...)
+	views := newView(t, downloads, e.live, e.settings)
 	webUI, err := web.New(web.Deps{
 		Logger: logger, Version: "1.2.3",
 		Sessions: e.sessions, UIAuth: uiAuth, Setup: e.setup, Settings: e.settings,
 		Downloads: downloadSvc, Categories: catSvc, Servers: serverSvc, Bus: bus, AppKey: appKey,
-		Config: ec.config,
+		View: views, Config: ec.config,
 	})
 	require.NoError(t, err)
 	for _, f := range ec.server {
@@ -192,7 +225,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 		AppKey:     appKey,
 		Bus:        bus,
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
-			AppKey: appKey, Downloads: downloadSvc, Adder: adder, Categories: catSvc,
+			AppKey: appKey, Downloads: downloadSvc, Adder: adder, Categories: catSvc, View: views,
 			Settings: e.settings, Logger: logger, Clock: e.clock.Now,
 		}),
 		Web: webUI,

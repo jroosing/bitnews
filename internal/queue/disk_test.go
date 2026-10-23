@@ -97,3 +97,18 @@ func TestDiskFullPausesTheQueue(t *testing.T) {
 	assert.Equal(t, queue.ReasonDiskFull, reason)
 	assert.Equal(t, "no space left on device", detail)
 }
+
+func TestADiskFullPauseHoldsWhileTheDownloadStillWouldNotFit(t *testing.T) {
+	h := newHarness(t)
+	id := h.add("big", withState(core.StateFetching), withSize(1000, 0))
+	h.proto.running[id] = true
+	h.free[root] = 10
+
+	h.q.DiskFull("no space left on device") // the fetch failed with ENOSPC
+	h.q.Reconcile(h.ctx)
+
+	paused, reason, _ := h.q.Paused()
+	assert.True(t, paused, "it does not release itself while the next Download needs more than is free")
+	assert.Equal(t, queue.ReasonDiskFull, reason)
+	assert.Empty(t, h.running())
+}

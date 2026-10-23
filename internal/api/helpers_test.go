@@ -106,13 +106,20 @@ type envOption func(*envConfig)
 type envConfig struct {
 	noAdmin bool
 	mutate  func(*api.Config)
-	remover app.DataRemover
-	addOpts []app.Option
+	// mutateEnv is like mutate, with the env (for its repositories).
+	mutateEnv func(*env, *api.Config)
+	remover   app.DataRemover
+	addOpts   []app.Option
 }
 
 func withoutAdmin() envOption { return func(c *envConfig) { c.noAdmin = true } }
 
 func withConfig(f func(*api.Config)) envOption { return func(c *envConfig) { c.mutate = f } }
+
+// withConfigEnv is withConfig for a mutation that needs the env.
+func withConfigEnv(f func(*env, *api.Config)) envOption {
+	return func(c *envConfig) { c.mutateEnv = f }
+}
 
 // withDataRemover installs the hook DELETE ?delete_data=true calls.
 func withDataRemover(r app.DataRemover) envOption { return func(c *envConfig) { c.remover = r } }
@@ -182,6 +189,9 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	}
 	if ec.mutate != nil {
 		ec.mutate(&e.cfg)
+	}
+	if ec.mutateEnv != nil {
+		ec.mutateEnv(e, &e.cfg)
 	}
 	e.server, err = api.New(e.cfg)
 	require.NoError(t, err)

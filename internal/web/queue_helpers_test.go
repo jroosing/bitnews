@@ -30,7 +30,6 @@ type fakeRuntime struct {
 	down, up int64
 	queues   map[core.SourceKind]web.QueueState
 	limits   map[core.SourceKind][2]int64
-	live     map[core.ID]web.DownloadLive
 	calls    []string
 	// gate, when set, makes Rates wait until it is closed or sent to.
 	gate chan struct{}
@@ -43,7 +42,6 @@ func newFakeRuntime() *fakeRuntime {
 			core.SourceTorrent: {Available: true},
 		},
 		limits: map[core.SourceKind][2]int64{},
-		live:   map[core.ID]web.DownloadLive{},
 	}
 }
 
@@ -118,18 +116,6 @@ func (f *fakeRuntime) SetSpeedLimit(k core.SourceKind, down, up int64) {
 	f.limits[k] = [2]int64{down, up}
 }
 
-func (f *fakeRuntime) Live(id core.ID) web.DownloadLive {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.live[id]
-}
-
-func (f *fakeRuntime) setLive(id core.ID, l web.DownloadLive) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.live[id] = l
-}
-
 func (f *fakeRuntime) recorded() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -176,8 +162,8 @@ const (
 	testPing = 15000 * time.Millisecond
 )
 
-// qenv is the whole stack with a queue: real store, services and bus, and a
-// fake RuntimeSource.
+// qenv is the whole stack with a queue: real store, services, bus and view
+// module, a fake RuntimeSource and a fake LiveSource (env.live).
 type qenv struct {
 	*env
 	repo       *store.DownloadRepo
@@ -217,7 +203,7 @@ func newQueueEnv(t *testing.T, opts ...qopt) *qenv {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	e := &env{t: t, clock: &clock{t: epoch.Add(24 * time.Hour)}, log: &syncBuffer{}}
+	e := &env{t: t, clock: &clock{t: epoch.Add(24 * time.Hour)}, log: &syncBuffer{}, live: newFakeLive()}
 	t.Cleanup(func() {
 		if t.Failed() {
 			t.Logf("server log:\n%s", e.log.String())
@@ -255,6 +241,7 @@ func newQueueEnv(t *testing.T, opts ...qopt) *qenv {
 		Logger: logger, Version: "1.2.3",
 		Sessions: e.sessions, UIAuth: uiAuth, Setup: e.setup, Settings: e.settings,
 		Downloads: q.svc, Categories: catSvc, Servers: serverSvc, Bus: q.bus,
+		View: newView(t, q.repo, e.live, e.settings),
 		Live: cfg.live,
 	}
 	if !cfg.noRuntime {

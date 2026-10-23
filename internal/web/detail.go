@@ -15,6 +15,7 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // uploadLimits are the paths whose request bodies may be larger than a
@@ -119,6 +120,8 @@ type detailPage struct {
 	Updated    whenView
 	OutputPath string
 	Speed      string
+	// ETA is the time left while the Download is downloading.
+	ETA string
 
 	Failure       failureInfo
 	FailureCode   string
@@ -230,10 +233,12 @@ func (s *Server) detailDownload(w http.ResponseWriter, r *http.Request) (core.Do
 	return d, true
 }
 
-// buildDetail assembles the page data of d. form, when set, replaces the share
-// limit form's values (to show the problems of a rejected submission).
+// buildDetail assembles the page data of d from its View. form, when set,
+// replaces the share limit form's values (to show the problems of a rejected
+// submission).
 func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareForm) (detailPage, error) {
-	badge, badgeLabel := stateBadge(d)
+	v := s.View.Of(ctx, d)
+	badge, badgeLabel := badgeOf(v)
 	kind, icon := kindLabel(d.SourceKind)
 	now := time.Now()
 	p := detailPage{
@@ -241,7 +246,7 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 		State: string(d.State), StateText: stateText(d), Badge: badge, BadgeLabel: badgeLabel,
 		Terminal: terminal(d.State), Ready: d.State == core.StateReady, Failed: d.State == core.StateFailed,
 		Paused: d.Paused, Priority: string(d.Priority), Position: d.QueuePosition,
-		Size: histBytes(d.TotalBytes), Done: histBytes(d.DoneBytes),
+		Size: histBytes(v.Total), Done: histBytes(v.Done), Percent: progressPercent(v),
 		Added: histWhen(now, d.AddedAt), Fetched: histWhen(now, d.FetchedAt), ReadyAt: histWhen(now, d.ReadyAt),
 		Updated: histWhen(now, d.UpdatedAt), OutputPath: histClean(d.OutputPath, 1024),
 		LiveHref: "/downloads/" + string(d.ID) + "/live",
@@ -249,11 +254,8 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 	if p.Name == "" {
 		p.Name = "(unnamed)"
 	}
-	switch {
-	case p.Ready || !d.FetchedAt.IsZero() && d.TotalBytes > 0:
-		p.Percent = 100
-	case d.TotalBytes > 0:
-		p.Percent = int(min(100, max(0, d.DoneBytes*100/d.TotalBytes)))
+	if v.ETAKnown {
+		p.ETA = formatETA(v.ETA)
 	}
 	if d.CategoryID != "" {
 		p.CategoryID = string(d.CategoryID)
@@ -267,13 +269,13 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 			}
 		}
 	}
-	if p.Failed {
-		p.Failure = failureOf(d.FailureReason)
-		p.FailureCode = histClean(string(d.FailureReason), 40)
-		p.FailureDetail = cleanFailureDetail(d.FailureDetail)
+	if v.Failure != nil {
+		p.Failure = failureOf(v.Failure.Reason)
+		p.FailureCode = histClean(string(v.Failure.Reason), 40)
+		p.FailureDetail = failureDetail(v)
 	}
-	if d.State == core.StatePostProcessing {
-		p.Stage = s.postProcessStage(d.ID)
+	if d.State == core.StatePostProcessing && v.Stage != "" {
+		p.Stage = v.Phase.Label()
 	}
 
 	switch d.SourceKind {
@@ -289,21 +291,17 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 			}
 		}
 	case core.SourceTorrent:
-		if s.Torrents == nil {
+		if s.Torrents == nil || v.Torrent == nil {
 			p.TorrentsUnavailable = true
 			break
 		}
-		facts, ok, err := s.Torrents.Torrent(ctx, d.ID)
+		files, err := s.Torrents.Files(ctx, d.ID)
 		if err != nil {
-			return detailPage{}, fmt.Errorf("torrent facts: %w", err)
+			return detailPage{}, fmt.Errorf("torrent files: %w", err)
 		}
-		if !ok {
-			p.TorrentsUnavailable = true
-			break
-		}
-		p.Torrent = s.torrentView(facts, form)
-		if facts.Registered && !p.Terminal {
-			p.Speed = histRate(facts.DownRate)
+		p.Torrent = s.torrentView(v, files, form)
+		if v.Torrent.Registered && !p.Terminal {
+			p.Speed = histRate(v.DownRate)
 		}
 	}
 	return p, nil
@@ -331,84 +329,52 @@ func stateText(d core.Download) string {
 	return string(d.State)
 }
 
-// postProcessStage is the Post-processing stage as text, from the detail
-// source or else the runtime source.
-func (s *Server) postProcessStage(id core.ID) string {
-	if s.Detail != nil {
-		if st, ok := s.Detail.PostProcessStage(id); ok {
-			return stageText(st)
-		}
-	}
-	if s.Runtime != nil {
-		if st := s.Runtime.Live(id).Stage; st != "" {
-			return stageText(string(st))
-		}
-	}
-	return ""
-}
-
-func stageText(stage string) string {
-	switch stage {
-	case string(core.StageVerifying):
-		return "Verifying files"
-	case string(core.StageRepairing):
-		return "Repairing"
-	case string(core.StageUnpacking):
-		return "Unpacking"
-	case string(core.StageFinishing):
-		return "Moving to the final folder"
-	}
-	return ""
-}
-
-func (s *Server) torrentView(f TorrentFacts, form *shareForm) *detailTorrent {
+// torrentView is the torrent part of the page: the facts of the View's
+// torrent half, the files and the Share Limit form.
+func (s *Server) torrentView(v view.View, files []TorrentFile, form *shareForm) *detailTorrent {
+	f := v.Torrent
 	t := &detailTorrent{
-		InfoHash: histClean(f.InfoHash, 64), Registered: f.Registered, Private: f.Private, LimitPaused: f.LimitPaused,
-		Peers: f.Peers, Seeds: f.Seeds, DownRate: histRate(f.DownRate), UpRate: histRate(f.UpRate),
+		InfoHash: histClean(f.Hash, 64), Registered: f.Registered, Private: f.Private, LimitPaused: f.LimitPaused,
+		Peers: f.Peers, Seeds: f.Seeds, DownRate: histRate(v.DownRate), UpRate: histRate(v.UpRate),
 		Uploaded: histBytes(f.Uploaded), Ratio: strconv.FormatFloat(f.Ratio, 'f', 2, 64), SeedingTime: histDuration(f.SeedingTime),
-		FileCount: len(f.Files),
+		FileCount: len(files),
 	}
-	for _, file := range f.Files[:min(len(f.Files), detailMaxFiles)] {
+	for _, file := range files[:min(len(files), detailMaxFiles)] {
 		t.ShowFiles = append(t.ShowFiles, detailFile{Path: histClean(file.Path, 500), Size: histBytes(file.Size)})
 	}
-	t.MoreFiles = max(len(f.Files)-detailMaxFiles, 0)
+	t.MoreFiles = max(len(files)-detailMaxFiles, 0)
 
-	global := s.Settings.Current().Seeding
-	t.LimitSummary = shareLimitSummary(f.OwnRatio, f.OwnSeedingTime, global)
+	limit := f.ShareLimit
+	t.LimitSummary = shareLimitSummary(limit, s.Settings.Current().Seeding.ShareLimit())
 	if form != nil {
 		t.Form = *form
 	} else {
-		t.Form = shareForm{Custom: f.OwnRatio != nil || f.OwnSeedingTime != nil}
-		if f.OwnRatio != nil && *f.OwnRatio >= 0 {
-			t.Form.Ratio = strconv.FormatFloat(*f.OwnRatio, 'f', -1, 64)
+		t.Form = shareForm{Custom: !limit.Global}
+		if !limit.Global && limit.Ratio >= 0 {
+			t.Form.Ratio = strconv.FormatFloat(limit.Ratio, 'f', -1, 64)
 		}
-		if f.OwnSeedingTime != nil && *f.OwnSeedingTime >= 0 {
-			t.Form.Minutes = strconv.Itoa(int(*f.OwnSeedingTime / time.Minute))
+		if !limit.Global && limit.Seeding >= 0 {
+			t.Form.Minutes = strconv.Itoa(int(limit.Seeding / time.Minute))
 		}
 	}
 	return t
 }
 
-// shareLimitSummary says in words which Share Limit a torrent has: its own,
-// or the global default.
-func shareLimitSummary(ownRatio *float64, ownTime *time.Duration, global core.SeedingSettings) string {
-	limit := global.ShareLimit()
+// shareLimitSummary says in words which Share Limit a torrent has: its own
+// (the View's effective values), or the global default.
+func shareLimitSummary(own view.ShareLimit, global core.ShareLimit) string {
 	prefix := "Global default: "
-	if ownRatio != nil || ownTime != nil {
+	ratio, seeding := global.Ratio, global.SeedingTime
+	if !own.Global {
 		prefix = "Own limit: "
-		if ownRatio != nil {
-			limit.Ratio = *ownRatio
-		}
-		if ownTime != nil {
-			limit.SeedingTime = *ownTime
-		}
+		ratio, seeding = own.Ratio, own.Seeding
 	}
 	var parts []string
-	if limit.Ratio >= 0 {
-		parts = append(parts, "ratio "+strconv.FormatFloat(limit.Ratio, 'f', -1, 64))
+	if ratio >= 0 {
+		parts = append(parts, "ratio "+strconv.FormatFloat(ratio, 'f', -1, 64))
 	}
-	if limit.SeedingTime >= 0 {
-		parts = append(parts, "seed for "+histDuration(limit.SeedingTime))
+	if seeding >= 0 {
+		parts = append(parts, "seed for "+histDuration(seeding))
 	}
 	if len(parts) == 0 {
 		return prefix + "no limit, seed until you stop it"

@@ -2,13 +2,12 @@ package web
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 	"unicode"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // histBytes formats a byte count for people: 1024-based units with the
@@ -180,24 +179,15 @@ func failureOf(reason core.FailureReason) failureInfo {
 	}
 }
 
-var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"']+`)
-
-const maxDetailBytes = 300
-
-// cleanFailureDetail makes a stored failure detail safe to show: URLs are
-// redacted again (the engines redact first; this is the second line), control
-// characters and bidi/format characters are replaced by spaces and the length
-// is capped.
-func cleanFailureDetail(s string) string {
-	s = urlInText.ReplaceAllStringFunc(s, redact.URL)
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
-			return ' '
-		}
-		return r
-	}, strings.ToValidUTF8(s, ""))
-	s = strings.Join(strings.Fields(s), " ")
-	return histTruncate(s, maxDetailBytes)
+// failureDetail is the failure detail of a View as the UI shows it. The
+// view module masks URLs, control characters and the length
+// (view.CleanDetail); histClean also drops invisible format characters such
+// as bidi overrides, which would reorder the text around it.
+func failureDetail(v view.View) string {
+	if v.Failure == nil {
+		return ""
+	}
+	return histClean(v.Failure.Detail, 1024)
 }
 
 // histTruncate cuts s to at most max bytes on a rune boundary and appends an
@@ -215,34 +205,35 @@ func histTruncate(s string, max int) string {
 
 func validRuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
-// stateLabel is the label of a Download state badge and which badge class it
-// takes.
-func stateBadge(d core.Download) (class, label string) {
-	if d.Paused && (d.State == core.StateQueued || d.State == core.StateFetching || d.State == core.StateAdded || d.State == core.StateFetchingMetadata) {
-		return "paused", "Paused"
-	}
-	switch d.State {
-	case core.StateAdded:
-		return "queued", "Added"
-	case core.StateFetchingMetadata:
-		return "processing", "Fetching metadata"
-	case core.StateQueued:
-		return "queued", "Queued"
-	case core.StateFetching:
-		if d.SourceKind == core.SourceTorrent {
-			return "downloading", "Downloading"
+// badgeOf is the badge of a Download as the queue, the history and the
+// detail page show it: the badge class and its word. The word is the
+// Phase's, except for a Fetched Download, which says so (a torrent is
+// Seeding then) rather than naming the first Post-processing step.
+func badgeOf(v view.View) (class, label string) {
+	d := v.Download
+	if d.State == core.StateFetched {
+		switch {
+		case d.Paused:
+			return "paused", view.PhasePaused.Label()
+		case d.SourceKind == core.SourceTorrent:
+			return "ready", "Seeding"
 		}
-		return "downloading", "Downloading"
-	case core.StateFetched:
 		return "processing", "Fetched"
-	case core.StatePostProcessing:
-		return "processing", "Processing"
-	case core.StateReady:
-		return "ready", "Ready"
-	case core.StateFailed:
-		return "failed", "Failed"
 	}
-	return "queued", string(d.State)
+	label = v.Phase.Label()
+	switch v.Phase {
+	case view.PhasePaused:
+		return "paused", label
+	case view.PhaseMetadata, view.PhaseDownloading:
+		return "downloading", label
+	case view.PhaseVerifying, view.PhaseRepairing, view.PhaseUnpacking, view.PhaseFinishing:
+		return "processing", label
+	case view.PhaseReady:
+		return "ready", label
+	case view.PhaseFailed:
+		return "failed", label
+	}
+	return "queued", label
 }
 
 // kindLabel is the text and icon of a Source kind.

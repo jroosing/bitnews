@@ -149,20 +149,6 @@ func countOf(s, sub string) int {
 	return n
 }
 
-func TestShareLimitViewIsGlobalOnlyWithoutAnOwnLimit(t *testing.T) {
-	global := core.SeedingSettings{RatioLimit: 2, SeedingTimeMinutes: 60}
-	minute := 30 * time.Minute
-
-	assert.Equal(t, qbit.ShareLimit{Global: true}, shareLimitView(global, nil, nil))
-	assert.Equal(t, qbit.ShareLimit{Ratio: 1.5, SeedingSeconds: 3600}, shareLimitView(global, new(1.5), nil), "the global time fills in a half")
-	assert.Equal(t, qbit.ShareLimit{Ratio: 2, SeedingSeconds: 1800}, shareLimitView(global, nil, &minute))
-	assert.Equal(t, qbit.ShareLimit{Ratio: -1, SeedingSeconds: -1}, shareLimitView(global, new(-1.0), ptrTo(time.Duration(-1))))
-	assert.Equal(t, qbit.ShareLimit{Ratio: -1, SeedingSeconds: -1}, shareLimitView(core.SeedingSettings{}, new(-1.0), ptrTo(time.Duration(-1))))
-}
-
-//go:fix inline
-func ptrTo[T any](v T) *T { return new(v) }
-
 func TestCoreShareLimitMapsMinusOneToUnlimited(t *testing.T) {
 	assert.Equal(t, core.UnlimitedShareLimit(), coreShareLimit(-1, -1))
 	assert.Equal(t, core.ShareLimit{Ratio: 1.25, SeedingTime: 90 * time.Second}, coreShareLimit(1.25, 90))

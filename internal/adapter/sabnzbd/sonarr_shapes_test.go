@@ -114,22 +114,23 @@ func parseTimeSpan(t *testing.T, s string) time.Duration {
 func TestSonarrCanDecodeTheQueue(t *testing.T) {
 	s := newStack(t)
 	tv := s.category("tv")
-	s.seed("Show.S01E01", inState(core.StateFetching), sized(3<<30, 1<<30), inCategory(tv.ID))
+	first := s.seed("Show.S01E01", inState(core.StateFetching), sized(3<<30, 1<<30), inCategory(tv.ID))
 	s.seed("Show.S01E02", sized(2<<30, 0), inCategory(tv.ID))
 	s.seed("Zero.Size")
+	s.setRate(first.ID, 10<<20)
 	s.setSpeed(10<<20, false)
 
 	var q sonarrQueueResponse
 	body(t, s.call("mode=queue&start=0&limit=30"), &q)
 
 	require.Len(t, q.Queue.Items, 3)
-	first := q.Queue.Items[0]
-	assert.Equal(t, "Downloading", first.Status)
-	assert.InDelta(t, 3072, first.Size, 0.01)
-	assert.InDelta(t, 2048, first.Sizeleft, 0.01)
-	assert.Equal(t, 33, first.Percentage)
-	assert.Equal(t, "Normal", first.Priority)
-	assert.Equal(t, 204*time.Second, parseTimeSpan(t, first.Timeleft))
+	item := q.Queue.Items[0]
+	assert.Equal(t, "Downloading", item.Status)
+	assert.InDelta(t, 3072, item.Size, 0.01)
+	assert.InDelta(t, 2048, item.Sizeleft, 0.01)
+	assert.Equal(t, 33, item.Percentage)
+	assert.Equal(t, "Normal", item.Priority)
+	assert.Equal(t, 204*time.Second, parseTimeSpan(t, item.Timeleft))
 	for _, item := range q.Queue.Items {
 		parseTimeSpan(t, item.Timeleft)
 		assert.NotEmpty(t, item.ID)
@@ -138,8 +139,8 @@ func TestSonarrCanDecodeTheQueue(t *testing.T) {
 
 func TestSonarrCanDecodeALongTimeLeft(t *testing.T) {
 	s := newStack(t)
-	s.seed("Huge", inState(core.StateFetching), sized(100<<30, 0))
-	s.setSpeed(100<<10, false) // 100 KiB/s
+	huge := s.seed("Huge", inState(core.StateFetching), sized(100<<30, 0))
+	s.setRate(huge.ID, 100<<10) // 100 KiB/s
 
 	var q sonarrQueueResponse
 	body(t, s.call("mode=queue"), &q)

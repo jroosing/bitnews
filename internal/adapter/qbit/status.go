@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // holdOffProgress is the progress of a Download that is Fetched or being
@@ -32,8 +33,8 @@ const (
 	stateUnknown     = "unknown"
 )
 
-// torrentState maps a Download and its torrent to qBittorrent's state and
-// progress.
+// torrentState maps the view of a torrent Download to qBittorrent's state
+// and progress.
 //
 //	Added, Queued                      queuedDL (pausedDL if paused, forcedDL if force)
 //	FetchingMetadata                   metaDL (pausedDL if paused)
@@ -48,20 +49,25 @@ const (
 //
 // The states that say "finished downloading" (uploading, stalledUP, pausedUP,
 // stoppedUP, forcedUP, queuedUP) and a progress of 1 are produced for Ready
-// only. The Post-processing stage makes no difference: every stage is
-// checkingUP. stopped selects the names of web API 2.11 (stoppedDL,
-// stoppedUP) over the older ones (pausedDL, pausedUP).
-func torrentState(d core.Download, v TorrentView, stopped bool) (state string, progress float64) {
+// only: the view's progress is capped at 0.9999 below Ready. The
+// Post-processing stage makes no difference: every stage is checkingUP.
+// stopped selects the names of web API 2.11 (stoppedDL, stoppedUP) over the
+// older ones (pausedDL, pausedUP).
+func torrentState(v view.View, stopped bool) (state string, progress float64) {
 	pausedDL, pausedUP := statePausedDL, statePausedUP
 	if stopped {
 		pausedDL, pausedUP = stateStoppedDL, stateStoppedUP
 	}
-	paused := d.Paused || v.Paused
+	d := v.Download
+	paused := d.Paused || v.Torrent != nil && v.Torrent.LimitPaused
 	force := d.Priority == core.DownloadPriorityForce
-	progress = fraction(v, d)
+	progress = min(v.Progress, holdOffProgress)
+	if !known(d.State) {
+		return stateUnknown, progress
+	}
 
-	switch d.State {
-	case core.StateAdded, core.StateQueued:
+	switch v.Phase {
+	case view.PhaseWaiting, view.PhasePaused:
 		switch {
 		case paused:
 			return pausedDL, progress
@@ -69,12 +75,12 @@ func torrentState(d core.Download, v TorrentView, stopped bool) (state string, p
 			return stateForcedDL, progress
 		}
 		return stateQueuedDL, progress
-	case core.StateFetchingMetadata:
+	case view.PhaseMetadata:
 		if paused {
 			return pausedDL, 0
 		}
 		return stateMetaDL, 0
-	case core.StateFetching:
+	case view.PhaseDownloading:
 		switch {
 		case paused:
 			return pausedDL, progress
@@ -84,9 +90,9 @@ func torrentState(d core.Download, v TorrentView, stopped bool) (state string, p
 			return stateDownloading, progress
 		}
 		return stateStalledDL, progress
-	case core.StateFetched, core.StatePostProcessing:
+	case view.PhaseVerifying, view.PhaseRepairing, view.PhaseUnpacking, view.PhaseFinishing:
 		return stateCheckingUP, holdOffProgress
-	case core.StateReady:
+	case view.PhaseReady:
 		switch {
 		case paused:
 			return pausedUP, 1
@@ -96,23 +102,21 @@ func torrentState(d core.Download, v TorrentView, stopped bool) (state string, p
 			return stateUploading, 1
 		}
 		return stateStalledUP, 1
-	case core.StateFailed:
+	case view.PhaseFailed:
 		return stateError, progress
 	}
 	return stateUnknown, progress
 }
 
-// fraction is the real progress of a Download that is not Ready: below 1,
-// whatever the byte counts say, because only Ready is complete.
-func fraction(v TorrentView, d core.Download) float64 {
-	size, done := v.Size, v.DoneBytes
-	if size <= 0 {
-		size, done = d.TotalBytes, d.DoneBytes
+// known says whether s is a State of the lifecycle; the view takes any other
+// for waiting, qBittorrent's answer is unknown.
+func known(s core.State) bool {
+	switch s {
+	case core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching,
+		core.StateFetched, core.StatePostProcessing, core.StateReady, core.StateFailed:
+		return true
 	}
-	if size <= 0 || done <= 0 {
-		return 0
-	}
-	return min(float64(done)/float64(size), holdOffProgress)
+	return false
 }
 
 // isCompleteState says whether a state is one a media manager takes for

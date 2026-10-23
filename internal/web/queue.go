@@ -1,7 +1,6 @@
 package web
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -11,21 +10,21 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // The queue page lists the Downloads that have not finished: Added through
 // PostProcessing. Ready and Failed Downloads are on the History page, and so
 // are Ready torrents that keep seeding. A torrent stays in the queue while it
-// is Fetched (the engine seeds it) and being post-processed.
+// is Fetched (the engine seeds it) and being post-processed. Every fact of a
+// row comes from the Download's View (internal/view).
 
 // maxQueueRows caps the rows of one page render. The rest is counted.
 const maxQueueRows = 500
 
-// queueStates are the States shown on the queue page.
-var queueStates = []core.State{
-	core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching,
-	core.StateFetched, core.StatePostProcessing,
-}
+// afterQueueStates are the States shown above a Queue: the Downloads that
+// left it and are not finished, in this order.
+var afterQueueStates = []core.State{core.StatePostProcessing, core.StateFetched}
 
 // catOption is a Category the row menu can assign.
 type catOption struct{ ID, Name string }
@@ -127,32 +126,27 @@ func (s *Server) loadQueue(ctx context.Context, csrf string) (*queueView, error)
 		return nil, err
 	}
 	v := &queueView{CSRF: csrf}
-	usenet := s.newSection(core.SourceNZB, csrf)
-	torrent := s.newSection(core.SourceTorrent, csrf)
-	downloads, more, err := s.activeDownloads(ctx)
-	if err != nil {
-		return nil, err
-	}
-	v.More = more
-	sortQueue(downloads)
-	for _, d := range downloads {
-		if !idValue.MatchString(string(d.ID)) {
-			continue // never put an unexpected ID into markup or a URL
+	left := maxQueueRows
+	for _, kind := range []core.SourceKind{core.SourceNZB, core.SourceTorrent} {
+		sec := s.newSection(kind, csrf)
+		views, err := s.queueViews(ctx, kind)
+		if err != nil {
+			return nil, err
 		}
-		sec := &usenet
-		if d.SourceKind == core.SourceTorrent {
-			sec = &torrent
+		for _, dv := range views {
+			if !idValue.MatchString(string(dv.Download.ID)) {
+				continue // never put an unexpected ID into markup or a URL
+			}
+			if left == 0 {
+				v.More++
+				continue
+			}
+			left--
+			sec.Rows = append(sec.Rows, queueRowCtx{queueRow: newQueueRow(dv, names[dv.Download.CategoryID]), Cats: cats, CSRF: csrf})
 		}
-		var live DownloadLive
-		if s.Runtime != nil {
-			live = s.Runtime.Live(d.ID)
-		}
-		sec.Rows = append(sec.Rows, queueRowCtx{queueRow: newQueueRow(d, live, names[d.CategoryID]), Cats: cats, CSRF: csrf})
-	}
-	for _, sec := range []*queueSection{&usenet, &torrent} {
 		markEnds(sec.Rows)
+		v.Sections = append(v.Sections, sec)
 	}
-	v.Sections = []queueSection{usenet, torrent}
 	return v, nil
 }
 
@@ -195,32 +189,37 @@ func (s *Server) categoryOptions(ctx context.Context) ([]catOption, map[core.ID]
 	return opts, names, nil
 }
 
-// activeDownloads returns the Downloads the queue shows, at most
-// maxQueueRows, and how many more there are.
-func (s *Server) activeDownloads(ctx context.Context) (out []core.Download, more int, err error) {
+// queueViews returns the Views of one Source kind's section in display
+// order: the Downloads in Post-processing, then the Fetched ones, each in
+// queue order, then the Queue itself.
+func (s *Server) queueViews(ctx context.Context, kind core.SourceKind) ([]view.View, error) {
 	if s.Downloads == nil {
-		return nil, 0, nil
+		return nil, nil
 	}
-	for _, st := range queueStates {
+	var out []view.View
+	for _, st := range afterQueueStates {
+		var ds []core.Download
 		for after := ""; ; {
-			page, err := s.Downloads.List(ctx, app.ListFilter{State: st, After: after})
+			page, err := s.Downloads.List(ctx, app.ListFilter{State: st, Kind: kind, After: after})
 			if err != nil {
-				return nil, 0, fmt.Errorf("web: list %s downloads: %w", st, err)
+				return nil, fmt.Errorf("web: list %s downloads: %w", st, err)
 			}
-			for _, d := range page.Items {
-				if len(out) < maxQueueRows {
-					out = append(out, d)
-				} else {
-					more++
-				}
-			}
+			ds = append(ds, page.Items...)
 			if page.Next == "" {
 				break
 			}
 			after = page.Next
 		}
+		slices.SortStableFunc(ds, core.CompareQueueOrder)
+		for _, d := range ds {
+			out = append(out, s.View.Of(ctx, d))
+		}
 	}
-	return out, more, nil
+	queued, err := s.View.Queue(ctx, kind)
+	if err != nil {
+		return nil, fmt.Errorf("web: %w", err)
+	}
+	return append(out, queued...), nil
 }
 
 // newSection builds the card header state of one Queue.
@@ -276,103 +275,45 @@ func pauseText(queue, reason string) (title, text string) {
 	return title, "Nothing new starts until it resumes. Reason: " + reason + "."
 }
 
-// sortQueue orders Downloads for display: post-processing first, then the
-// fetched ones, then the Queue itself by position.
-func sortQueue(ds []core.Download) {
-	group := func(d core.Download) int {
-		switch d.State {
-		case core.StatePostProcessing:
-			return 0
-		case core.StateFetched:
-			return 1
-		}
-		return 2
-	}
-	slices.SortStableFunc(ds, func(a, b core.Download) int {
-		return cmp.Or(
-			cmp.Compare(group(a), group(b)),
-			cmp.Compare(a.QueuePosition, b.QueuePosition),
-			a.AddedAt.Compare(b.AddedAt),
-			strings.Compare(string(a.ID), string(b.ID)),
-		)
-	})
-}
-
-// newQueueRow builds the row of a Download. category is the Category's name,
-// empty for none.
-func newQueueRow(d core.Download, live DownloadLive, category string) queueRow {
+// newQueueRow builds the row of a Download from its View. category is the
+// Category's name, empty for none.
+func newQueueRow(v view.View, category string) queueRow {
+	d := v.Download
 	r := queueRow{
 		ID: string(d.ID), Name: d.Name, ShortName: truncateRunes(d.Name, 60),
 		Torrent: d.SourceKind == core.SourceTorrent, State: d.State, Paused: d.Paused,
 		Category: category, CategoryID: string(d.CategoryID),
-		Priority: d.Priority, PriorityLabel: priorityLabel(d.Priority),
+		Priority: d.Priority, PriorityLabel: view.PriorityLabel(d.Priority),
+		Metadata: v.Phase == view.PhaseMetadata,
+		HasTotal: v.Total > 0, Percent: progressPercent(v),
+		Done: formatBytes(v.Done), Total: formatBytes(v.Total),
 		Rate: "-", UpRate: "-", ETA: "-",
 	}
-	done, total := d.DoneBytes, d.TotalBytes
-	switch d.State {
-	case core.StateFetched, core.StatePostProcessing:
-		if total > 0 {
-			done = total
-		}
+	r.Badge, r.Status = badgeOf(v)
+	switch r.Badge {
+	case "paused":
+		r.Variant = "warn"
+	case "ready": // a torrent seeding
+		r.Variant = "ok"
 	}
-	r.fill(done, total)
-	var rate int64
-	switch d.State {
-	case core.StateAdded, core.StateQueued:
-		r.Badge, r.Status = "queued", "Queued"
-	case core.StateFetchingMetadata:
-		r.Badge, r.Status, r.Metadata = "downloading", "Metadata", true
-	case core.StateFetching:
-		r.Badge, r.Status = "downloading", "Downloading"
-		if !d.Paused {
-			rate = live.DownRate
-		}
-	case core.StateFetched:
-		if r.Torrent {
-			r.Badge, r.Status, r.Variant = "ready", "Seeding", "ok"
-		} else {
-			r.Badge, r.Status = "processing", "Fetched"
-		}
-	case core.StatePostProcessing:
-		r.Badge, r.Status = "processing", stageLabel(live.Stage)
+	if v.Phase == view.PhaseDownloading {
+		r.Rate = formatRate(v.DownRate)
 	}
-	if d.Paused {
-		r.Badge, r.Status, r.Variant = "paused", "Paused", "warn"
+	if v.ETAKnown {
+		r.ETA = formatETA(v.ETA)
 	}
-	r.Rate = formatRate(rate)
-	r.ETA = formatETA(total-done, rate)
 	if r.Torrent {
-		r.UpRate = formatRate(live.UpRate)
-		if live.Torrent && (d.State == core.StateFetched || d.State == core.StateFetching) {
-			r.ShowSwarm, r.Peers, r.Seeds = true, live.Peers, live.Seeds
-			r.Ratio = fmt.Sprintf("%.2f", live.Ratio)
+		r.UpRate = formatRate(v.UpRate)
+		if t := v.Torrent; t != nil && t.Registered && (d.State == core.StateFetched || d.State == core.StateFetching) {
+			r.ShowSwarm, r.Peers, r.Seeds = true, t.Peers, t.Seeds
+			r.Ratio = fmt.Sprintf("%.2f", t.Ratio)
 		}
 	}
-	switch d.State {
-	case core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching:
+	if v.InQueue {
 		r.CanMove = true
 		r.CanPause, r.CanResume = !d.Paused, d.Paused
 	}
 	return r
-}
-
-// fill sets the progress fields.
-func (r *queueRow) fill(done, total int64) {
-	r.HasTotal = total > 0
-	r.Percent = percent(done, total)
-	r.Done, r.Total = formatBytes(done), formatBytes(total)
-}
-
-func priorityLabel(p core.DownloadPriority) string {
-	switch p {
-	case core.DownloadPriorityForce:
-		return "Force"
-	case core.DownloadPriorityHigh:
-		return "High"
-	case core.DownloadPriorityLow:
-		return "Low"
-	}
-	return "Normal"
 }
 
 // registerQueue registers the queue's fragment, action and stream routes.

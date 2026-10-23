@@ -12,6 +12,7 @@ import (
 	"golang.org/x/net/html"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -103,12 +104,12 @@ func TestDetailOfATorrentShowsFilesPeersRatioAndShareLimit(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{SourceKind: core.SourceTorrent, State: core.StateReady, Name: "Linux.ISO", TotalBytes: 6 << 30})
 	two := 2.0
-	d.torrents.facts[dl.ID] = web.TorrentFacts{
-		InfoHash: "0123456789abcdef0123456789abcdef01234567", Registered: true, Private: true,
-		Size: 6 << 30, Peers: 7, Seeds: 3, DownRate: 0, UpRate: 2 << 20, Uploaded: 12 << 30, Ratio: 2.0, SeedingTime: 49 * time.Hour,
-		Files:    []web.TorrentFile{{Path: "linux/disc1.iso", Size: 4 << 30}, {Path: "linux/<b>x</b>.txt", Size: 12}},
+	d.live.set(dl.ID, view.Live{UpRate: 2 << 20, Torrent: &view.TorrentLive{
+		Hash: "0123456789abcdef0123456789abcdef01234567", Registered: true, Private: true,
+		Size: 6 << 30, DoneBytes: 6 << 30, Peers: 7, Seeds: 3, Uploaded: 12 << 30, SeedingTime: 49 * time.Hour,
 		OwnRatio: &two,
-	}
+	}})
+	d.torrents.files[dl.ID] = []web.TorrentFile{{Path: "linux/disc1.iso", Size: 4 << 30}, {Path: "linux/<b>x</b>.txt", Size: 12}}
 
 	rec := d.b.get("/downloads/" + string(dl.ID))
 
@@ -205,7 +206,7 @@ func TestDetailLiveOfARemovedDownloadEndsThePolling(t *testing.T) {
 func TestDetailShowsThePostProcessingStage(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{State: core.StatePostProcessing, FetchedAt: epoch})
-	d.detail.stages[dl.ID] = "repairing"
+	d.live.set(dl.ID, view.Live{Stage: core.StageRepairing, HaveStage: true})
 
 	rec := d.b.get("/downloads/" + string(dl.ID))
 
@@ -354,7 +355,7 @@ func TestRemoveRequiresASession(t *testing.T) {
 func TestShareLimitCustomValuesAreSet(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{SourceKind: core.SourceTorrent})
-	d.torrents.facts[dl.ID] = web.TorrentFacts{InfoHash: "ab"}
+	d.live.set(dl.ID, view.Live{Torrent: &view.TorrentLive{Hash: "ab"}})
 
 	rec := d.act("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {"1.5"}, "minutes": {"1440"}})
 
@@ -367,7 +368,7 @@ func TestShareLimitCustomValuesAreSet(t *testing.T) {
 func TestShareLimitBlankFieldsMeanNoLimit(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{SourceKind: core.SourceTorrent})
-	d.torrents.facts[dl.ID] = web.TorrentFacts{}
+	d.live.set(dl.ID, view.Live{Torrent: &view.TorrentLive{}})
 
 	d.act("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {""}, "minutes": {"30"}})
 	d.act("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {"3"}, "minutes": {" "}})
@@ -379,7 +380,7 @@ func TestShareLimitBlankFieldsMeanNoLimit(t *testing.T) {
 func TestShareLimitInvalidValuesAreRejectedWithFieldErrors(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{SourceKind: core.SourceTorrent})
-	d.torrents.facts[dl.ID] = web.TorrentFacts{}
+	d.live.set(dl.ID, view.Live{Torrent: &view.TorrentLive{}})
 
 	for _, tc := range []struct{ ratio, minutes, field string }{
 		{"abc", "", "share-ratio-error"}, {"-1", "", "share-ratio-error"}, {"NaN", "", "share-ratio-error"}, {"Inf", "", "share-ratio-error"},
@@ -411,7 +412,7 @@ func TestShareLimitOnAnNZBIsRefused(t *testing.T) {
 func TestShareLimitPlainPostRedirectsBackToTheDetailPage(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{SourceKind: core.SourceTorrent})
-	d.torrents.facts[dl.ID] = web.TorrentFacts{}
+	d.live.set(dl.ID, view.Live{Torrent: &view.TorrentLive{}})
 
 	rec := d.b.post("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"_csrf": {d.tok}, "mode": {"default"}})
 
@@ -426,7 +427,7 @@ func TestShareLimitSummaryNamesTheGlobalDefault(t *testing.T) {
 	s.Seeding.SeedingTimeMinutes = 120
 	require.NoError(t, d.settings.Update(t.Context(), s))
 	dl := d.add(core.Download{SourceKind: core.SourceTorrent})
-	d.torrents.facts[dl.ID] = web.TorrentFacts{}
+	d.live.set(dl.ID, view.Live{Torrent: &view.TorrentLive{}})
 
 	rec := d.b.get("/downloads/" + string(dl.ID))
 

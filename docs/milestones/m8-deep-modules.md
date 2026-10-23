@@ -30,6 +30,9 @@ The protocol adapter (the seam) is: `Prepare(ctx) (canStart bool)`, `Exclude(id)
 - **Events:** `core.QueuePaused{Source, Reason, Detail}` is published when a reason is added and `core.QueueResumed{Source}` when the last is released. The own API streams them as `usenet_queue_paused|resumed` and `torrent_queue_paused|resumed` (the torrent pair is new).
 - **Drift fixes:** the Usenet kill switch pauses with `bind_unavailable` instead of faking a user pause; a resume is announced only when no reason is left; a torrent that hits "no space left" pauses its Queue and goes back to Queued instead of failing.
 
+- **Download view as built (M8-05, M8-09):** `internal/view` (`Of`, `Queue`, `Phase`, `CleanDetail`, `PriorityLabel`) over one live source in the daemon (`live.go`: the event tracker plus `Runner.Facts`). The SABnzbd and qBittorrent adapters and the UI translate the View; they no longer compute the in-queue set, queue order, progress, ETA, ratio, Share Limit, stage words or failure cleaning. Deliberate changes: a slot's time left in SABnzbd uses the Download's own rate; the UI says "Unpacking" and "Finishing" instead of "Extracting" and "Moving"; the UI's detail page shows the ETA. The qBittorrent log masker keeps its own regex because it must also mask `magnet:?` links.
+- **Disk guard fix found on the way:** a Queue paused for `disk_full` by a failed fetch no longer releases itself while the next Download still needs more than is free.
+
 ## Issues
 
 ### M8-01: The Queue module

@@ -1,13 +1,10 @@
 package daemon
 
 import (
-	"context"
 	"sync"
-	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/queue"
-	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -29,12 +26,12 @@ type usenetLimiter interface {
 type torrentRunner interface {
 	SetRateLimits(down, up int64)
 	UploadRate() int64
-	Facts(ctx context.Context, id core.ID) (trunner.Facts, bool, error)
 }
 
-// webRuntime implements web.RuntimeSource for the queue page: speeds and
-// stages from the event tracker, Queue pause and speed limits through the
-// runners, torrent facts through the torrent runner. Speed limits are not
+// webRuntime implements web.RuntimeSource for the queue page: the speeds
+// from the event tracker and the torrent runner, Queue pause and speed limits
+// through the runners. What is live about one Download is the view module's
+// (live.go). Speed limits are not
 // persisted: the runners start unlimited, and what the UI set is remembered
 // here only to show it again.
 type webRuntime struct {
@@ -106,20 +103,4 @@ func (w *webRuntime) SetSpeedLimit(kind core.SourceKind, down, up int64) {
 	w.mu.Lock()
 	w.limits[kind] = [2]int64{down, up}
 	w.mu.Unlock()
-}
-
-func (w *webRuntime) Live(id core.ID) web.DownloadLive {
-	l := web.DownloadLive{DownRate: w.track.rate(id)}
-	l.Stage, _ = w.track.stage(id)
-	if w.torrents == nil {
-		return l
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	f, ok, err := w.torrents.Facts(ctx, id)
-	if err != nil || !ok || !f.Live {
-		return l
-	}
-	l.Torrent, l.UpRate, l.Peers, l.Seeds, l.Ratio = true, f.UpRate, f.Peers, f.Seeds, f.Ratio
-	return l
 }

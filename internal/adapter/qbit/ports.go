@@ -2,19 +2,19 @@ package qbit
 
 import (
 	"context"
-	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
-// The torrent-specific facts a media manager reads (info hash, ratio,
-// uploaded bytes, seeding time, share limits, paths, peers, speeds) do not
-// live in core.Download. The adapter asks the narrow ports below for them and
-// joins the answer to the Download by DownloadID; the daemon implements them
-// over the torrent engine and its stores.
+// What a media manager reads about a torrent comes from the Download view
+// (Deps.View): its phase, sizes, progress, rates, ETA, ratio, uploaded bytes,
+// seeding time, peers, seeds, private flag and effective Share Limit. The
+// narrow ports below give only what the view does not hold: which Download
+// an info hash belongs to, the torrent's name and paths, and its files. The
+// daemon implements them over the torrent runner.
 
-// ShareLimit is the Share Limit of one torrent as the engine applies it.
-// Negative Ratio and SeedingSeconds mean unlimited (-1, like core).
+// ShareLimit is a Share Limit a client asks for. Negative Ratio and
+// SeedingSeconds mean unlimited (-1, like core).
 type ShareLimit struct {
 	// Global means the global default applies; Ratio and SeedingSeconds
 	// are then ignored.
@@ -23,71 +23,42 @@ type ShareLimit struct {
 	SeedingSeconds int64
 }
 
-// TorrentView is the live state of one torrent.
-type TorrentView struct {
-	DownloadID core.ID
-	// InfoHash is the 40 character lowercase hex v1 info hash (a v2-only
-	// torrent: the truncated v2 hash).
-	InfoHash string
-	Name     string
-	// Size is the size of the content in bytes; 0 while the metadata of a
-	// magnet link is missing.
-	Size int64
-	// DoneBytes is what has been received and verified.
-	DoneBytes int64
-	// DownRate and UpRate are bytes per second.
-	DownRate int64
-	UpRate   int64
-	// Uploaded is the total uploaded bytes.
-	Uploaded int64
-	// Ratio is uploaded bytes divided by Size.
-	Ratio float64
-	// SeedingTime is how long the torrent has been seeding.
-	SeedingTime time.Duration
-	// Peers is the number of connected leechers and Seeds of connected seeds.
-	Peers int
-	Seeds int
+// Torrent is what the adapter needs of a torrent besides its view.
+type Torrent struct {
+	// Name is the torrent's name: the engine's, else the Download's.
+	Name string
 	// SavePath is the directory that holds the torrent's content directory
 	// or file; ContentPath is the content itself (the Download dir, after
-	// the move to complete).
+	// the move to complete). Either may be empty when nothing is known.
 	SavePath    string
 	ContentPath string
-	AddedAt     time.Time
-	// CompletedAt is zero until the torrent is Fetched.
-	CompletedAt time.Time
-	ShareLimit  ShareLimit
-	// Private is the BEP 27 flag.
-	Private bool
-	// Paused is the engine's pause: a Download that was paused by the user
-	// before it was Fetched, or one that reached its Share Limit and stopped
-	// seeding.
-	Paused bool
 }
 
-// TorrentSource reads the torrents of the engine.
+// TorrentSource resolves torrents and describes them.
 type TorrentSource interface {
-	// List returns every torrent. The adapter may call it on every poll of a
-	// media manager, so it must be cheap (no disk or network access).
-	List(ctx context.Context) ([]TorrentView, error)
-	// Get returns the torrent with the (lowercase hex) info hash; false
-	// means there is none.
-	Get(ctx context.Context, hash string) (TorrentView, bool, error)
+	// Lookup returns the Download of the torrent with the (lowercase hex)
+	// info hash; false means there is none.
+	Lookup(ctx context.Context, hash string) (core.Download, bool, error)
+	// Torrent describes the torrent of d; false means d has none. The
+	// adapter calls it for every torrent on every poll of a media manager,
+	// so without full it must be cheap (no disk or network access); full
+	// may also look on disk for the content directory.
+	Torrent(ctx context.Context, d core.Download, full bool) (Torrent, bool, error)
 }
 
 // TorrentFile is one file of a torrent.
 type TorrentFile struct {
 	// Name is the path within the torrent, with forward slashes.
-	Name     string
-	Size     int64
-	Progress float64
+	Name string
+	Size int64
 }
 
 // FileSource lists the files of a torrent. It is optional: without it
 // torrents/files answers an empty list.
 type FileSource interface {
-	// Files returns the files of the torrent; false means there is no such
-	// torrent.
-	Files(ctx context.Context, hash string) ([]TorrentFile, bool, error)
+	// Files returns the files of the Download's torrent, empty while they
+	// are not known; false means the Download has no torrent.
+	Files(ctx context.Context, id core.ID) ([]TorrentFile, bool, error)
 }
 
 // AddOptions are the options of a torrents/add call that the engine honours.

@@ -16,10 +16,11 @@ import (
 
 // withSABnzbd mounts the real SABnzbd adapter at /sabnzbd/api.
 func withSABnzbd() envOption {
-	return withConfig(func(c *api.Config) {
+	return withConfigEnv(func(e *env, c *api.Config) {
 		c.SABnzbd = sabnzbd.New(sabnzbd.Deps{
 			AppKey: c.AppKey, Downloads: c.Downloads, Adder: c.Adder,
 			Categories: c.Categories, Settings: c.Settings, Logger: c.Logger,
+			View: viewsOf(e, &nullEngine{}),
 		})
 	})
 }

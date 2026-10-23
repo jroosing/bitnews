@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // queueMode serves mode=queue: the listing, and the name=... actions on one
@@ -36,40 +37,40 @@ func (c *call) queueMode() {
 // includes a Download that went back to Fetching to get deferred PAR2
 // volumes. cat filters by Category name; start and limit page the slots.
 func (c *call) queueList() {
-	all, err := c.load(queueStates, "")
+	f, err := c.readCatFilter(c.get("cat"))
 	if err != nil {
 		c.appFail(err)
 		return
 	}
-	slices.SortFunc(all.downloads, byQueueOrder)
-	shown := all
-	if f := c.get("cat"); f != "" {
-		if shown, err = c.load(queueStates, f); err != nil {
-			c.appFail(err)
-			return
-		}
-		slices.SortFunc(shown.downloads, byQueueOrder)
+	all, err := c.queueViews()
+	if err != nil {
+		c.appFail(err)
+		return
 	}
-	index := make(map[core.ID]int, len(all.downloads))
-	for i, d := range all.downloads {
-		index[d.ID] = i
+	index := make(map[core.ID]int, len(all))
+	shown := make([]view.View, 0, len(all))
+	for i, v := range all {
+		index[v.Download.ID] = i
+		if f.matches(v.Download) {
+			shown = append(shown, v)
+		}
 	}
 
 	bps, paused := c.h.speed()
 	start, limit := c.paging()
-	lo, hi := page(len(shown.downloads), start, limit)
+	lo, hi := page(len(shown), start, limit)
 
 	slots := make([]queueSlot, 0, hi-lo)
-	for _, d := range shown.downloads[lo:hi] {
-		slots = append(slots, c.queueSlot(shown, d, index[d.ID], bps))
+	for _, v := range shown[lo:hi] {
+		slots = append(slots, c.queueSlot(f, v, index[v.Download.ID]))
 	}
 
 	var total, left int64
 	downloading := false
-	for _, d := range shown.downloads {
-		total += d.TotalBytes
-		left += max(d.TotalBytes-d.DoneBytes, 0)
-		downloading = downloading || (d.State == core.StateFetching && !d.Paused)
+	for _, v := range shown {
+		total += v.Total
+		left += max(v.Total-v.Done, 0)
+		downloading = downloading || v.Phase == view.PhaseDownloading
 	}
 	state := "Idle"
 	switch {
@@ -83,8 +84,8 @@ func (c *call) queueList() {
 		Version: c.h.Version, Paused: paused, PausedAll: false, PauseInt: "0", Status: state,
 		Speed: humanSpeed(bps), KBPerSec: fmt.Sprintf("%.2f", float64(bps)/1024),
 		Size: humanBytes(total), SizeLeft: humanBytes(left), MB: formatMB(total), MBLeft: formatMB(left),
-		TimeLeft:  formatTimeLeft(timeLeft(left, bps)),
-		NoOfSlots: len(shown.downloads), NoOfSlotsTotal: len(all.downloads), Start: lo, Limit: limit,
+		TimeLeft:  formatTimeLeft(queueTimeLeft(left, bps)),
+		NoOfSlots: len(shown), NoOfSlotsTotal: len(all), Start: lo, Limit: limit,
 		Finish: 0, HaveWarnings: "0", CacheArt: "0", CacheSize: "0 B", Quota: "0 ", LeftQuota: "0 ",
 		DiskSpace1: gigabytes(free), DiskSpace2: gigabytes(free),
 		DiskSpaceTotal1: gigabytes(diskTotal), DiskSpaceTotal2: gigabytes(diskTotal),
@@ -96,28 +97,25 @@ func (c *call) queueList() {
 
 func normGigabytes(n int64) string { return fmt.Sprintf("%.1f G", float64(n)/(1<<30)) }
 
-// timeLeft estimates the seconds to fetch left bytes at bps; 0 when the rate
-// is unknown.
-func timeLeft(left, bps int64) int64 {
+// queueTimeLeft is the queue-wide time left: the bytes left of the whole
+// queue at the global rate, in seconds; 0 when the rate is unknown. A slot's
+// own time left is its View's ETA.
+func queueTimeLeft(left, bps int64) int64 {
 	if bps <= 0 || left <= 0 {
 		return 0
 	}
 	return left / bps
 }
 
-func (c *call) queueSlot(v view, d core.Download, index int, bps int64) queueSlot {
-	_, status := classify(d, "", false)
-	left := max(d.TotalBytes-d.DoneBytes, 0)
-	var remaining int64
-	if !d.Paused {
-		remaining = timeLeft(left, bps)
-	}
+func (c *call) queueSlot(f catFilter, v view.View, index int) queueSlot {
+	d := v.Download
+	left := max(v.Total-v.Done, 0)
 	return queueSlot{
-		Status: status, Index: index, NzoID: nzoID(d.ID), Filename: d.Name, Cat: v.catName(d),
-		Priority: priorityName(d.Priority), Script: "None",
-		MB: formatMB(d.TotalBytes), MBLeft: formatMB(left), MBMissing: "0.0",
-		Size: humanBytes(d.TotalBytes), SizeLeft: humanBytes(left),
-		Percentage: percentage(d.DoneBytes, d.TotalBytes), TimeLeft: formatTimeLeft(remaining),
+		Status: status(v), Index: index, NzoID: nzoID(d.ID), Filename: d.Name, Cat: f.catName(d),
+		Priority: view.PriorityLabel(d.Priority), Script: "None",
+		MB: formatMB(v.Total), MBLeft: formatMB(left), MBMissing: "0.0",
+		Size: humanBytes(v.Total), SizeLeft: humanBytes(left),
+		Percentage: percentage(v), TimeLeft: etaText(v),
 		AvgAge: formatAge(c.h.Clock().Sub(d.AddedAt).Seconds()), Password: "", UnpackOpts: "3",
 		Labels: []string{},
 	}
@@ -183,8 +181,7 @@ func (c *call) deleteDownloads(from listing) []string {
 // that is being post-processed is in neither list's reach: SAB refuses to
 // delete a job while it is processing, and the data is in use.
 func deletable(d core.Download, from listing) bool {
-	l, _ := classify(d, "", false)
-	if l != from {
+	if listingOf(d) != from {
 		return false
 	}
 	return d.State != core.StateFetched && d.State != core.StatePostProcessing
@@ -247,25 +244,24 @@ func (c *call) queueSwitch() {
 		c.fail("expect two parameters")
 		return
 	}
-	v, err := c.load(queueStates, "")
+	q, err := c.queueViews()
 	if err != nil {
 		c.appFail(err)
 		return
 	}
-	slices.SortFunc(v.downloads, byQueueOrder)
-	cur := slices.IndexFunc(v.downloads, func(d core.Download) bool { return d.ID == id })
+	cur := slices.IndexFunc(q, func(v view.View) bool { return v.Download.ID == id })
 	if cur < 0 {
 		c.json(positionBody{Status: true, Position: 0})
 		return
 	}
-	target = min(max(target, 0), len(v.downloads)-1)
+	target = min(max(target, 0), len(q)-1)
 
 	var moves []app.Move
 	switch {
 	case target == cur:
 	case target == 0:
 		moves = []app.Move{app.MoveTop}
-	case target == len(v.downloads)-1:
+	case target == len(q)-1:
 		moves = []app.Move{app.MoveBottom}
 	case abs(target-cur) <= switchSteps:
 		step := app.MoveDown
@@ -297,12 +293,11 @@ func abs(n int) int {
 
 // positionOf is the index of d in the queue order, or 0.
 func (c *call) positionOf(d core.Download) int {
-	v, err := c.load(queueStates, "")
+	q, err := c.queueViews()
 	if err != nil {
 		return 0
 	}
-	slices.SortFunc(v.downloads, byQueueOrder)
-	return max(slices.IndexFunc(v.downloads, func(q core.Download) bool { return q.ID == d.ID }), 0)
+	return max(slices.IndexFunc(q, func(v view.View) bool { return v.Download.ID == d.ID }), 0)
 }
 
 // isIgnorable says whether an action on one Download failed in a way SAB

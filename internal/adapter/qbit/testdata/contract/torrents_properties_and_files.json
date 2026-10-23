@@ -19,13 +19,11 @@
       "files": [
         {
           "name": "Show.S03E01/a.mkv",
-          "size": 2000,
-          "progress": 1
+          "size": 2000
         },
         {
           "name": "Show.S03E01/a.nfo",
-          "size": 1000,
-          "progress": 1
+          "size": 1000
         }
       ]
     }

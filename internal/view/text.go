@@ -15,13 +15,16 @@ var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"']+`)
 const maxDetailBytes = 300
 
 // CleanDetail makes a failure detail safe to show: URLs are masked, control
-// characters become spaces, white space is collapsed and the length is
+// characters become spaces, invisible format characters (bidi overrides) go, white space is collapsed and the length is
 // capped at maxDetailBytes on a character boundary (then "..." is added).
 func CleanDetail(s string) string {
 	s = urlInText.ReplaceAllStringFunc(s, redact.URL)
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		switch {
+		case unicode.IsControl(r):
 			return ' '
+		case unicode.Is(unicode.Cf, r):
+			return -1 // invisible format characters such as bidi overrides
 		}
 		return r
 	}, strings.ToValidUTF8(s, ""))

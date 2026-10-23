@@ -1,13 +1,11 @@
 package daemon
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -36,15 +34,10 @@ func (f *fakeUsenetLimiter) SetSpeedLimit(n int64) { f.limit = n }
 type fakeTorrentRunner struct {
 	down, up int64
 	upRate   int64
-	facts    map[core.ID]trunner.Facts
 }
 
 func (f *fakeTorrentRunner) SetRateLimits(down, up int64) { f.down, f.up = down, up }
 func (f *fakeTorrentRunner) UploadRate() int64            { return f.upRate }
-func (f *fakeTorrentRunner) Facts(_ context.Context, id core.ID) (trunner.Facts, bool, error) {
-	fa, ok := f.facts[id]
-	return fa, ok, nil
-}
 
 func queues(u, t *fakeQueue) map[core.SourceKind]queueControl {
 	m := map[core.SourceKind]queueControl{core.SourceNZB: u}
@@ -81,7 +74,6 @@ func TestWebRuntimeWithoutTorrentsHasNoTorrentQueue(t *testing.T) {
 	assert.Zero(t, down+up)
 	rd, ru := w.Rates()
 	assert.Zero(t, rd+ru)
-	assert.Equal(t, web.DownloadLive{}, w.Live("x"))
 }
 
 func TestWebRuntimeSpeedLimitsReachTheRunnersAndAreRemembered(t *testing.T) {
@@ -101,32 +93,6 @@ func TestWebRuntimeSpeedLimitsReachTheRunnersAndAreRemembered(t *testing.T) {
 
 	w.SetSpeedLimit(core.SourceNZB, -5, 0)
 	assert.Zero(t, u.limit, "a negative limit is no limit")
-}
-
-func TestWebRuntimeLiveCombinesTrackerAndTorrentFacts(t *testing.T) {
-	tr := newTracker()
-	tr.apply(core.PostProcessStage{ID: "nzb", Stage: core.StageVerifying})
-	tr.apply(core.DownloadProgress{ID: "nzb", BytesPerSecond: 1234})
-	tq := &fakeTorrentRunner{facts: map[core.ID]trunner.Facts{
-		"tor":    {Registered: true, Live: true, UpRate: 77, Peers: 4, Seeds: 2, Ratio: 2},
-		"stored": {Uploaded: 500, Ratio: 0.5}, // not in the engine
-	}}
-	w := newWebRuntime(queues(&fakeQueue{}, &fakeQueue{}), &fakeUsenetLimiter{}, tq, tr)
-
-	nzb := w.Live("nzb")
-	assert.Equal(t, core.StageVerifying, nzb.Stage)
-	assert.Equal(t, int64(1234), nzb.DownRate)
-	assert.False(t, nzb.Torrent)
-
-	tor := w.Live("tor")
-	assert.True(t, tor.Torrent)
-	assert.Equal(t, int64(77), tor.UpRate)
-	assert.Equal(t, 4, tor.Peers)
-	assert.Equal(t, 2, tor.Seeds)
-	assert.InDelta(t, 2.0, tor.Ratio, 0.001)
-
-	assert.False(t, w.Live("stored").Torrent, "no live numbers for a torrent outside the engine")
-	assert.False(t, w.Live("unknown").Torrent, "not a torrent")
 }
 
 func TestWebRuntimeRatesSumTheTrackerAndTheTorrentUpload(t *testing.T) {

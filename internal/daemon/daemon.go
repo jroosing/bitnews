@@ -330,7 +330,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	var qbitHandler http.Handler
 	var webTorrentSource web.TorrentSource
 	if trun != nil {
-		torrents := newQBitTorrents(downloads, torrentSources, trun, settings.Current, log)
+		torrents := newQBitTorrents(downloads, torrentSources, trun)
 		webTorrentSource = newWebTorrents(trun)
 		qbitHandler = qbit.New(qbit.Deps{
 			AppKey: appKey, Downloads: downloadService, Categories: categoryService, Settings: settings,
@@ -352,7 +352,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
 		Adder: adder, AppKey: appKey, View: views,
 		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port},
-		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}, track: track},
+		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}},
 	})
 	if err != nil {
 		return nil, err
@@ -376,7 +376,6 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
 			AppKey: appKey, Downloads: downloadService, Adder: adder, View: views,
 			Categories: categoryService, Settings: settings,
-			StageSource: track.stage,
 			SpeedSource: func() (int64, bool) { paused, _, _ := run.Queue().Paused(); return track.speed(), paused },
 			DiskSpace:   diskSpace,
 			Logger:      log,

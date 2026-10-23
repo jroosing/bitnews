@@ -16,15 +16,19 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/api"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // nullEngine is a torrent engine with no torrents that accepts every add.
 type nullEngine struct{ urls []string }
 
-func (*nullEngine) List(context.Context) ([]qbit.TorrentView, error) { return nil, nil }
-func (*nullEngine) Get(context.Context, string) (qbit.TorrentView, bool, error) {
-	return qbit.TorrentView{}, false, nil
+func (*nullEngine) Lookup(context.Context, string) (core.Download, bool, error) {
+	return core.Download{}, false, nil
 }
+func (*nullEngine) Torrent(context.Context, core.Download, bool) (qbit.Torrent, bool, error) {
+	return qbit.Torrent{}, false, nil
+}
+func (*nullEngine) Live(context.Context, core.Download) view.Live { return view.Live{} }
 func (*nullEngine) AddTorrentFile(context.Context, []byte, qbit.AddOptions) (string, error) {
 	return strings.Repeat("a", 40), nil
 }
@@ -36,23 +40,35 @@ func (*nullEngine) SetShareLimit(context.Context, core.ID, float64, int64, bool)
 
 // withQBit mounts the real qBittorrent adapter at /api/v2/.
 func withQBit(eng *nullEngine) envOption {
-	return withConfig(func(c *api.Config) { mountQBit(c, eng) })
+	return withConfigEnv(func(e *env, c *api.Config) { mountQBit(e, c, eng) })
 }
 
-func mountQBit(c *api.Config, eng *nullEngine) {
+// viewsOf builds the view module the adapters share, over the env's Download
+// repository.
+func viewsOf(e *env, live view.LiveSource) *view.Module {
+	views, err := view.New(view.Config{Downloads: e.downloads, Live: live})
+	if err != nil {
+		panic(err)
+	}
+	return views
+}
+
+func mountQBit(e *env, c *api.Config, eng *nullEngine) {
+	views := viewsOf(e, eng)
 	c.QBit = qbit.New(qbit.Deps{
 		AppKey: c.AppKey, Downloads: c.Downloads, Categories: c.Categories, Settings: c.Settings,
-		Torrents: eng, Adder: eng, ShareLimits: eng, Logger: c.Logger,
+		Torrents: eng, Adder: eng, ShareLimits: eng, View: views, Logger: c.Logger,
 	})
 }
 
 // withQBitAndSABnzbd mounts both adapters (withConfig keeps only one mutation).
 func withQBitAndSABnzbd(eng *nullEngine) envOption {
-	return withConfig(func(c *api.Config) {
-		mountQBit(c, eng)
+	return withConfigEnv(func(e *env, c *api.Config) {
+		mountQBit(e, c, eng)
 		c.SABnzbd = sabnzbd.New(sabnzbd.Deps{
 			AppKey: c.AppKey, Downloads: c.Downloads, Adder: c.Adder,
 			Categories: c.Categories, Settings: c.Settings, Logger: c.Logger,
+			View: viewsOf(e, eng),
 		})
 	})
 }

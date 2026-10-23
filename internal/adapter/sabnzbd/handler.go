@@ -16,7 +16,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	dlview "gitlab.com/kyura4k/gitnews/internal/view"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // DefaultVersion is the SABnzbd version the adapter reports. Sonarr and
@@ -42,24 +42,20 @@ type SettingsReader interface {
 }
 
 // Deps is everything the adapter needs. AppKey, Downloads, Adder,
-// Categories and Settings are required; the rest are optional.
+// Categories, Settings and View are required; the rest are optional.
 type Deps struct {
 	AppKey     *auth.AppKeyService
 	Downloads  *app.DownloadService
 	Adder      *app.AddService
 	Categories *app.CategoryService
 	Settings   SettingsReader
-	// View gives each Download's phase, progress, rate, ETA and failure.
-	View *dlview.Module
+	// View gives each Download's phase (and so its SAB status), queue
+	// order, progress, own rate and ETA, and cleaned failure.
+	View *view.Module
 
-	// StageSource reports the Post-processing stage a Download is in, which
-	// decides whether its history status is Verifying, Repairing,
-	// Extracting or Moving. false means unknown, which shows as Verifying.
-	// The daemon feeds it from core.PostProcessStage events.
-	StageSource func(core.ID) (core.Stage, bool)
-	// SpeedSource reports the current download rate and whether downloading
-	// is paused as a whole. Without it the speed is 0 and every time left is
-	// "0:00:00".
+	// SpeedSource reports the global download rate and whether downloading
+	// is paused as a whole. Without it the speed is 0 and the queue-wide time
+	// left is "0:00:00".
 	SpeedSource func() (bytesPerSec int64, paused bool)
 	// DiskSpace reports the free and total bytes of the filesystem that
 	// holds path. Without it the disk space fields are "0".
@@ -75,7 +71,7 @@ type Deps struct {
 // New returns the handler for /sabnzbd/api. It panics if a required
 // dependency is missing, since that is a wiring bug found at startup.
 func New(d Deps) http.Handler {
-	if d.AppKey == nil || d.Downloads == nil || d.Adder == nil || d.Categories == nil || d.Settings == nil {
+	if d.AppKey == nil || d.Downloads == nil || d.Adder == nil || d.Categories == nil || d.Settings == nil || d.View == nil {
 		panic("sabnzbd: Deps is missing a required service")
 	}
 	if d.Logger == nil {

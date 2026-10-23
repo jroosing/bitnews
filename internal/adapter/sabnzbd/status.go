@@ -2,13 +2,12 @@ package sabnzbd
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
+	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // The status strings media managers parse. Sonarr and Radarr treat
@@ -26,7 +25,8 @@ const (
 	statusFailed      = "Failed"
 )
 
-// listing says where a Download shows up.
+// listing says where a Download shows up: the queue while its State is in a
+// Queue (core.State.InQueue), the history after.
 type listing int
 
 const (
@@ -34,64 +34,55 @@ const (
 	inHistory
 )
 
-// classify maps a Download to the list it appears in and its SAB status.
-// stage is the Post-processing stage it is in, if known (haveStage).
-//
-//	Added, FetchingMetadata, Queued         queue     Queued (Paused if paused)
-//	Fetching                                queue     Downloading (Paused if paused)
-//	Fetched                                 history   Verifying
-//	PostProcessing verifying                history   Verifying
-//	PostProcessing repairing                history   Repairing
-//	PostProcessing unpacking                history   Extracting
-//	PostProcessing finishing                history   Moving
-//	PostProcessing, stage unknown           history   Verifying (the first step)
-//	Ready                                   history   Completed
-//	Failed                                  history   Failed
-//
-// Completed is only ever returned for Ready: Fetched data that is not yet
-// repaired and unpacked must never be imported. A State this table does not
-// know is shown as a history item that is Queued, never as Completed.
-func classify(d core.Download, stage core.Stage, haveStage bool) (listing, string) {
-	switch d.State {
-	case core.StateAdded, core.StateFetchingMetadata, core.StateQueued:
-		if d.Paused {
-			return inQueue, statusPaused
-		}
-		return inQueue, statusQueued
-	case core.StateFetching:
-		if d.Paused {
-			return inQueue, statusPaused
-		}
-		return inQueue, statusDownloading
-	case core.StateFetched:
-		return inHistory, statusVerifying
-	case core.StatePostProcessing:
-		if !haveStage {
-			return inHistory, statusVerifying
-		}
-		switch stage {
-		case core.StageRepairing:
-			return inHistory, statusRepairing
-		case core.StageUnpacking:
-			return inHistory, statusExtracting
-		case core.StageFinishing:
-			return inHistory, statusMoving
-		}
-		return inHistory, statusVerifying
-	case core.StateReady:
-		return inHistory, statusCompleted
-	case core.StateFailed:
-		return inHistory, statusFailed
+func listingOf(d core.Download) listing {
+	if d.State.InQueue() {
+		return inQueue
 	}
-	return inHistory, statusQueued
+	return inHistory
 }
 
-// queueStates and historyStates are the States of the two lists, matching
-// classify.
-var (
-	queueStates   = []core.State{core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching}
-	historyStates = []core.State{core.StateFetched, core.StatePostProcessing, core.StateReady, core.StateFailed}
-)
+// status translates a View's phase to its SAB status.
+//
+//	waiting                    Queued
+//	metadata                   Queued (Paused if paused)
+//	paused                     Paused
+//	downloading                Downloading
+//	verifying                  Verifying (Fetched, or the stage is verifying or unknown)
+//	repairing                  Repairing
+//	unpacking                  Extracting
+//	finishing                  Moving
+//	ready                      Completed
+//	failed                     Failed
+//
+// Completed is only ever returned for the ready phase, which only a Ready
+// Download has: Fetched data that is not yet repaired and unpacked must never
+// be imported. A phase this table does not know is Queued, never Completed.
+func status(v view.View) string {
+	switch v.Phase {
+	case view.PhaseMetadata:
+		if v.Download.Paused {
+			return statusPaused
+		}
+		return statusQueued
+	case view.PhasePaused:
+		return statusPaused
+	case view.PhaseDownloading:
+		return statusDownloading
+	case view.PhaseVerifying:
+		return statusVerifying
+	case view.PhaseRepairing:
+		return statusRepairing
+	case view.PhaseUnpacking:
+		return statusExtracting
+	case view.PhaseFinishing:
+		return statusMoving
+	case view.PhaseReady:
+		return statusCompleted
+	case view.PhaseFailed:
+		return statusFailed
+	}
+	return statusQueued
+}
 
 // nzoPrefix starts every nzo_id.
 const nzoPrefix = "SABnzbd_nzo_"
@@ -153,19 +144,6 @@ func priorityToSAB(p core.DownloadPriority) int {
 	return sabPriorityNormal
 }
 
-// priorityName is how queue slots spell the priority.
-func priorityName(p core.DownloadPriority) string {
-	switch p {
-	case core.DownloadPriorityForce:
-		return "Force"
-	case core.DownloadPriorityHigh:
-		return "High"
-	case core.DownloadPriorityLow:
-		return "Low"
-	}
-	return "Normal"
-}
-
 // parsePriority reads the priority parameter: SAB's number, or a name.
 // Empty and unparsable values are the default (normal).
 func parsePriority(s string) (core.DownloadPriority, bool) {
@@ -188,12 +166,10 @@ func parsePriority(s string) (core.DownloadPriority, bool) {
 
 // failureText is the human-readable fail_message of a Failed Download. The
 // wording follows SABnzbd's, which media managers show to the user (and a few
-// of them look for), followed by bitnews's own detail. The detail is already
-// redacted by the engines; URLs in it are masked again here, and control
-// characters and excess length are dropped.
-func failureText(reason core.FailureReason, detail string) string {
+// of them look for), followed by the View's cleaned detail.
+func failureText(f view.Failure) string {
 	var base string
-	switch reason {
+	switch f.Reason {
 	case core.FailureMissingArticles:
 		base = "Aborted, cannot be completed - articles are missing and no repair data can recover them"
 	case core.FailureRepairInsufficient:
@@ -213,37 +189,11 @@ func failureText(reason core.FailureReason, detail string) string {
 	default:
 		base = "Download failed"
 	}
-	detail = cleanDetail(detail)
-	if detail == "" {
+	if f.Detail == "" {
 		return base
 	}
-	return base + ": " + detail
+	return base + ": " + f.Detail
 }
-
-var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"']+`)
-
-const maxDetailBytes = 300
-
-func cleanDetail(s string) string {
-	s = urlInText.ReplaceAllStringFunc(s, redact.URL)
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return ' '
-		}
-		return r
-	}, strings.ToValidUTF8(s, ""))
-	s = strings.Join(strings.Fields(s), " ")
-	if len(s) > maxDetailBytes {
-		s = s[:maxDetailBytes]
-		for len(s) > 0 && !isRuneStart(s[len(s)-1]) {
-			s = s[:len(s)-1]
-		}
-		s = strings.ToValidUTF8(s, "") + "..."
-	}
-	return s
-}
-
-func isRuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
 // stageText is the action_line of a history item in Post-processing.
 func stageText(status string) string {
@@ -302,10 +252,20 @@ func formatTimeLeft(sec int64) string {
 	return fmt.Sprintf("%d:%02d:%02d", h, m, s)
 }
 
-// percentage is the integer percentage as a string.
-func percentage(done, total int64) string {
-	if total <= 0 || done <= 0 {
+// etaText is a View's time left, "0:00:00" when it is not known.
+func etaText(v view.View) string {
+	if !v.ETAKnown {
+		return formatTimeLeft(0)
+	}
+	return formatTimeLeft(int64(v.ETA / time.Second))
+}
+
+// percentage is a View's progress as a whole percentage, rounded down, as a
+// string. It is worked out from the View's done and total bytes in integers,
+// so a third is "33" and nothing short of all of it is "100".
+func percentage(v view.View) string {
+	if v.Total <= 0 || v.Done <= 0 {
 		return "0"
 	}
-	return strconv.FormatInt(min(done*100/total, 100), 10)
+	return strconv.FormatInt(min(v.Done*100/v.Total, 100), 10)
 }

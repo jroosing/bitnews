@@ -23,22 +23,23 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/store"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
-// fakeTorrents is a TorrentSource the tests fill.
+// fakeTorrents is a TorrentSource the tests fill. The other torrent facts
+// come from the view module (env.live).
 type fakeTorrents struct {
 	mu    sync.Mutex
-	facts map[core.ID]web.TorrentFacts
+	files map[core.ID][]web.TorrentFile
 	calls []web.ShareLimitChange
 	err   error
 }
 
-func (f *fakeTorrents) Torrent(_ context.Context, id core.ID) (web.TorrentFacts, bool, error) {
+func (f *fakeTorrents) Files(_ context.Context, id core.ID) ([]web.TorrentFile, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	t, ok := f.facts[id]
-	return t, ok, nil
+	return f.files[id], nil
 }
 
 func (f *fakeTorrents) SetShareLimit(_ context.Context, _ core.ID, c web.ShareLimitChange) error {
@@ -60,7 +61,6 @@ func (f *fakeTorrents) recorded() []web.ShareLimitChange {
 // fakeDetail is a DetailSource the tests fill.
 type fakeDetail struct {
 	reports map[core.ID]web.FetchReport
-	stages  map[core.ID]string
 }
 
 func (f *fakeDetail) FetchReport(_ context.Context, id core.ID) (web.FetchReport, bool) {
@@ -68,13 +68,9 @@ func (f *fakeDetail) FetchReport(_ context.Context, id core.ID) (web.FetchReport
 	return r, ok
 }
 
-func (f *fakeDetail) PostProcessStage(id core.ID) (string, bool) {
-	s, ok := f.stages[id]
-	return s, ok
-}
-
-// denv is the stack for the history, detail and add tests: real store and
-// services (adding included, with torrents on), fake daemon sources.
+// denv is the stack for the history, detail and add tests: real store,
+// services (adding included, with torrents on) and view module, fake daemon
+// sources and a fake LiveSource (env.live).
 type denv struct {
 	*env
 	repo     *store.DownloadRepo
@@ -140,11 +136,11 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 
 	d := &denv{
 		remover:  &fakeRemover{},
-		torrents: &fakeTorrents{facts: map[core.ID]web.TorrentFacts{}},
-		detail:   &fakeDetail{reports: map[core.ID]web.FetchReport{}, stages: map[core.ID]string{}},
+		torrents: &fakeTorrents{files: map[core.ID][]web.TorrentFile{}},
+		detail:   &fakeDetail{reports: map[core.ID]web.FetchReport{}},
 		root:     t.TempDir(),
 	}
-	e := &env{t: t, clock: &clock{t: epoch.Add(24 * time.Hour)}, log: &syncBuffer{}}
+	e := &env{t: t, clock: &clock{t: epoch.Add(24 * time.Hour)}, log: &syncBuffer{}, live: newFakeLive()}
 	logger := slog.New(slog.NewTextHandler(e.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	bus := core.NewBus()
 	users := store.NewUserRepo(db)
@@ -186,6 +182,7 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 		Logger: logger, Version: "1.2.3",
 		Sessions: e.sessions, UIAuth: uiAuth, Setup: e.setup, Settings: e.settings,
 		Downloads: d.svc, Categories: d.catSvc, Bus: bus,
+		View:    newView(t, d.repo, e.live, e.settings),
 		Servers: app.NewServerService(servers, bus, nil, appOpts...),
 	}
 	if !cfg.noAdder {
@@ -353,10 +350,8 @@ func downloadHTMLResponses(t *testing.T) map[string]*httptest.ResponseRecorder {
 	active := d.add(core.Download{Name: "Active.One", State: core.StateFetching, TotalBytes: 1000, DoneBytes: 400})
 	tor := d.add(core.Download{Name: "Torrent.One", SourceKind: core.SourceTorrent, TotalBytes: 100})
 	d.detail.reports[ready.ID] = web.FetchReport{MissingArticles: 1, DamagedArticles: 2, MissingFiles: 1}
-	d.torrents.facts[tor.ID] = web.TorrentFacts{
-		InfoHash: "0123456789abcdef0123456789abcdef01234567", Registered: true, Peers: 3,
-		Files: []web.TorrentFile{{Path: "a/b.mkv", Size: 100}},
-	}
+	d.live.set(tor.ID, view.Live{Torrent: &view.TorrentLive{Hash: "0123456789abcdef0123456789abcdef01234567", Registered: true, Peers: 3}})
+	d.torrents.files[tor.ID] = []web.TorrentFile{{Path: "a/b.mkv", Size: 100}}
 	out["GET /history (rows)"] = d.b.get("/history")
 	out["GET /history (empty filter)"] = d.b.get("/history?kind=torrent&state=failed")
 	out["GET /history (htmx)"] = d.b.get("/history?state=failed", htmx())

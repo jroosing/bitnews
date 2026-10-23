@@ -12,6 +12,7 @@ import (
 	"golang.org/x/net/html"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -69,7 +70,7 @@ func TestQueueRowShowsTheFactsOfADownload(t *testing.T) {
 		Name: "Big.Release.2160p", State: core.StateFetching, CategoryID: cat.ID, Priority: core.DownloadPriorityHigh,
 		TotalBytes: 4 << 30, DoneBytes: 1 << 30,
 	})
-	q.rt.setLive(d.ID, web.DownloadLive{DownRate: 8 << 20})
+	q.live.set(d.ID, view.Live{DownRate: 8 << 20})
 
 	row := rowFor(queueDoc(t, q), d.ID)
 
@@ -103,21 +104,21 @@ func TestQueueBadgesFollowTheStateOfTheDownload(t *testing.T) {
 	}{
 		{"added", core.Download{State: core.StateAdded}, "", "badge-queued", "Queued", ""},
 		{"queued", core.Download{State: core.StateQueued}, "", "badge-queued", "Queued", ""},
-		{"metadata", core.Download{State: core.StateFetchingMetadata, SourceKind: core.SourceTorrent}, "", "badge-downloading", "Metadata", ""},
+		{"metadata", core.Download{State: core.StateFetchingMetadata, SourceKind: core.SourceTorrent}, "", "badge-downloading", "Fetching metadata", ""},
 		{"fetching", core.Download{State: core.StateFetching}, "", "badge-downloading", "Downloading", ""},
 		{"paused", core.Download{State: core.StateFetching, Paused: true}, "", "badge-paused", "Paused", ""},
 		{"paused queued", core.Download{State: core.StateQueued, Paused: true}, "", "badge-paused", "Paused", ""},
 		{"fetched nzb", core.Download{State: core.StateFetched}, "", "badge-processing", "Fetched", ""},
 		{"seeding", core.Download{State: core.StateFetched, SourceKind: core.SourceTorrent}, "", "badge-ready", "Seeding", ""},
-		{"processing", core.Download{State: core.StatePostProcessing}, "", "badge-processing", "Processing", ""},
+		{"stage not known yet", core.Download{State: core.StatePostProcessing}, "", "badge-processing", "Verifying", ""},
 		{"verifying", core.Download{State: core.StatePostProcessing}, core.StageVerifying, "badge-processing", "Verifying", ""},
 		{"repairing", core.Download{State: core.StatePostProcessing}, core.StageRepairing, "badge-processing", "Repairing", ""},
-		{"extracting", core.Download{State: core.StatePostProcessing}, core.StageUnpacking, "badge-processing", "Extracting", ""},
-		{"moving", core.Download{State: core.StatePostProcessing}, core.StageFinishing, "badge-processing", "Moving", ""},
+		{"unpacking", core.Download{State: core.StatePostProcessing}, core.StageUnpacking, "badge-processing", "Unpacking", ""},
+		{"finishing", core.Download{State: core.StatePostProcessing}, core.StageFinishing, "badge-processing", "Finishing", ""},
 	} {
 		d := q.add(tc.d)
 		if tc.stage != "" {
-			q.rt.setLive(d.ID, web.DownloadLive{Stage: tc.stage})
+			q.live.set(d.ID, view.Live{Stage: tc.stage, HaveStage: true})
 		}
 
 		row := rowFor(queueDoc(t, q), d.ID)
@@ -168,8 +169,8 @@ func TestQueueOrdersProcessingFirstThenFetchedThenTheQueueByPosition(t *testing.
 
 func TestTorrentRowShowsUploadSwarmAndRatioWhileSeeding(t *testing.T) {
 	q := newQueueEnv(t)
-	d := q.add(core.Download{Name: "ubuntu.iso", SourceKind: core.SourceTorrent, State: core.StateFetched, TotalBytes: 100, DoneBytes: 100})
-	q.rt.setLive(d.ID, web.DownloadLive{Torrent: true, UpRate: 2 << 20, Peers: 12, Seeds: 3, Ratio: 1.256})
+	d := q.add(core.Download{Name: "ubuntu.iso", SourceKind: core.SourceTorrent, State: core.StateFetched, TotalBytes: 1000, DoneBytes: 1000})
+	q.live.set(d.ID, view.Live{UpRate: 2 << 20, Torrent: &view.TorrentLive{Registered: true, Peers: 12, Seeds: 3, Uploaded: 1256}})
 
 	row := rowFor(queueDoc(t, q), d.ID)
 
@@ -184,7 +185,7 @@ func TestTorrentRowShowsUploadSwarmAndRatioWhileSeeding(t *testing.T) {
 func TestUsenetRowHasNoUploadOrSwarm(t *testing.T) {
 	q := newQueueEnv(t)
 	d := q.add(core.Download{State: core.StateFetching, TotalBytes: 10, DoneBytes: 5})
-	q.rt.setLive(d.ID, web.DownloadLive{DownRate: 1 << 20})
+	q.live.set(d.ID, view.Live{DownRate: 1 << 20})
 
 	row := rowFor(queueDoc(t, q), d.ID)
 
@@ -281,7 +282,11 @@ func addQueueResponses(t *testing.T, out map[string]*httptest.ResponseRecorder) 
 			if first.ID == "" {
 				first = d
 			}
-			q.rt.setLive(d.ID, web.DownloadLive{Torrent: kind == core.SourceTorrent, Peers: 3, Ratio: 0.5, DownRate: 1 << 20, UpRate: 1 << 10, Stage: core.StageUnpacking})
+			live := view.Live{DownRate: 1 << 20, UpRate: 1 << 10, Stage: core.StageUnpacking, HaveStage: true}
+			if kind == core.SourceTorrent {
+				live.Torrent = &view.TorrentLive{Registered: true, Peers: 3, Uploaded: 50}
+			}
+			q.live.set(d.ID, live)
 		}
 	}
 	q.rt.setQueue(core.SourceTorrent, web.QueueState{Available: true, Paused: true, Reason: web.PauseReasonDiskFull})
@@ -293,4 +298,26 @@ func addQueueResponses(t *testing.T, out map[string]*httptest.ResponseRecorder) 
 	out["POST /queues/usenet/speed"] = q.act("/queues/usenet/speed", url.Values{"down_kbps": {"10"}})
 	empty := newQueueEnv(t, withoutRuntime())
 	out["GET /queue (empty, no runtime)"] = empty.b.get("/queue")
+}
+
+func TestQueueRowAndDetailPageShowTheSameStageAndETAThroughTheView(t *testing.T) {
+	q := newQueueEnv(t)
+	processing := q.add(core.Download{State: core.StatePostProcessing, TotalBytes: 100, DoneBytes: 100, FetchedAt: epoch})
+	fetching := q.add(core.Download{State: core.StateFetching, TotalBytes: 4 << 30, DoneBytes: 1 << 30})
+	q.live.set(processing.ID, view.Live{Stage: core.StageUnpacking, HaveStage: true})
+	q.live.set(fetching.ID, view.Live{DownRate: 8 << 20})
+	detail := func(id core.ID) *html.Node {
+		rec := q.b.get("/downloads/" + string(id))
+		require.Equal(t, http.StatusOK, rec.Code)
+		live := byID(parseHTML(t, rec.Body.String()), "detail-live")
+		require.NotNil(t, live)
+		return live
+	}
+
+	queue := queueDoc(t, q)
+
+	assert.Equal(t, "Unpacking", text(badgeOf(rowFor(queue, processing.ID))), "never Extracting")
+	assert.Equal(t, "Unpacking", text(badgeOf(detail(processing.ID))))
+	assert.Equal(t, "6m 24s", text(byID(queue, "dl-"+string(fetching.ID)+"-eta")), "3 GB at 8 MB/s")
+	assert.Equal(t, ", 6m 24s left", text(byID(detail(fetching.ID), "detail-eta")))
 }

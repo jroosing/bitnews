@@ -3,6 +3,7 @@ package daemon_test
 import (
 	"bytes"
 	"crypto/sha1"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -76,8 +77,12 @@ func TestE2EWebAddHistoryDetailAndRemove(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	assert.Contains(t, resp.Header.Get("HX-Trigger"), "download-added")
 
+	// A small NZB can finish before the page is fetched, so it is in the
+	// queue or, already Ready, in the history.
 	_, queue := w.do("GET", "/queue", nil)
-	assert.Contains(t, queue, "UI.Added.Release", "it appears in the queue")
+	_, early := w.do("GET", "/history", nil)
+	assert.True(t, strings.Contains(queue, "UI.Added.Release") || strings.Contains(early, "UI.Added.Release"),
+		"it appears in the queue or the history")
 	var list struct {
 		Items []dl `json:"items"`
 	}
@@ -185,4 +190,40 @@ func TestE2EWebTorrentDetailAndShareLimit(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	_, page = w.do("GET", "/downloads/"+string(id), nil)
 	assert.Contains(t, page, "Global default: no limit")
+}
+
+// One Download that failed reads the same through every transport, because
+// they all take it from the view module: the own API says failed with the
+// reason, SABnzbd says Failed with its wording, and the UI says why.
+func TestE2EAFailedDownloadReadsTheSameThroughEveryTransport(t *testing.T) {
+	skipHeavy(t)
+	e := newE2E(t)
+	e.start()
+	srv := e.addServer("main", 0)
+	g := loadGolden(t, "explicit_uniform")
+	fx := nntptest.BuildFixture(t, g.files(), g.Manifest.SliceSize)
+	fx.Install(srv.Server)
+	srv.Missing(fixtureIDs(t, fx, "u1.bin")[3:25]...)
+
+	failed := e.waitState(e.addNZB("Hopeless.Release", fx.NZB, "").ID, core.StateFailed)
+
+	var api struct {
+		State         string `json:"state"`
+		FailureReason string `json:"failure_reason"`
+	}
+	e.call("GET", "/api/v1/downloads/"+string(failed.ID), nil, http.StatusOK, &api)
+	assert.Equal(t, "failed", api.State)
+	assert.Equal(t, string(core.FailureRepairInsufficient), api.FailureReason)
+
+	sabHistory := e.sab(e.apiKey, "mode=history")
+	statuses := slotStatuses(t, sabHistory, "history")
+	assert.Equal(t, "Failed", statuses["SABnzbd_nzo_"+string(failed.ID)])
+	assert.Contains(t, fmt.Sprint(sabHistory), "not enough repair blocks")
+
+	w := newWebClient(t, e.ts.URL)
+	w.login()
+	_, history := w.do("GET", "/history?state=failed", nil)
+	assert.Contains(t, history, "Hopeless.Release")
+	_, detail := w.do("GET", "/downloads/"+string(failed.ID), nil)
+	assert.Contains(t, detail, "Not enough repair data")
 }

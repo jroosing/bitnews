@@ -10,8 +10,9 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
-// webTorrents implements web.TorrentSource for the Download detail page on
-// the torrent runner's Facts.
+// webTorrents implements web.TorrentSource for the Download detail page: the
+// file list from the torrent runner's Facts and the Share Limit through the
+// runner. The other torrent facts reach the page through the view module.
 type webTorrents struct{ run *trunner.Runner }
 
 var _ web.TorrentSource = webTorrents{}
@@ -25,25 +26,18 @@ func newWebTorrents(run *trunner.Runner) web.TorrentSource {
 	return webTorrents{run: run}
 }
 
-// Torrent implements web.TorrentSource.
-func (w webTorrents) Torrent(ctx context.Context, id core.ID) (web.TorrentFacts, bool, error) {
+// Files implements web.TorrentSource: the files the engine knows of the
+// torrent, nil when it is not in the engine.
+func (w webTorrents) Files(ctx context.Context, id core.ID) ([]web.TorrentFile, error) {
 	f, ok, err := w.run.Facts(ctx, id)
-	if err != nil || !ok {
-		return web.TorrentFacts{}, false, err
+	if err != nil || !ok || !f.Live {
+		return nil, err
 	}
-	out := web.TorrentFacts{
-		InfoHash: f.Hash.String(), Registered: f.Registered, LimitPaused: f.LimitPaused,
-		OwnRatio: f.OwnRatioLimit, OwnSeedingTime: f.OwnSeedingTimeLimit,
-		Private: f.Private, Size: f.Size, Peers: f.Peers, Seeds: f.Seeds, DownRate: f.DownRate, UpRate: f.UpRate,
-		Uploaded: f.Uploaded, SeedingTime: f.SeedingTime, Ratio: f.Ratio,
+	out := make([]web.TorrentFile, len(f.Files))
+	for i, file := range f.Files {
+		out[i] = web.TorrentFile{Path: file.Path, Size: file.Size}
 	}
-	if f.Live {
-		out.Files = make([]web.TorrentFile, len(f.Files))
-		for i, file := range f.Files {
-			out.Files[i] = web.TorrentFile{Path: file.Path, Size: file.Size}
-		}
-	}
-	return out, true, nil
+	return out, nil
 }
 
 // SetShareLimit implements web.TorrentSource.
@@ -62,12 +56,10 @@ func (w webTorrents) SetShareLimit(ctx context.Context, id core.ID, c web.ShareL
 }
 
 // webDetail implements web.DetailSource: the Article report of the Usenet
-// runner (in memory, else the stored one) and the Post-processing stage the
-// event tracker follows.
+// runner (in memory, else the stored one).
 type webDetail struct {
 	run     *runner.Runner
 	reports reports
-	track   *tracker
 }
 
 var _ web.DetailSource = webDetail{}
@@ -86,10 +78,4 @@ func (d webDetail) FetchReport(ctx context.Context, id core.ID) (web.FetchReport
 		DamagedArticles: detail.DamagedArticles, DamagedBytes: detail.DamagedBytes,
 		MissingFiles: detail.MissingFiles,
 	}, true
-}
-
-// PostProcessStage implements web.DetailSource.
-func (d webDetail) PostProcessStage(id core.ID) (string, bool) {
-	st, ok := d.track.stage(id)
-	return string(st), ok
 }

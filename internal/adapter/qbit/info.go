@@ -7,8 +7,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // infinity is qBittorrent's eta for "never" (100 days in seconds).
@@ -74,10 +76,14 @@ type torrentInfo struct {
 	UPSpeed                int64   `json:"upspeed"`
 }
 
-// entry is a torrent joined to its Download.
+// entry is a torrent Download with its view and what the view does not
+// hold.
 type entry struct {
 	d core.Download
-	v TorrentView
+	v view.View
+	t Torrent
+	// hash is the info hash, from the view.
+	hash string
 }
 
 // catNames maps Category IDs to names.
@@ -95,37 +101,48 @@ func (c *call) categoryNames() (catNames, []core.Category, error) {
 	return m, cats, nil
 }
 
-// loadAll joins every torrent to its Download. A torrent whose Download is
-// gone, and a torrent Download without a torrent (no hash), are left out.
+// loadAll reads every torrent Download. A Download without a torrent (no
+// valid hash) is left out, and so is one whose torrent cannot be described
+// now.
 func (c *call) loadAll() ([]entry, error) {
-	views, err := c.h.Torrents.List(c.ctx())
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[core.ID]core.Download, len(views))
+	var out []entry
 	for after := ""; ; {
 		page, err := c.h.Downloads.List(c.ctx(), listFilter(after))
 		if err != nil {
 			return nil, err
 		}
 		for _, d := range page.Items {
-			byID[d.ID] = d
+			e, ok, err := c.entryOf(d, false)
+			if err != nil {
+				c.h.log.Debug("qbit: torrent skipped", "id", d.ID, "err", err)
+				continue
+			}
+			if ok {
+				out = append(out, e)
+			}
 		}
 		if page.Next == "" {
-			break
+			return out, nil
 		}
 		after = page.Next
 	}
-	out := make([]entry, 0, len(views))
-	for _, v := range views {
-		if d, ok := byID[v.DownloadID]; ok && validHash(v.InfoHash) {
-			out = append(out, entry{d: d, v: v})
-		}
-	}
-	return out, nil
 }
 
-// loadHashes joins the named torrents; unknown hashes are skipped.
+// entryOf describes the torrent of d; false means d has none. full is passed
+// to the TorrentSource.
+func (c *call) entryOf(d core.Download, full bool) (entry, bool, error) {
+	t, ok, err := c.h.Torrents.Torrent(c.ctx(), d, full)
+	if err != nil || !ok {
+		return entry{}, false, err
+	}
+	v := c.h.View.Of(c.ctx(), d)
+	if v.Torrent == nil || !validHash(v.Torrent.Hash) {
+		return entry{}, false, nil
+	}
+	return entry{d: d, v: v, t: t, hash: v.Torrent.Hash}, true, nil
+}
+
+// loadHashes reads the named torrents; unknown hashes are skipped.
 func (c *call) loadHashes(hashes []string) ([]entry, error) {
 	out := make([]entry, 0, len(hashes))
 	for _, h := range hashes {
@@ -141,21 +158,14 @@ func (c *call) loadHashes(hashes []string) ([]entry, error) {
 }
 
 func (c *call) loadOne(hash string) (entry, bool, error) {
-	v, ok, err := c.h.Torrents.Get(c.ctx(), hash)
+	d, ok, err := c.h.Torrents.Lookup(c.ctx(), hash)
 	if err != nil || !ok {
-		return entry{}, false, err
-	}
-	d, err := c.h.Downloads.Get(c.ctx(), v.DownloadID)
-	if isNotFound(err) {
-		return entry{}, false, nil
-	}
-	if err != nil {
 		return entry{}, false, err
 	}
 	if d.SourceKind != core.SourceTorrent {
 		return entry{}, false, nil
 	}
-	return entry{d: d, v: v}, true, nil
+	return c.entryOf(d, true)
 }
 
 // targets are the torrents a hashes parameter names: everything for "all".
@@ -187,16 +197,11 @@ func validHash(h string) bool {
 	return err == nil && len(h) == 40
 }
 
-// infoOf builds the torrents/info entry of a torrent.
+// infoOf builds the torrents/info entry of a torrent from its view.
 func (h *handler) infoOf(e entry, names catNames, paths core.Paths) torrentInfo {
-	d, v := e.d, e.v
-	state, progress := torrentState(d, v, h.stopped)
-	size := v.Size
-	done := v.DoneBytes
-	if size <= 0 {
-		size, done = d.TotalBytes, d.DoneBytes
-	}
-	size, done = max(size, 0), max(done, 0)
+	d, v, tv := e.d, e.v, e.v.Torrent
+	state, progress := torrentState(v, h.stopped)
+	size, done := max(v.Total, 0), max(v.Done, 0)
 	isReady := d.State == core.StateReady
 	switch {
 	case isReady:
@@ -206,18 +211,11 @@ func (h *handler) infoOf(e entry, names catNames, paths core.Paths) torrentInfo 
 	default:
 		done = 0
 	}
-	content, save := contentAndSavePath(d, v, paths)
-	ratio, seedLimit := limitsOf(v.ShareLimit)
-	added := v.AddedAt
-	if added.IsZero() {
-		added = d.AddedAt
-	}
+	content, save := contentAndSavePath(d, e.t, paths)
+	ratio, seedLimit := limitsOf(tv.ShareLimit)
 	completion := int64(-1)
 	if isReady {
-		at := v.CompletedAt
-		if at.IsZero() {
-			at = d.FetchedAt
-		}
+		at := d.FetchedAt
 		if at.IsZero() {
 			at = d.ReadyAt
 		}
@@ -225,39 +223,39 @@ func (h *handler) infoOf(e entry, names catNames, paths core.Paths) torrentInfo 
 			completion = at.Unix()
 		}
 	}
-	name := v.Name
+	name := e.t.Name
 	if name == "" {
 		name = d.Name
 	}
-	inQueue := d.State == core.StateAdded || d.State == core.StateFetchingMetadata || d.State == core.StateQueued || d.State == core.StateFetching
 	priority := 0
-	if inQueue {
+	if v.InQueue {
 		priority = max(d.QueuePosition, 0) + 1 // qBittorrent counts from 1
 	}
 	eta := int64(infinity)
-	if left := size - done; d.State == core.StateFetching && v.DownRate > 0 && left > 0 {
-		eta = min(left/v.DownRate, infinity)
+	if v.ETAKnown {
+		eta = min(int64(v.ETA/time.Second), infinity)
 	}
-	secs := int64(v.SeedingTime.Seconds())
+	secs := int64(tv.SeedingTime / time.Second)
 	return torrentInfo{
-		AddedOn: added.Unix(), AmountLeft: size - done, Availability: -1,
+		AddedOn: d.AddedAt.Unix(), AmountLeft: size - done, Availability: -1,
 		Category:  names[d.CategoryID],
 		Completed: done, CompletionOn: completion, ContentPath: content,
 		DLLimit: -1, DLSpeed: max(v.DownRate, 0), Downloaded: done, DownloadedSession: done, ETA: eta,
-		ForceStart: d.Priority == core.DownloadPriorityForce, Hash: v.InfoHash,
-		InactiveSeedingLimit: -2, InfohashV1: v.InfoHash, LastActivity: d.UpdatedAt.Unix(),
+		ForceStart: d.Priority == core.DownloadPriorityForce, Hash: e.hash,
+		InactiveSeedingLimit: -2, InfohashV1: e.hash, LastActivity: d.UpdatedAt.Unix(),
 		MaxInactiveSeedingTime: -2, MaxRatio: ratio, MaxSeedingTime: seedLimit,
-		Name: name, NumComplete: -1, NumIncomplete: -1, NumLeechs: v.Peers, NumSeeds: v.Seeds,
-		Priority: priority, Progress: progress, Ratio: max(v.Ratio, 0),
+		Name: name, NumComplete: -1, NumIncomplete: -1, NumLeechs: tv.Peers, NumSeeds: tv.Seeds,
+		Priority: priority, Progress: progress, Ratio: max(tv.Ratio, 0),
 		RatioLimit: ratio, SavePath: save, SeedingTime: secs, SeedingTimeLimit: seedLimit,
 		Size: size, State: state, TimeActive: secs, TotalSize: size,
-		UPLimit: -1, Uploaded: max(v.Uploaded, 0), UploadedSession: max(v.Uploaded, 0), UPSpeed: max(v.UpRate, 0),
+		UPLimit: -1, Uploaded: max(tv.Uploaded, 0), UploadedSession: max(tv.Uploaded, 0), UPSpeed: max(v.UpRate, 0),
 	}
 }
 
-// limitsOf converts a Share Limit to qBittorrent's ratio_limit (-2 global,
-// -1 none) and seeding_time_limit (minutes, same codes).
-func limitsOf(l ShareLimit) (ratio float64, minutes int64) {
+// limitsOf converts the Share Limit in force to qBittorrent's ratio_limit
+// (-2 global, -1 none) and seeding_time_limit (minutes, rounded up, same
+// codes).
+func limitsOf(l view.ShareLimit) (ratio float64, minutes int64) {
 	if l.Global {
 		return -2, -2
 	}
@@ -265,8 +263,8 @@ func limitsOf(l ShareLimit) (ratio float64, minutes int64) {
 	if l.Ratio >= 0 {
 		ratio = l.Ratio
 	}
-	if l.SeedingSeconds >= 0 {
-		minutes = (l.SeedingSeconds + 59) / 60
+	if l.Seeding >= 0 {
+		minutes = (int64(l.Seeding/time.Second) + 59) / 60
 	}
 	return ratio, minutes
 }
@@ -274,8 +272,8 @@ func limitsOf(l ShareLimit) (ratio float64, minutes int64) {
 // contentAndSavePath are the content_path and save_path of a torrent. The
 // content path of a Ready Download is its output dir, which media managers
 // scan recursively. Without paths from the engine the torrent roots stand in.
-func contentAndSavePath(d core.Download, v TorrentView, paths core.Paths) (content, save string) {
-	content, save = v.ContentPath, v.SavePath
+func contentAndSavePath(d core.Download, t Torrent, paths core.Paths) (content, save string) {
+	content, save = t.ContentPath, t.SavePath
 	if content == "" && d.State == core.StateReady {
 		content = d.OutputPath
 	}
@@ -286,7 +284,11 @@ func contentAndSavePath(d core.Download, v TorrentView, paths core.Paths) (conte
 		save = paths.Torrent.Incomplete
 	}
 	if content == "" {
-		content = filepath.Join(save, v.Name)
+		name := t.Name
+		if name == "" {
+			name = d.Name
+		}
+		content = filepath.Join(save, name)
 	}
 	return content, save
 }

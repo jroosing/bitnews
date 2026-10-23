@@ -51,7 +51,8 @@ type seedOp struct {
 	DownloadSec int `json:"download_s"`
 	PostprocSec int `json:"postproc_s"`
 
-	// op "speed"
+	// op "speed": the global rate and pause flag; op "download": the
+	// Download's own rate.
 	BytesPerSec int64 `json:"bytes_per_sec"`
 	GlobalPause bool  `json:"global_pause"`
 
@@ -106,6 +107,9 @@ func seedFixture(t *testing.T, s *stack, fx *adaptertest.Fixture) map[string]str
 			})
 			if op.Stage != "" {
 				s.setStage(d.ID, core.Stage(op.Stage))
+			}
+			if op.BytesPerSec != 0 {
+				s.setRate(d.ID, op.BytesPerSec)
 			}
 			vars["nzo."+op.Ref] = nzo(d)
 			vars["id."+op.Ref] = string(d.ID)
