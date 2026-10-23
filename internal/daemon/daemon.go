@@ -28,6 +28,7 @@ import (
 	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
