@@ -1,3 +1,5 @@
+//go:build e2e
+
 package daemon_test
 
 import (
@@ -18,13 +20,6 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/store"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
 )
-
-func skipHeavy(t *testing.T) {
-	t.Helper()
-	if testing.Short() {
-		t.Skip("slow end-to-end test")
-	}
-}
 
 func TestE2ECleanNZBReachesReadyInTheCategoryDirWithoutFetchingRecoveryVolumes(t *testing.T) {
 	e := newE2E(t)

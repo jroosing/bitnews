@@ -14,7 +14,8 @@ You need Go 1.27.3 or later. Lint and vulnerability tools are pinned in `go.mod`
 ```sh
 make fmt         # gofmt -s -w (fmt-check only reports)
 make fix         # go fix ./... (fix-check only reports)
-make test        # go test -race ./...
+make test        # go test -race ./... (what CI runs)
+make e2e         # the end-to-end tests of the daemon (tag e2e), local only
 make lint        # go vet + staticcheck
 make vuln        # govulncheck
 make fuzz-smoke  # every Fuzz* target for 10s

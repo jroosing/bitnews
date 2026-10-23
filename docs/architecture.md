@@ -196,6 +196,7 @@ The defaults follow the TRaSH-guides layout:
 
 - **Fuzzing** (`go test -fuzz`) covers every hostile parser: NZB, NNTP responses, yEnc, PAR2 file names and archive entry paths. The corpus is committed. Fuzzing runs locally (`make fuzz-smoke`), not in CI.
 - **PAR2 tests:** the tests build real sets with `par2 c` (the pinned `par2`, from `make tools`), damage them and check that Repair restores the data byte-exactly.
+- **End-to-end tests** (`internal/daemon`, build tag `e2e`, `make e2e`) run a whole daemon over HTTP against fake NNTP servers and a local torrent swarm. They run locally only, not in CI, like fuzzing.
 - **Fake NNTP server:** an in-process server simulates `430`s, slow and dropped connections, and Server Priority fallback.
 - **Torrent:** a local anacrolix swarm (seeder plus bitnews as leecher).
 - **Adapter contract tests:** replay recorded Sonarr/Radarr requests.

@@ -8,7 +8,7 @@ PLATFORMS ?= linux/amd64 linux/arm64
 # The tests that exercise them find them through PATH.
 TOOLS_BIN := $(CURDIR)/bin/tools
 
-.PHONY: tools build build-all fmt fmt-check fix fix-check test lint vuln fuzz-smoke check css css-watch css-check
+.PHONY: tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/bitnews ./cmd/bitnews
@@ -39,12 +39,19 @@ fix-check:
 tools:
 	@scripts/get-postproc-tools.sh >/dev/null
 
+# test is what CI runs. The end-to-end tests (build tag e2e) are not part of it.
 test: tools
 	PATH="$(TOOLS_BIN):$$PATH" go test -race ./...
 
+# e2e runs the end-to-end tests of the daemon (build tag e2e): a whole daemon
+# with fake NNTP servers and a local torrent swarm. Local only, not in CI.
+e2e: tools
+	PATH="$(TOOLS_BIN):$$PATH" go test -race -tags e2e ./internal/daemon/...
+
+# lint also compiles and checks the e2e tests (-tags e2e), which CI does not run.
 lint:
-	go vet ./...
-	go tool staticcheck ./...
+	go vet -tags e2e ./...
+	go tool staticcheck -tags e2e ./...
 
 vuln:
 	go tool govulncheck ./...
@@ -58,7 +65,7 @@ fuzz-smoke: tools
 		done; \
 	done
 
-check: fmt-check fix-check lint test vuln
+check: fmt-check fix-check lint test e2e vuln
 
 # The web UI stylesheet. internal/web/assets/static/app.css is generated and
 # committed, so `go build` and CI need no Tailwind step. Run `make css` after

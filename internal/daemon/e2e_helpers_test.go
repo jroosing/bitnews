@@ -569,3 +569,10 @@ func requestsOf(srv *fakeNNTP, ids []string) int {
 	}
 	return n
 }
+
+func skipHeavy(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("slow end-to-end test")
+	}
+}
