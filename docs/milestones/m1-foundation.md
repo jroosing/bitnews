@@ -210,7 +210,7 @@ M1 routes (more are added in later milestones):
 - Create the package directories from the architecture layout. Each gets a `doc.go` with a one-line package comment.
 - Add `cmd/bitnews/main.go`, which prints its version. The version is injected via `-ldflags` (version, commit).
 - Add a `Makefile` with targets `build`, `fmt` and `fmt-check` (`gofmt -s`), `fix` and `fix-check` (`go fix`), `test` (`go test -race ./...`), `lint` (`go vet` + `staticcheck`), `vuln` (`govulncheck`) and `fuzz-smoke` (runs each `Fuzz*` for 10 s). The `-check` targets only report and fail, and the others rewrite files.
-- Add `.gitlab-ci.yml` with stages `lint` (one job: `make lint` and `make vuln`), `test` (one job: `make test`; fuzzing is run locally with `make fuzz-smoke`, not in CI) and `build`. Formatting (`make fmt`, `make fix`) is done locally before pushing, so CI has no format job. `build` produces linux amd64/arm64 static binaries with `CGO_ENABLED=0`. Cache the Go module and build caches.
+- Add `.gitlab-ci.yml` with stages `lint` (one job: `make lint` and `make vuln`), `test` (one job: `make test`; fuzzing is run locally with `make fuzz-smoke`, not in CI) and `build`. Formatting (`make fmt`, `make fix`) is done locally before pushing, so CI has no format job. `build` produces a linux amd64 static binary with `CGO_ENABLED=0`. Cache the Go module and build caches.
 - Add `.gitignore` and a short `README.md` that points to `docs/`.
 
 **Acceptance criteria**
@@ -453,11 +453,11 @@ M1 routes (more are added in later milestones):
 **Work**
 - Write a multi-stage `Dockerfile` ending in distroless static, running as a non-root user that `user:` overrides (see [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md)). Add a healthcheck via `bitnews healthcheck`, a subcommand that hits `/api/v1/health`.
 - Write `deploy/docker-compose.example.yml` with the TRaSH `/data` layout, `user:`/`UMASK`, and a commented gluetun variant. The key needs no secret; it is generated in `/config`.
-- Add a CI job that builds the image (linux/amd64; an arm64 image is built by hand with buildx) and pushes it to the GitLab container registry on the default branch and on tags.
+- Add a CI job that builds the image (linux/amd64 only) and pushes it to the GitLab container registry on the default branch and on tags.
 - Write `docs/deploy.md` for the Docker path.
 
 **Acceptance criteria**
 - [x] `docker compose up` with the example reaches the setup screen and runs as the `user:` ids, and the container reports healthy.
 - [x] The setup flow works, and the database and key survive `docker compose down` and `up` (the key does not change).
-- [x] The image builds for arm64 and amd64.
+- [x] The image builds for amd64.
 

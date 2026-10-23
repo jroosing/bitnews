@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 FUZZTIME ?= 10s
-PLATFORMS ?= linux/amd64 linux/arm64
+PLATFORMS ?= linux/amd64
 
 # Pinned 7-Zip and par2cmdline-turbo (ADR-0007), downloaded into bin/tools/.
 # The tests that exercise them find them through PATH.

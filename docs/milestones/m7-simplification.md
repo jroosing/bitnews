@@ -99,10 +99,10 @@ Remove what the operating system already does and what the user is responsible f
 - Unpack runs `7zz`: list first and enforce the entry, size and ratio caps, extract to staging, then walk the result and refuse symlinks, special files and escaping paths. Passwords go through stdin. Delete the pure-Go RAR/7z code, the 7z header guard (M3-12) and the `rardecode`/`sevenzip` dependencies.
 - PAR2 verify and repair run `par2`; parse its output into the existing `VerifyOutcome`. A small Go pre-check refuses hostile file names inside a set before par2 runs. Delete the pure-Go PAR2 and GF(2^16) code.
 - The daemon refuses to start when `7zz` or `par2` is missing from `PATH`.
-- Docker image: static `7zz` and `par2` for amd64 and arm64 on distroless. CI installs them for the tests.
+- Docker image: static `7zz` and `par2` for amd64 on distroless. CI installs them for the tests.
 
 **Acceptance criteria**
 - [ ] The orchestrator and the core ports are unchanged, and the post-processing end-to-end tests pass with the real tools.
 - [ ] Crafted archives and PAR2 sets (traversal names, symlinks, bombs, wrong password, truncation, missing volume) end in the right core error and write nothing outside the destination.
 - [ ] No pure-Go PAR2 or RAR/7z code or dependency remains, and `os/exec` is imported only by `internal/postproc/tool`.
-- [ ] The image runs both tools on amd64 and arm64.
+- [ ] The image runs both tools on amd64.

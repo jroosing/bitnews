@@ -8,8 +8,9 @@
 #
 # See docs/deploy.md for running it, and deploy/docker-compose.example.yml.
 
-# Build stage. It always runs on the build host's own platform and
-# cross-compiles, so a multi-arch build needs no QEMU emulation.
+# Build stage. It runs on the build host's own platform and compiles for
+# the target platform (linux/amd64 is the supported one; building on an
+# Apple Silicon Mac for local testing gives an arm64 image).
 # Pin the tag to a digest (golang:1.27.3@sha256:...) for reproducible builds;
 # docs/deploy.md describes how.
 FROM --platform=$BUILDPLATFORM golang:1.27.3 AS build

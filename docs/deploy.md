@@ -35,7 +35,7 @@ docker build -t bitnews \
   --build-arg COMMIT="$(git rev-parse --short HEAD)" .
 ```
 
-The build stage compiles with `CGO_ENABLED=0` on the build host's own platform and cross-compiles, so `docker buildx build --platform linux/amd64,linux/arm64 ...` needs no emulation. The image CI publishes to the registry is linux/amd64 only (a plain `docker build`); for an arm64 host build the image yourself with `docker buildx build --platform linux/arm64`. The final stage is `gcr.io/distroless/static-debian12`: no shell, no package manager, just the binary, CA certificates and tzdata (so `TZ` works).
+The build stage compiles with `CGO_ENABLED=0`. The supported image is linux/amd64, and it is what CI publishes (a plain `docker build`); there is no arm64 image. The final stage is `gcr.io/distroless/static-debian12`: no shell, no package manager, just the binary, CA certificates and tzdata (so `TZ` works).
 
 Pinning is a hardening step. Tags are mutable; pin both base images to a digest for reproducible builds:
 
@@ -195,7 +195,7 @@ The `HEALTHCHECK` uses `--interval=30s --timeout=5s --start-period=20s --retries
 
 ## Without Docker
 
-The binary is static and has no other files to install, so it also runs directly (`make build-all` builds `dist/bitnews-linux-amd64` and `-arm64`). It needs two programs on `PATH`: `7zz` (7-Zip 23 or newer, for unpacking) and `par2` (par2cmdline or par2cmdline-turbo, for repair), and refuses to start without them. `scripts/get-postproc-tools.sh` downloads the pinned, checksum-verified static versions for Linux and macOS into `bin/tools/`. Set the [bootstrap settings](#bootstrap-settings) as flags or environment variables, run it as the user that owns your media (see [Identity and UMASK](#identity-and-umask)), and keep it behind a reverse proxy as described above. `bitnews healthcheck` works outside Docker too, with the same contract. Docker is the supported way to run it; there is no systemd unit.
+The binary is static and has no other files to install, so it also runs directly (`make build-all` builds `dist/bitnews-linux-amd64`). It needs two programs on `PATH`: `7zz` (7-Zip 23 or newer, for unpacking) and `par2` (par2cmdline or par2cmdline-turbo, for repair), and refuses to start without them. `scripts/get-postproc-tools.sh` downloads the pinned, checksum-verified static versions for Linux and macOS into `bin/tools/`. Set the [bootstrap settings](#bootstrap-settings) as flags or environment variables, run it as the user that owns your media (see [Identity and UMASK](#identity-and-umask)), and keep it behind a reverse proxy as described above. `bitnews healthcheck` works outside Docker too, with the same contract. Docker is the supported way to run it; there is no systemd unit.
 
 ## Hardening checklist
 

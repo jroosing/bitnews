@@ -42,11 +42,10 @@ build:
     paths: [dist/]
     expire_in: 1 week
 
-# Image for the GitLab container registry (linux/amd64, the runner's own
-# architecture), tagged with the version (the tag, or the short commit on the
+# Image for the GitLab container registry, linux/amd64 only (the runner's own
+# architecture; there is no arm64 image), tagged with the version (the tag, or the short commit on the
 # default branch) and `latest`. It only runs for the default branch and for
-# tags, never for merge requests. For arm64, build the Dockerfile with
-# `docker buildx build --platform linux/arm64` (docs/deploy.md).
+# tags, never for merge requests.
 docker-image:
   stage: image
   # Registry timeouts on shared runners are usually gone on a second try.
