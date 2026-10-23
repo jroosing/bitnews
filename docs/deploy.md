@@ -46,6 +46,16 @@ docker buildx imagetools inspect gcr.io/distroless/static-debian12
 
 Then write `FROM golang:1.27.3@sha256:<digest>` and `FROM gcr.io/distroless/static-debian12@sha256:<digest>` in the `Dockerfile`. Distroless images are signed with cosign, and you can verify the one you pin (see the distroless README for the exact command). Renovate or Dependabot can keep the digests current.
 
+### Publishing the image by hand
+
+CI builds and pushes the image on every push to `main`, but you can do the same from your own machine, for example when CI minutes are used up. The image is linux/amd64 only; building it on an Apple Silicon Mac works without emulation, because the Go compile cross-compiles and the two tools are static downloads.
+
+1. Create a personal access token on GitLab (Preferences, Access tokens) with the `write_registry` scope.
+2. `docker login registry.gitlab.com -u <your GitLab user>` and paste the token as the password.
+3. `make image-push` builds `registry.gitlab.com/kyura4k/bitnews` and pushes it as `latest` and as the version (`git describe`). Set `REGISTRY_IMAGE=...` for another repository.
+
+The compose example pulls `registry.gitlab.com/kyura4k/bitnews:latest`; the registry is private unless the project's container registry visibility allows pulls, so the Docker host needs `docker login` with a token that has the `read_registry` scope.
+
 ### The master key
 
 The master key encrypts the secrets bitnews has to send in plaintext later: the Usenet Server passwords and the passwords of encrypted archives. (Login passwords and session tokens are only hashed and need no key. The API key is stored in plain text in the database, like the key of Sonarr and Radarr, so that Settings can show it.)

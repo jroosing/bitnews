@@ -3,15 +3,23 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 FUZZTIME ?= 10s
 PLATFORMS ?= linux/amd64
+REGISTRY_IMAGE ?= registry.gitlab.com/kyura4k/bitnews
 
 # Pinned 7-Zip and par2cmdline-turbo (ADR-0007), downloaded into bin/tools/.
 # The tests that exercise them find them through PATH.
 TOOLS_BIN := $(CURDIR)/bin/tools
 
-.PHONY: tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check
+# image-push builds the linux/amd64 image and pushes it to the GitLab registry
+# from this machine, tagged $(VERSION) and latest. Log in first (docs/deploy.md).
+.PHONY: image-push tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/bitnews ./cmd/bitnews
+
+image-push:
+	docker buildx build --platform linux/amd64 \
+		--build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
+		-t $(REGISTRY_IMAGE):latest -t $(REGISTRY_IMAGE):$(VERSION) --push .
 
 build-all:
 	@for p in $(PLATFORMS); do \
