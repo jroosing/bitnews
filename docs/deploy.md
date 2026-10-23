@@ -35,7 +35,7 @@ docker build -t bitnews \
   --build-arg COMMIT="$(git rev-parse --short HEAD)" .
 ```
 
-The build stage compiles with `CGO_ENABLED=0` on the build host's own platform and cross-compiles, so `docker buildx build --platform linux/amd64,linux/arm64 ...` needs no emulation. The final stage is `gcr.io/distroless/static-debian12`: no shell, no package manager, just the binary, CA certificates and tzdata (so `TZ` works).
+The build stage compiles with `CGO_ENABLED=0` on the build host's own platform and cross-compiles, so `docker buildx build --platform linux/amd64,linux/arm64 ...` needs no emulation. The image CI publishes to the registry is linux/amd64 only (a plain `docker build`); for an arm64 host build the image yourself with `docker buildx build --platform linux/arm64`. The final stage is `gcr.io/distroless/static-debian12`: no shell, no package manager, just the binary, CA certificates and tzdata (so `TZ` works).
 
 Pinning is a hardening step. Tags are mutable; pin both base images to a digest for reproducible builds:
 

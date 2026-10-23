@@ -453,7 +453,7 @@ M1 routes (more are added in later milestones):
 **Work**
 - Write a multi-stage `Dockerfile` ending in distroless static, running as a non-root user that `user:` overrides (see [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md)). Add a healthcheck via `bitnews healthcheck`, a subcommand that hits `/api/v1/health`.
 - Write `deploy/docker-compose.example.yml` with the TRaSH `/data` layout, `user:`/`UMASK`, and a commented gluetun variant. The key needs no secret; it is generated in `/config`.
-- Add a CI job that builds the image for amd64/arm64 and pushes it to the GitLab container registry on the default branch and on tags.
+- Add a CI job that builds the image (linux/amd64; an arm64 image is built by hand with buildx) and pushes it to the GitLab container registry on the default branch and on tags.
 - Write `docs/deploy.md` for the Docker path.
 
 **Acceptance criteria**

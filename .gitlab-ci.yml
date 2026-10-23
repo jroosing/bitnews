@@ -42,10 +42,11 @@ build:
     paths: [dist/]
     expire_in: 1 week
 
-# Multi-arch image for the GitLab container registry, tagged with the version
-# (the tag, or the short commit on the default branch) and `latest`. It only
-# runs for the default branch and for tags, never for merge requests. The Dockerfile
-# cross-compiles on the build host, so no QEMU emulation is needed.
+# Image for the GitLab container registry (linux/amd64, the runner's own
+# architecture), tagged with the version (the tag, or the short commit on the
+# default branch) and `latest`. It only runs for the default branch and for
+# tags, never for merge requests. For arm64, build the Dockerfile with
+# `docker buildx build --platform linux/arm64` (docs/deploy.md).
 docker-image:
   stage: image
   # Registry timeouts on shared runners are usually gone on a second try.
@@ -62,23 +63,10 @@ docker-image:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    # buildx refuses to build a builder straight from the dind TLS environment
-    # (DOCKER_HOST and DOCKER_TLS_VERIFY): give it a context made from it.
-    - docker context create ci-context
-    # The builder boots a moby/buildkit container. Docker Hub often times out
-    # on shared runners, so pull it with retries (and from Google's mirror as a
-    # fallback) before buildx needs it.
-    - |
-      pull() { for i in 1 2 3 4; do docker pull "$1" && return 0; sleep $((i * 5)); done; return 1; }
-      pull moby/buildkit:buildx-stable-1 || {
-        pull mirror.gcr.io/moby/buildkit:buildx-stable-1 &&
-        docker tag mirror.gcr.io/moby/buildkit:buildx-stable-1 moby/buildkit:buildx-stable-1
-      }
-    - docker buildx create --name ci-builder --driver docker-container --use ci-context
   script:
     - |
       version="${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
-      tags="-t $CI_REGISTRY_IMAGE:$version -t $CI_REGISTRY_IMAGE:latest"
-      docker buildx build --platform linux/amd64,linux/arm64 \
-        --build-arg VERSION="$version" --build-arg COMMIT="$CI_COMMIT_SHORT_SHA" \
-        $tags --push .
+      docker build --build-arg VERSION="$version" --build-arg COMMIT="$CI_COMMIT_SHORT_SHA" \
+        -t "$CI_REGISTRY_IMAGE:$version" -t "$CI_REGISTRY_IMAGE:latest" .
+      docker push "$CI_REGISTRY_IMAGE:$version"
+      docker push "$CI_REGISTRY_IMAGE:latest"
