@@ -14,6 +14,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/store"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 const (
@@ -213,7 +214,7 @@ func historyData(s *Server, r *http.Request) (any, error) {
 	}
 	now := time.Now()
 	for _, d := range page {
-		p.Rows = append(p.Rows, historyRowOf(now, d, names))
+		p.Rows = append(p.Rows, historyRowOf(now, s.View.Of(ctx, d), names))
 	}
 	if len(page) > 0 {
 		p.First, p.Last = start+1, start+len(page)
@@ -273,8 +274,9 @@ func (s *Server) historyEntries(ctx context.Context, f historyFilter) (all []cor
 	return all, truncated, nil
 }
 
-func historyRowOf(now time.Time, d core.Download, categories map[core.ID]string) historyRow {
-	badge, badgeLabel := stateBadge(d)
+func historyRowOf(now time.Time, v view.View, categories map[core.ID]string) historyRow {
+	d := v.Download
+	badge, badgeLabel := badgeOf(v)
 	kind, icon := kindLabel(d.SourceKind)
 	row := historyRow{
 		ID: string(d.ID), Name: histClean(d.Name, 255), ShortName: histClean(d.Name, 60), Kind: string(d.SourceKind), KindLabel: kind, KindIcon: icon,
@@ -292,7 +294,7 @@ func historyRowOf(now time.Time, d core.Download, categories map[core.ID]string)
 	case row.Failed:
 		row.WhenLabel = "Failed"
 		row.Reason = failureOf(d.FailureReason).Title
-		row.Detail = cleanFailureDetail(d.FailureDetail)
+		row.Detail = failureDetail(v)
 	}
 	return row
 }

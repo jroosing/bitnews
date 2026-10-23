@@ -16,7 +16,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 
@@ -25,6 +24,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/store"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 var epoch = time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
@@ -105,6 +105,7 @@ type stack struct {
 
 	mu     sync.Mutex
 	stages map[core.ID]core.Stage
+	rates  map[core.ID]int64
 	speed  int64
 	paused bool
 
@@ -136,7 +137,7 @@ func newStack(t *testing.T, opts ...stackOption) *stack {
 
 	s := &stack{
 		t: t, db: db, dbPath: dbPath, clock: &clock{t: epoch.Add(48 * time.Hour)}, log: &syncBuffer{},
-		remover: &removed{}, stages: map[core.ID]core.Stage{},
+		remover: &removed{}, stages: map[core.ID]core.Stage{}, rates: map[core.ID]int64{},
 		complete: filepath.Join(t.TempDir(), "complete"), incomplete: filepath.Join(t.TempDir(), "incomplete"),
 	}
 	logger := slog.New(slog.NewTextHandler(s.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -159,14 +160,12 @@ func newStack(t *testing.T, opts ...stackOption) *stack {
 	require.NoError(t, err)
 	s.key = s.appKey.Current().Reveal()
 
+	views, err := view.New(view.Config{Downloads: s.downloads, Live: stackLive{s}, Settings: s.settings.Current})
+	require.NoError(t, err)
+
 	deps := sabnzbd.Deps{
 		AppKey: s.appKey, Downloads: s.dls, Adder: s.adder, Categories: s.categories, Settings: s.settings,
-		StageSource: func(id core.ID) (core.Stage, bool) {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			st, ok := s.stages[id]
-			return st, ok
-		},
+		View: views,
 		SpeedSource: func() (int64, bool) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
@@ -181,12 +180,31 @@ func newStack(t *testing.T, opts ...stackOption) *stack {
 	return s
 }
 
+// stackLive is the view's live source in the tests: the stage and the
+// download rate set per Download with setStage and setRate.
+type stackLive struct{ s *stack }
+
+func (l stackLive) Live(_ context.Context, d core.Download) view.Live {
+	l.s.mu.Lock()
+	defer l.s.mu.Unlock()
+	st, ok := l.s.stages[d.ID]
+	return view.Live{Stage: st, HaveStage: ok, DownRate: l.s.rates[d.ID]}
+}
+
 func (s *stack) setStage(id core.ID, st core.Stage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stages[id] = st
 }
 
+// setRate sets one Download's own download rate.
+func (s *stack) setRate(id core.ID, bps int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rates[id] = bps
+}
+
+// setSpeed sets the global rate and pause flag of the SpeedSource.
 func (s *stack) setSpeed(bps int64, paused bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -334,10 +352,6 @@ func uploadRequestFieldsLast(t *testing.T, target, filename, nzb string, fields 
 	r.Header.Set("Content-Type", mw.FormDataContentType())
 	return r
 }
-
-func repeat(s string, n int) string { return strings.Repeat(s, n) }
-
-func utf8Valid(s string) bool { return utf8.ValidString(s) }
 
 // plainNZB has no <meta> name, so the Download is named after the upload.
 const plainNZB = `<?xml version="1.0" encoding="UTF-8"?>

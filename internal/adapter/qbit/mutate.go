@@ -100,15 +100,7 @@ func (c *call) setCategory() {
 }
 
 // byQueue orders entries the way their Queue runs them.
-func byQueue(a, b entry) int {
-	if a.d.QueuePosition != b.d.QueuePosition {
-		return a.d.QueuePosition - b.d.QueuePosition
-	}
-	if c := a.d.AddedAt.Compare(b.d.AddedAt); c != 0 {
-		return c
-	}
-	return strings.Compare(string(a.d.ID), string(b.d.ID))
-}
+func byQueue(a, b entry) int { return core.CompareQueueOrder(a.d, b.d) }
 
 // move serves topPrio, bottomPrio, increasePrio and decreasePrio. Several
 // torrents keep their order relative to each other. A Download that is not in

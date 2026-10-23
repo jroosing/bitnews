@@ -1,86 +1,106 @@
 package sabnzbd
 
 import (
-	"cmp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
-// view holds what queue and history need to build their answers: the
-// NZB Downloads of some states, the Category names, and the filter.
-type view struct {
-	downloads []core.Download
-	catNames  map[core.ID]string
+// catFilter is the Category names, and the Categories a listing is limited
+// to.
+type catFilter struct {
+	names map[core.ID]string
+	// want is the Category IDs to show ("" is the uncategorised ones); nil
+	// shows every Download. none says the filter named nothing that exists.
+	want map[core.ID]bool
+	none bool
 }
 
 // catName is the name SAB shows for a Download's Category.
-func (v view) catName(d core.Download) string {
-	if n, ok := v.catNames[d.CategoryID]; ok && d.CategoryID != "" {
+func (f catFilter) catName(d core.Download) string {
+	if n, ok := f.names[d.CategoryID]; ok && d.CategoryID != "" {
 		return n
 	}
 	return defaultCategoryName
 }
 
-// load reads the NZB Downloads in the given states that match the category
-// filter (a comma-separated list of names; "*" is the uncategorised ones;
-// empty is all).
-func (c *call) load(states []core.State, categoryFilter string) (view, error) {
+func (f catFilter) matches(d core.Download) bool {
+	return !f.none && (f.want == nil || f.want[d.CategoryID])
+}
+
+// single is the one Category to ask the repository for, or "" for all (and
+// for the uncategorised ones, which matches filters afterwards).
+func (f catFilter) single() core.ID {
+	if len(f.want) != 1 {
+		return ""
+	}
+	for id := range f.want {
+		return id
+	}
+	return ""
+}
+
+// readCatFilter reads the Categories and parses a category filter: a
+// comma-separated list of names, "*" for the uncategorised ones, empty for
+// all.
+func (c *call) readCatFilter(filter string) (catFilter, error) {
 	cats, err := c.h.Categories.List(c.ctx())
 	if err != nil {
-		return view{}, err
+		return catFilter{}, err
 	}
-	v := view{catNames: make(map[core.ID]string, len(cats))}
+	f := catFilter{names: make(map[core.ID]string, len(cats))}
 	for _, cat := range cats {
-		v.catNames[cat.ID] = cat.Name
+		f.names[cat.ID] = cat.Name
 	}
+	if filter = strings.TrimSpace(filter); filter == "" {
+		return f, nil
+	}
+	f.want = map[core.ID]bool{}
+	for n := range strings.SplitSeq(filter, ",") {
+		n = strings.TrimSpace(n)
+		if n == defaultCategoryName {
+			f.want[""] = true
+		} else if cat, ok := findCategory(cats, n); ok {
+			f.want[cat.ID] = true
+		}
+	}
+	f.none = len(f.want) == 0
+	return f, nil
+}
 
-	var want map[core.ID]bool // nil: no filter
-	var single core.ID        // the one Category to ask the repository for
-	if categoryFilter = strings.TrimSpace(categoryFilter); categoryFilter != "" {
-		want = map[core.ID]bool{}
-		names := strings.SplitSeq(categoryFilter, ",")
-		for n := range names {
-			n = strings.TrimSpace(n)
-			if n == defaultCategoryName {
-				want[""] = true
-			} else if cat, ok := findCategory(cats, n); ok {
-				want[cat.ID] = true
-			}
-		}
-		if len(want) == 0 {
-			return v, nil // nothing can match
-		}
-		if len(want) == 1 {
-			for id := range want {
-				single = id // "" (uncategorised) is filtered below
-			}
-		}
-	}
+// queueViews is the NZB queue in queue order, from the view module.
+func (c *call) queueViews() ([]view.View, error) {
+	return c.h.View.Queue(c.ctx(), core.SourceNZB)
+}
 
-	for _, st := range states {
-		for after := ""; ; {
-			page, err := c.h.Downloads.List(c.ctx(), app.ListFilter{
-				State: st, Kind: core.SourceNZB, CategoryID: single, After: after, Limit: pageSize,
-			})
-			if err != nil {
-				return view{}, err
-			}
-			for _, d := range page.Items {
-				if want == nil || want[d.CategoryID] {
-					v.downloads = append(v.downloads, d)
-				}
-			}
-			if page.Next == "" {
-				break
-			}
-			after = page.Next
-		}
+// historyDownloads reads the NZB Downloads that are out of the queue and
+// match f, every page of them.
+func (c *call) historyDownloads(f catFilter) ([]core.Download, error) {
+	if f.none {
+		return nil, nil
 	}
-	return v, nil
+	var out []core.Download
+	for after := ""; ; {
+		page, err := c.h.Downloads.List(c.ctx(), app.ListFilter{
+			Kind: core.SourceNZB, CategoryID: f.single(), After: after, Limit: pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range page.Items {
+			if !d.State.InQueue() && f.matches(d) {
+				out = append(out, d)
+			}
+		}
+		if page.Next == "" {
+			return out, nil
+		}
+		after = page.Next
+	}
 }
 
 // paging reads start and limit. A missing, invalid or negative start is 0;
@@ -121,13 +141,4 @@ func (c *call) deleteData() bool {
 		return true
 	}
 	return false
-}
-
-// byQueueOrder sorts Downloads the way their Queue runs them.
-func byQueueOrder(a, b core.Download) int {
-	return cmp.Or(
-		cmp.Compare(a.QueuePosition, b.QueuePosition),
-		a.AddedAt.Compare(b.AddedAt),
-		strings.Compare(string(a.ID), string(b.ID)),
-	)
 }

@@ -17,6 +17,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // Versions the adapter reports. Sonarr and Radarr want qBittorrent 3.2.4 or
@@ -60,7 +61,7 @@ type SettingsReader interface {
 }
 
 // Deps is everything the adapter needs. AppKey, Downloads, Categories,
-// Settings, Torrents, Adder and ShareLimits are required; the rest are
+// Settings, Torrents, Adder, ShareLimits and View are required; the rest are
 // optional.
 type Deps struct {
 	AppKey      *auth.AppKeyService
@@ -70,6 +71,9 @@ type Deps struct {
 	Torrents    TorrentSource
 	Adder       TorrentAdder
 	ShareLimits ShareLimiter
+	// View gives each torrent's phase, progress, rates, ETA, ratio, counters
+	// and effective Share Limit.
+	View *view.Module
 
 	// Files answers torrents/files. Without it the list is empty.
 	Files FileSource
@@ -98,7 +102,7 @@ type Deps struct {
 // missing, since that is a wiring bug found at startup.
 func New(d Deps) http.Handler {
 	if d.AppKey == nil || d.Downloads == nil || d.Categories == nil || d.Settings == nil ||
-		d.Torrents == nil || d.Adder == nil || d.ShareLimits == nil {
+		d.Torrents == nil || d.Adder == nil || d.ShareLimits == nil || d.View == nil {
 		panic("qbit: Deps is missing a required service")
 	}
 	if d.Logger == nil {
@@ -317,5 +321,3 @@ func printable(s string, n int) string {
 	}
 	return s
 }
-
-func isNotFound(err error) bool { return errors.Is(err, core.ErrNotFound) }

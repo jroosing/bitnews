@@ -14,7 +14,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
-func hashes(vs ...qbit.TorrentView) string {
+func hashes(vs ...torrent) string {
 	hs := make([]string, len(vs))
 	for i, v := range vs {
 		hs[i] = v.InfoHash
@@ -139,7 +139,7 @@ func TestADownloadBeingPostProcessedIsNotDeleted(t *testing.T) {
 func TestDeleteLeavesNZBDownloadsAlone(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	d, v := s.seed("nzb with a torrent view?", func(d *core.Download, _ *qbit.TorrentView) { d.SourceKind = core.SourceNZB })
+	d, v := s.seed("nzb with a torrent view?", func(d *core.Download, _ *torrent) { d.SourceKind = core.SourceNZB })
 	sid := s.login()
 
 	s.post(sid, "/api/v2/torrents/delete", url.Values{"hashes": {v.InfoHash}, "deleteFiles": {"true"}})
@@ -228,16 +228,16 @@ func queueOrder(s *stack, sid *http.Cookie) []string { return names(s.info(sid, 
 
 func TestQueuePositionCalls(t *testing.T) {
 	t.Parallel()
-	setup := func() (*stack, *http.Cookie, []qbit.TorrentView) {
+	setup := func() (*stack, *http.Cookie, []torrent) {
 		s := newStack(t)
-		var vs []qbit.TorrentView
+		var vs []torrent
 		for _, n := range []string{"a", "b", "c", "d"} {
 			_, v := s.seed(n)
 			vs = append(vs, v)
 		}
 		return s, s.login(), vs
 	}
-	call := func(s *stack, sid *http.Cookie, ep string, vs ...qbit.TorrentView) {
+	call := func(s *stack, sid *http.Cookie, ep string, vs ...torrent) {
 		t.Helper()
 		require.Equal(t, http.StatusOK, s.post(sid, "/api/v2/torrents/"+ep, url.Values{"hashes": {hashes(vs...)}}).Code)
 	}

@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/html"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -88,6 +89,7 @@ func TestStatusIsSentOnlyWhenItChanges(t *testing.T) {
 func TestProgressArrivesAsRenderedCellsOncePerTick(t *testing.T) {
 	q := newQueueEnv(t)
 	d := q.add(core.Download{Name: "Some.Release", State: core.StateFetching, TotalBytes: 1000})
+	q.live.set(d.ID, view.Live{DownRate: 2 << 20}) // the rate the daemon's tracker follows
 	s := q.openStream(t, "?rows=1")
 	s.until("status")
 
@@ -134,6 +136,7 @@ func TestStageEventUpdatesTheStatusCell(t *testing.T) {
 	s := q.openStream(t, "?rows=1")
 	s.until("status")
 
+	q.live.set(d.ID, view.Live{Stage: core.StageRepairing, HaveStage: true}) // the stage the daemon's tracker follows
 	q.bus.Publish(core.PostProcessStage{ID: d.ID, Stage: core.StageRepairing})
 	q.flush()
 

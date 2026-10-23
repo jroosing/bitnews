@@ -144,38 +144,3 @@ func (r *Runner) diskFull(ctx context.Context, id core.ID, cause error) {
 		r.log.Warn("torrent runner: cannot requeue the download", "id", id, "err", err)
 	}
 }
-
-// Info is a snapshot of what the runner knows about a torrent in the engine,
-// taken from memory only (no disk, no database).
-type Info struct {
-	Hash core.InfoHash
-	// Dir is the Download's directory, wherever the move to complete put it.
-	Dir string
-	// BaseUploaded and BaseSeeding are the counters of earlier runs; the
-	// totals are these plus the engine's own.
-	BaseUploaded int64
-	BaseSeeding  time.Duration
-	// RatioLimit and SeedingTimeLimit are the Download's own Share Limit; nil
-	// means the default applies, a negative value is unlimited.
-	RatioLimit       *float64
-	SeedingTimeLimit *time.Duration
-	// Fetched is set once the torrent is complete and Seeding.
-	Fetched bool
-	// LimitPaused is set while the torrent is paused by its Share Limit.
-	LimitPaused bool
-}
-
-// Info returns the snapshot for the Download; false means the engine does
-// not have its torrent.
-func (r *Runner) Info(id core.ID) (Info, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	t := r.tors[id]
-	if t == nil {
-		return Info{}, false
-	}
-	return Info{
-		Hash: t.hash, Dir: t.dir, BaseUploaded: t.baseUploaded, BaseSeeding: t.baseSeeding,
-		RatioLimit: t.ratioLimit, SeedingTimeLimit: t.timeLimit, Fetched: t.fetched, LimitPaused: t.limitPaused,
-	}, true
-}

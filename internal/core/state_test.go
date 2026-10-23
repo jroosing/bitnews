@@ -65,3 +65,15 @@ func TestTransitionRejectsUnknownStates(t *testing.T) {
 		}
 	}
 }
+
+func TestInQueueIsTrueForTheStatesBeforeFetched(t *testing.T) {
+	for state, want := range map[core.State]bool{
+		core.StateAdded: true, core.StateFetchingMetadata: true, core.StateQueued: true, core.StateFetching: true,
+		core.StateFetched: false, core.StatePostProcessing: false, core.StateReady: false, core.StateFailed: false,
+		"unknown": false,
+	} {
+		if got := state.InQueue(); got != want {
+			t.Errorf("%s.InQueue() = %v, want %v", state, got, want)
+		}
+	}
+}

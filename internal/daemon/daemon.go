@@ -28,6 +28,7 @@ import (
 	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
 	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 	"gitlab.com/kyura4k/gitnews/internal/web"
 )
 
@@ -301,6 +302,14 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	downloadService := app.NewDownloadService(downloads, categories, bus, app.WithDataRemover(remover))
 	shareLimits.downloads = downloadService
 	track := newTracker()
+	var facts torrentFacts // a nil interface when torrents are off
+	if trun != nil {
+		facts = trun
+	}
+	views, err := view.New(view.Config{Downloads: downloads, Live: liveSource{track: track, torrents: facts}, Settings: settings.Current})
+	if err != nil {
+		return nil, err
+	}
 	diskSpace := fsDiskSpace
 	if tune.FreeSpace != nil {
 		diskSpace = func(path string) (int64, int64, bool) {
@@ -321,17 +330,17 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	var qbitHandler http.Handler
 	var webTorrentSource web.TorrentSource
 	if trun != nil {
-		torrents := newQBitTorrents(downloads, torrentSources, torrentRecords, engine, trun, settings.Current, log)
-		webTorrentSource = newWebTorrents(torrents)
+		torrents := newQBitTorrents(downloads, torrentSources, trun)
+		webTorrentSource = newWebTorrents(trun)
 		qbitHandler = qbit.New(qbit.Deps{
 			AppKey: appKey, Downloads: downloadService, Categories: categoryService, Settings: settings,
-			Torrents: torrents, Files: torrents, ShareLimits: torrents,
+			Torrents: torrents, Files: torrents, ShareLimits: torrents, View: views,
 			Adder:       &qbitAdder{add: adder, limits: torrents, log: log},
 			GlobalShare: qbitGlobalShare(settings.Current), Logger: log,
 		})
 	}
 	serverService := app.NewServerService(servers, bus, prober)
-	runtime := newWebRuntime(queuesOf(run, trun), run, torrentRunnerOrNil(trun), engine, downloads, track)
+	runtime := newWebRuntime(queuesOf(run, trun), run, torrentRunnerOrNil(trun), track)
 	// The speed limits of the Settings are in force from the start, before
 	// the runners run (the torrent runner passes them to its engine then).
 	speed := &speedApplier{settings: settings.Current, target: runtime}
@@ -341,9 +350,9 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Logger: log, Version: deps.Version.Version,
 		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
-		Adder: adder, AppKey: appKey,
+		Adder: adder, AppKey: appKey, View: views,
 		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port},
-		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}, track: track},
+		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}},
 	})
 	if err != nil {
 		return nil, err
@@ -365,9 +374,8 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Web:  webUI,
 		QBit: qbitHandler,
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
-			AppKey: appKey, Downloads: downloadService, Adder: adder,
+			AppKey: appKey, Downloads: downloadService, Adder: adder, View: views,
 			Categories: categoryService, Settings: settings,
-			StageSource: track.stage,
 			SpeedSource: func() (int64, bool) { paused, _, _ := run.Queue().Paused(); return track.speed(), paused },
 			DiskSpace:   diskSpace,
 			Logger:      log,

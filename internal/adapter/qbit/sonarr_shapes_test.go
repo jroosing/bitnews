@@ -93,15 +93,15 @@ func TestSonarrAndRadarrCanDecodeEveryAnswer(t *testing.T) {
 	// A fractional ratio and a limit that is not a whole number of minutes
 	// exercise the number types.
 	_, seeding := s.seed("Show.S01E01", ready("/data/torrents/tv/Show.S01E01"), sized(1<<40, 1<<40), inCategory(tv.ID),
-		func(_ *core.Download, v *qbit.TorrentView) {
-			v.UpRate, v.Uploaded, v.Ratio, v.SeedingTime = 12345, 1<<41, 2.0000001, 3*time.Hour
-			v.ShareLimit = qbit.ShareLimit{Ratio: 1.7, SeedingSeconds: 90}
+		func(_ *core.Download, v *torrent) {
+			v.UpRate, v.Uploaded, v.SeedingTime = 12345, 1<<41+1<<20, 3*time.Hour // a fractional ratio
+			v.OwnRatio, v.OwnSeeding = new(1.7), new(90*time.Second)
 			v.Private = true
 		})
-	s.seed("Show.S01E02", inState(core.StateFetching), sized(1<<30, 1<<20), func(_ *core.Download, v *qbit.TorrentView) { v.DownRate = 3 })
+	s.seed("Show.S01E02", inState(core.StateFetching), sized(1<<30, 1<<20), func(_ *core.Download, v *torrent) { v.DownRate = 3 })
 	s.seed("Show.S01E03", inState(core.StateFetchingMetadata))
 	s.seed("Show.S01E04", inState(core.StatePostProcessing), sized(1000, 1000))
-	s.engine.files[seeding.InfoHash] = []qbit.TorrentFile{{Name: "Show.S01E01/a.mkv", Size: 1 << 40, Progress: 1}}
+	s.engine.setFiles(seeding.InfoHash, qbit.TorrentFile{Name: "Show.S01E01/a.mkv", Size: 1 << 40})
 	sid := s.login()
 
 	var torrents []sonarrTorrent
@@ -162,7 +162,7 @@ func TestTheSonarrReadingOfEveryStateWeProduce(t *testing.T) {
 	s.seed("added", inState(core.StateAdded))
 	s.seed("meta", inState(core.StateFetchingMetadata))
 	s.seed("queued")
-	s.seed("fetching", inState(core.StateFetching), func(_ *core.Download, v *qbit.TorrentView) { v.DownRate = 1 })
+	s.seed("fetching", inState(core.StateFetching), func(_ *core.Download, v *torrent) { v.DownRate = 1 })
 	s.seed("stalled", inState(core.StateFetching))
 	s.seed("fetched", inState(core.StateFetched))
 	s.seed("post", inState(core.StatePostProcessing))

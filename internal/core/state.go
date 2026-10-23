@@ -24,6 +24,16 @@ const (
 	StateFailed           State = "failed"
 )
 
+// InQueue reports whether a Download in this State is still in a Queue: it
+// has been added but not Fetched yet.
+func (s State) InQueue() bool {
+	switch s {
+	case StateAdded, StateFetchingMetadata, StateQueued, StateFetching:
+		return true
+	}
+	return false
+}
+
 // ErrIllegalTransition is returned by Transition for any move the lifecycle
 // does not allow. Getting it means there is a bug in the caller.
 var ErrIllegalTransition = errors.New("illegal state transition")

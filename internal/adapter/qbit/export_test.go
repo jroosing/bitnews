@@ -1,10 +1,10 @@
 package qbit
 
-import "gitlab.com/kyura4k/gitnews/internal/core"
+import "gitlab.com/kyura4k/gitnews/internal/view"
 
 // TorrentState exposes the state mapping to the table test.
-func TorrentState(d core.Download, v TorrentView, stopped bool) (state string, progress float64) {
-	return torrentState(d, v, stopped)
+func TorrentState(v view.View, stopped bool) (state string, progress float64) {
+	return torrentState(v, stopped)
 }
 
 // HoldOffProgress is the progress shown while a Download is Fetched or

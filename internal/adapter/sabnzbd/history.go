@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // historyMode serves mode=history: the listing, and name=delete.
@@ -33,50 +34,50 @@ func (c *call) historyList() {
 	if filter == "" {
 		filter = c.get("cat")
 	}
-	v, err := c.load(historyStates, filter)
+	f, err := c.readCatFilter(filter)
 	if err != nil {
 		c.appFail(err)
 		return
 	}
-	slices.SortFunc(v.downloads, func(a, b core.Download) int {
+	ds, err := c.historyDownloads(f)
+	if err != nil {
+		c.appFail(err)
+		return
+	}
+	slices.SortFunc(ds, func(a, b core.Download) int {
 		return cmp.Or(
 			sortTime(b).Compare(sortTime(a)),
 			strings.Compare(string(b.ID), string(a.ID)),
 		)
 	})
 	start, limit := c.paging()
-	lo, hi := page(len(v.downloads), start, limit)
+	lo, hi := page(len(ds), start, limit)
 
 	slots := make([]historySlot, 0, hi-lo)
-	for _, d := range v.downloads[lo:hi] {
-		slots = append(slots, c.historySlot(v, d))
+	for _, d := range ds[lo:hi] {
+		slots = append(slots, c.historySlot(f, c.h.View.Of(c.ctx(), d)))
 	}
 	inProcess := 0
-	for _, d := range v.downloads {
+	for _, d := range ds {
 		if d.State == core.StateFetched || d.State == core.StatePostProcessing {
 			inProcess++
 		}
 	}
 	c.json(historyBody{History: history{
-		NoOfSlots: len(v.downloads), PPSlots: inProcess,
+		NoOfSlots: len(ds), PPSlots: inProcess,
 		TotalSize: "0 B", MonthSize: "0 B", WeekSize: "0 B", DaySize: "0 B",
 		LastHistoryUpdate: c.h.Clock().Unix(),
 		Slots:             slots,
 	}})
 }
 
-func (c *call) historySlot(v view, d core.Download) historySlot {
-	var stage core.Stage
-	var haveStage bool
-	if c.h.StageSource != nil && d.State == core.StatePostProcessing {
-		stage, haveStage = c.h.StageSource(d.ID)
-	}
-	_, status := classify(d, stage, haveStage)
-
+func (c *call) historySlot(f catFilter, v view.View) historySlot {
+	d := v.Download
+	st := status(v)
 	s := historySlot{
-		NzoID: nzoID(d.ID), Name: d.Name, NzbName: d.Name + ".nzb", Category: v.catName(d),
-		Status: status, ActionLine: stageText(status),
-		Bytes: d.TotalBytes, Size: humanBytes(d.TotalBytes), Downloaded: d.DoneBytes,
+		NzoID: nzoID(d.ID), Name: d.Name, NzbName: d.Name + ".nzb", Category: f.catName(d),
+		Status: st, ActionLine: stageText(st),
+		Bytes: v.Total, Size: humanBytes(v.Total), Downloaded: v.Done,
 		Completed: unix(sortTime(d)), PP: "D", Script: "None",
 		URL: d.Name + ".nzb",
 	}
@@ -86,11 +87,11 @@ func (c *call) historySlot(v view, d core.Download) historySlot {
 			s.PostprocTime = max(int64(d.ReadyAt.Sub(d.FetchedAt).Seconds()), 0)
 		}
 	}
-	switch d.State {
-	case core.StateReady:
+	if d.State == core.StateReady {
 		s.Storage, s.Path = d.OutputPath, d.OutputPath
-	case core.StateFailed:
-		s.FailMessage = failureText(d.FailureReason, d.FailureDetail)
+	}
+	if v.Failure != nil {
+		s.FailMessage = failureText(*v.Failure)
 	}
 	return s
 }

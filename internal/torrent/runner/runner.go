@@ -27,7 +27,8 @@ type Runner struct {
 	tors      map[core.ID]*tor
 	rateDown  int64
 	rateUp    int64
-	bad       map[core.ID]struct{} // Downloads whose torrent cannot be added
+	bad       map[core.ID]struct{}      // Downloads whose torrent cannot be added
+	hashes    map[core.ID]core.InfoHash // remembered info hashes, see hashOf
 	needSweep bool
 	recMu     sync.Mutex // serialises read-modify-write of the records
 	throttle  *core.ProgressThrottle
@@ -71,6 +72,7 @@ func New(cfg Config) (*Runner, error) {
 	r.wake = make(chan struct{}, 1)
 	r.tors = map[core.ID]*tor{}
 	r.bad = map[core.ID]struct{}{}
+	r.hashes = map[core.ID]core.InfoHash{}
 	q, err := queue.New(queue.Config{
 		Source: core.SourceTorrent, Downloads: cfg.Downloads, Bus: cfg.Bus, Settings: cfg.Settings,
 		Protocol: protocol{r}, MinFree: cfg.MinFree, FreeSpace: free, Now: r.now, Wake: r.poke, Logger: r.log,

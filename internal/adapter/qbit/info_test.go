@@ -15,8 +15,8 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
-func inCategory(id core.ID) func(*core.Download, *qbit.TorrentView) {
-	return func(d *core.Download, _ *qbit.TorrentView) { d.CategoryID = id }
+func inCategory(id core.ID) func(*core.Download, *torrent) {
+	return func(d *core.Download, _ *torrent) { d.CategoryID = id }
 }
 
 func TestInfoOfNothingIsAnEmptyArrayNotNull(t *testing.T) {
@@ -36,12 +36,12 @@ func TestInfoListsEveryFieldTheMediaManagersRead(t *testing.T) {
 	s := newStack(t)
 	tv := s.category("tv")
 	d, v := s.seed("Show.S01E01.1080p", ready("/data/torrents/tv/Show.S01E01.1080p"), sized(2000, 2000), inCategory(tv.ID),
-		func(d *core.Download, v *qbit.TorrentView) {
-			v.UpRate, v.Uploaded, v.Ratio, v.SeedingTime = 100, 3000, 1.5, 90*time.Minute
+		func(d *core.Download, v *torrent) {
+			v.UpRate, v.Uploaded, v.SeedingTime = 100, 3000, 90*time.Minute
 			v.Seeds, v.Peers = 4, 2
 			v.SavePath = "/data/torrents/tv"
-			v.CompletedAt = epoch.Add(10 * time.Minute)
-			v.ShareLimit = qbit.ShareLimit{Ratio: 2.0, SeedingSeconds: 7200}
+			d.FetchedAt = epoch.Add(10 * time.Minute)
+			v.OwnRatio, v.OwnSeeding = new(2.0), new(7200*time.Second)
 		})
 	sid := s.login()
 
@@ -68,7 +68,7 @@ func TestInfoListsEveryFieldTheMediaManagersRead(t *testing.T) {
 	assert.EqualValues(t, 2000, m["completed"])
 	assert.EqualValues(t, 100, m["upspeed"])
 	assert.EqualValues(t, 3000, m["uploaded"])
-	assert.EqualValues(t, 1.5, m["ratio"])
+	assert.EqualValues(t, 1.5, m["ratio"], "uploaded over size, from the view")
 	assert.EqualValues(t, 2.0, m["ratio_limit"])
 	assert.EqualValues(t, 120, m["seeding_time_limit"], "minutes")
 	assert.EqualValues(t, 5400, m["seeding_time"], "seconds")
@@ -86,12 +86,12 @@ func TestInfoListsEveryFieldTheMediaManagersRead(t *testing.T) {
 func TestShareLimitCodes(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	s.seed("global", ready("/d/g"), func(_ *core.Download, v *qbit.TorrentView) { v.ShareLimit = qbit.ShareLimit{Global: true} })
-	s.seed("none", ready("/d/n"), func(_ *core.Download, v *qbit.TorrentView) {
-		v.ShareLimit = qbit.ShareLimit{Ratio: -1, SeedingSeconds: -1}
+	s.seed("global", ready("/d/g"))
+	s.seed("none", ready("/d/n"), func(_ *core.Download, v *torrent) {
+		v.OwnRatio, v.OwnSeeding = new(-1.0), new(time.Duration(-1))
 	})
-	s.seed("odd seconds", ready("/d/o"), func(_ *core.Download, v *qbit.TorrentView) {
-		v.ShareLimit = qbit.ShareLimit{Ratio: 0.5, SeedingSeconds: 61}
+	s.seed("odd seconds", ready("/d/o"), func(_ *core.Download, v *torrent) {
+		v.OwnRatio, v.OwnSeeding = new(0.5), new(61*time.Second)
 	})
 	sid := s.login()
 
@@ -158,15 +158,15 @@ func TestInfoRefusesTooManyHashes(t *testing.T) {
 func TestInfoFilters(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	s.seed("downloading", inState(core.StateFetching), sized(100, 10), func(_ *core.Download, v *qbit.TorrentView) { v.DownRate = 5 })
+	s.seed("downloading", inState(core.StateFetching), sized(100, 10), func(_ *core.Download, v *torrent) { v.DownRate = 5 })
 	s.seed("stalled", inState(core.StateFetching), sized(100, 10))
 	s.seed("queued")
-	s.seed("paused", func(d *core.Download, _ *qbit.TorrentView) { d.Paused = true })
+	s.seed("paused", func(d *core.Download, _ *torrent) { d.Paused = true })
 	s.seed("fetched", inState(core.StateFetched), sized(100, 100))
-	s.seed("seeding", ready("/d/s"), func(_ *core.Download, v *qbit.TorrentView) { v.UpRate = 9 })
+	s.seed("seeding", ready("/d/s"), func(_ *core.Download, v *torrent) { v.UpRate = 9 })
 	s.seed("idle", ready("/d/i"))
-	s.seed("limit reached", ready("/d/l"), func(_ *core.Download, v *qbit.TorrentView) { v.Paused = true })
-	s.seed("failed", func(d *core.Download, _ *qbit.TorrentView) {
+	s.seed("limit reached", ready("/d/l"), func(_ *core.Download, v *torrent) { v.Paused = true })
+	s.seed("failed", func(d *core.Download, _ *torrent) {
 		d.State, d.FailureReason = core.StateFailed, core.FailureArchiveCorrupt
 	})
 	sid := s.login()
@@ -216,7 +216,7 @@ func TestInfoSortsAndPages(t *testing.T) {
 func TestInfoShowsTheEtaOfADownload(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	s.seed("x", inState(core.StateFetching), sized(1000, 400), func(_ *core.Download, v *qbit.TorrentView) { v.DownRate = 100 })
+	s.seed("x", inState(core.StateFetching), sized(1000, 400), func(_ *core.Download, v *torrent) { v.DownRate = 100 })
 	sid := s.login()
 
 	got := s.info(sid, "")
@@ -229,7 +229,7 @@ func TestTorrentDownloadsOnlyNotNZBs(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	s.seed("tor")
-	s.seed("nzb", func(d *core.Download, _ *qbit.TorrentView) { d.SourceKind = core.SourceNZB })
+	s.seed("nzb", func(d *core.Download, _ *torrent) { d.SourceKind = core.SourceNZB })
 	sid := s.login()
 
 	assert.Equal(t, []string{"tor"}, names(s.info(sid, "")))
@@ -239,8 +239,8 @@ func TestAViewWithoutADownloadOrWithABadHashIsLeftOut(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	s.seed("real")
-	s.engine.put(qbit.TorrentView{DownloadID: core.NewID(), InfoHash: strings.Repeat("a", 40), Name: "orphan"})
-	s.seed("bad hash", func(_ *core.Download, v *qbit.TorrentView) { v.InfoHash = "nothex" })
+	s.engine.put(torrent{DownloadID: core.NewID(), InfoHash: strings.Repeat("a", 40), Name: "orphan"})
+	s.seed("bad hash", func(_ *core.Download, v *torrent) { v.InfoHash = "nothex" })
 	sid := s.login()
 
 	assert.Equal(t, []string{"real"}, names(s.info(sid, "")))
@@ -266,12 +266,10 @@ func TestPathsFallBackToTheTorrentRoots(t *testing.T) {
 func TestPropertiesAndFiles(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	_, v := s.seed("rel", inState(core.StateFetched), sized(300, 300), func(_ *core.Download, v *qbit.TorrentView) {
+	_, v := s.seed("rel", inState(core.StateFetched), sized(300, 300), func(_ *core.Download, v *torrent) {
 		v.Private, v.SavePath = true, "/data/torrents/tv"
 	})
-	s.engine.files[v.InfoHash] = []qbit.TorrentFile{
-		{Name: "rel/a.mkv", Size: 200, Progress: 1}, {Name: "rel/../b.nfo", Size: 100, Progress: 0.5},
-	}
+	s.engine.setFiles(v.InfoHash, qbit.TorrentFile{Name: "rel/a.mkv", Size: 200}, qbit.TorrentFile{Name: "rel/../b.nfo", Size: 100})
 	sid := s.login()
 
 	var props map[string]any
@@ -295,7 +293,7 @@ func TestFilesOfAReadyTorrentAreComplete(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	_, v := s.seed("rel", ready("/d/rel"), sized(100, 100))
-	s.engine.files[v.InfoHash] = []qbit.TorrentFile{{Name: "rel/a.mkv", Size: 100, Progress: 1}}
+	s.engine.setFiles(v.InfoHash, qbit.TorrentFile{Name: "rel/a.mkv", Size: 100})
 	sid := s.login()
 
 	var files []map[string]any
@@ -336,7 +334,7 @@ func TestMaindataIsAFullUpdate(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	tv := s.category("tv")
-	_, v := s.seed("x", inCategory(tv.ID), inState(core.StateFetching), func(_ *core.Download, v *qbit.TorrentView) { v.DownRate = 7 })
+	_, v := s.seed("x", inCategory(tv.ID), inState(core.StateFetching), func(_ *core.Download, v *torrent) { v.DownRate = 7 })
 	sid := s.login()
 
 	var out struct {
@@ -386,4 +384,66 @@ func TestTenThousandTorrentsListQuickly(t *testing.T) {
 	one := s.info(sid, "hashes="+out[0].Hash)
 	assert.Len(t, one, 1)
 	assert.Less(t, time.Since(start), time.Second, "a hash lookup does not scan everything")
+}
+
+func TestRatioAndShareLimitComeFromTheView(t *testing.T) {
+	t.Parallel()
+	s := newStack(t)
+	cur := s.settings.Current()
+	cur.Seeding = core.SeedingSettings{RatioLimit: 3, SeedingTimeMinutes: 90}
+	require.NoError(t, s.settings.Update(t.Context(), cur))
+	s.seed("own ratio", ready("/d/r"), sized(1000, 1000), func(_ *core.Download, v *torrent) {
+		v.Uploaded, v.OwnRatio = 500, new(1.5)
+	})
+	s.seed("own time", ready("/d/t"), sized(1000, 1000), func(_ *core.Download, v *torrent) {
+		v.OwnSeeding = new(10 * time.Minute)
+	})
+	s.seed("engine size", ready("/d/e"), func(d *core.Download, v *torrent) {
+		d.TotalBytes, d.DoneBytes = 4000, 4000
+		v.Size, v.Uploaded = 2000, 3000
+	})
+	sid := s.login()
+
+	by := map[string]torrentJSON{}
+	for _, tj := range s.info(sid, "") {
+		by[tj.Name] = tj
+	}
+
+	assert.InDelta(t, 0.5, by["own ratio"].Ratio, 1e-9, "uploaded over size")
+	assert.Equal(t, 1.5, by["own ratio"].RatioLimit)
+	assert.EqualValues(t, 90, by["own ratio"].SeedingLimit, "the global seeding time fills in the other half")
+	assert.Equal(t, 3.0, by["own time"].RatioLimit, "the global ratio fills in the other half")
+	assert.EqualValues(t, 10, by["own time"].SeedingLimit)
+	assert.InDelta(t, 1.5, by["engine size"].Ratio, 1e-9, "over the engine's size")
+	assert.EqualValues(t, 2000, by["engine size"].Size)
+}
+
+func TestAPausedDownloadHasNoEta(t *testing.T) {
+	t.Parallel()
+	s := newStack(t)
+	s.seed("paused", inState(core.StateFetching), sized(1000, 400), func(d *core.Download, v *torrent) {
+		d.Paused, v.DownRate = true, 100
+	})
+	sid := s.login()
+
+	got := s.info(sid, "")
+
+	assert.Equal(t, "pausedDL", got[0].State)
+	assert.EqualValues(t, 8640000, got[0].ETA, "qBittorrent's infinity")
+}
+
+func TestTheStateFollowsTheViewOfTheStoredDownload(t *testing.T) {
+	t.Parallel()
+	s := newStack(t)
+	d, v := s.seed("x", inState(core.StateFetching), sized(1000, 250), func(_ *core.Download, v *torrent) { v.DownRate = 10 })
+	sid := s.login()
+	require.Equal(t, "downloading", s.info(sid, "")[0].State)
+
+	_, err := s.dls.Pause(t.Context(), d.ID)
+	require.NoError(t, err)
+
+	got := s.info(sid, "hashes="+v.InfoHash)
+	require.Len(t, got, 1)
+	assert.Equal(t, "pausedDL", got[0].State)
+	assert.InDelta(t, 0.25, got[0].Progress, 1e-9)
 }

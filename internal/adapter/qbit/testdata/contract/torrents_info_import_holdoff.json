@@ -37,7 +37,6 @@
       "done": 1000,
       "up_rate": 500,
       "uploaded": 2500,
-      "ratio": 2.5,
       "seeding_s": 3600,
       "output_path": "{{torrent_dir}}/tv/Show.S02E03",
       "content_path": "{{torrent_dir}}/tv/Show.S02E03",

@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-
-	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
 func TestFormatBytes(t *testing.T) {
@@ -30,19 +28,19 @@ func TestFormatRate(t *testing.T) {
 
 func TestFormatETA(t *testing.T) {
 	for _, tc := range []struct {
-		remaining, rate int64
-		want            string
+		eta  time.Duration
+		want string
 	}{
-		{0, 100, "-"},             // nothing left
-		{100, 0, "-"},             // no rate, no estimate
-		{100, 100, "1s"},          // exactly a second
-		{100, 1000, "1s"},         // rounds up
-		{90 * 100, 100, "1m 30s"}, // minutes
-		{3 * 3600 * 10, 10, "3h 00m"},
-		{(26*3600 + 5*60) * 10, 10, "1d 2h"},
-		{1 << 62, 1, ">99d"},
+		{0, "-"},                       // nothing left, or no estimate
+		{-time.Second, "-"},            // never negative
+		{time.Second, "1s"},            // exactly a second
+		{100 * time.Millisecond, "1s"}, // rounds up
+		{90 * time.Second, "1m 30s"},   // minutes
+		{3 * time.Hour, "3h 00m"},
+		{26*time.Hour + 5*time.Minute, "1d 2h"},
+		{1 << 62, ">99d"},
 	} {
-		assert.Equal(t, tc.want, formatETA(tc.remaining, tc.rate), "%d at %d", tc.remaining, tc.rate)
+		assert.Equal(t, tc.want, formatETA(tc.eta), "%s", tc.eta)
 	}
 }
 
@@ -56,19 +54,8 @@ func TestPercent(t *testing.T) {
 	assert.Equal(t, 0, percent(-4, 10))
 }
 
-func TestStageLabel(t *testing.T) {
-	assert.Equal(t, "Verifying", stageLabel(core.StageVerifying))
-	assert.Equal(t, "Repairing", stageLabel(core.StageRepairing))
-	assert.Equal(t, "Extracting", stageLabel(core.StageUnpacking))
-	assert.Equal(t, "Moving", stageLabel(core.StageFinishing))
-	assert.Equal(t, "Processing", stageLabel(""))
-	assert.Equal(t, "Processing", stageLabel("something-new"))
-}
-
 func TestTruncateRunes(t *testing.T) {
 	assert.Equal(t, "abc", truncateRunes("abc", 5))
 	assert.Equal(t, "abcd…", truncateRunes("abcdefgh", 5))
 	assert.Equal(t, "ééééé", truncateRunes("ééééé", 5), "counts characters, not bytes")
 }
-
-var _ = time.Second

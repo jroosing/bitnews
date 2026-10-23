@@ -42,11 +42,11 @@ type seedOp struct {
 	Total    int64  `json:"total"`
 	Done     int64  `json:"done"`
 	Output   string `json:"output_path"`
-	// Engine side.
+	// Engine side. There is no ratio: the view derives it from uploaded
+	// and total.
 	DownRate    int64   `json:"down_rate"`
 	UpRate      int64   `json:"up_rate"`
 	Uploaded    int64   `json:"uploaded"`
-	Ratio       float64 `json:"ratio"`
 	SeedingSec  int64   `json:"seeding_s"`
 	Seeds       int     `json:"seeds"`
 	Peers       int     `json:"peers"`
@@ -59,11 +59,10 @@ type seedOp struct {
 	LimitSec    int64   `json:"limit_s"`
 	AddedMin    int     `json:"added_min"`
 	CompletedMn int     `json:"completed_min"`
-	// op "files": the files of Ref.
+	// op "files": the files of Ref; their progress is the torrent's.
 	Files []struct {
-		Name     string  `json:"name"`
-		Size     int64   `json:"size"`
-		Progress float64 `json:"progress"`
+		Name string `json:"name"`
+		Size int64  `json:"size"`
 	} `json:"files"`
 }
 
@@ -87,7 +86,7 @@ func seedFixture(t *testing.T, s *stack, fx *adaptertest.Fixture) map[string]str
 			require.NoError(t, err)
 			cats[op.Name] = c
 		case "download":
-			d, v := s.seed(op.Name, func(d *core.Download, v *qbit.TorrentView) {
+			d, v := s.seed(op.Name, func(d *core.Download, v *torrent) {
 				d.State = core.State(op.State)
 				if op.Priority != "" {
 					d.Priority = core.DownloadPriority(op.Priority)
@@ -103,6 +102,9 @@ func seedFixture(t *testing.T, s *stack, fx *adaptertest.Fixture) map[string]str
 				switch d.State {
 				case core.StateFetched, core.StatePostProcessing, core.StateReady, core.StateFailed:
 					d.FetchedAt = d.AddedAt.Add(time.Minute)
+					if op.CompletedMn != 0 {
+						d.FetchedAt = epoch.Add(time.Duration(op.CompletedMn) * time.Minute)
+					}
 				}
 				if d.State == core.StateReady {
 					d.OutputPath, d.ReadyAt = op.Output, d.FetchedAt.Add(time.Minute)
@@ -111,16 +113,12 @@ func seedFixture(t *testing.T, s *stack, fx *adaptertest.Fixture) map[string]str
 					d.FailureReason = core.FailureArchiveCorrupt
 				}
 				v.Size, v.DoneBytes = op.Total, op.Done
-				v.DownRate, v.UpRate, v.Uploaded, v.Ratio = op.DownRate, op.UpRate, op.Uploaded, op.Ratio
+				v.DownRate, v.UpRate, v.Uploaded = op.DownRate, op.UpRate, op.Uploaded
 				v.SeedingTime = time.Duration(op.SeedingSec) * time.Second
 				v.Seeds, v.Peers, v.Private, v.Paused = op.Seeds, op.Peers, op.Private, op.ViewPaused
 				v.SavePath, v.ContentPath = op.SavePath, op.ContentPath
-				v.AddedAt = d.AddedAt
-				if op.CompletedMn != 0 {
-					v.CompletedAt = epoch.Add(time.Duration(op.CompletedMn) * time.Minute)
-				}
 				if op.LimitGlobal != nil && !*op.LimitGlobal {
-					v.ShareLimit = qbit.ShareLimit{Ratio: op.LimitRatio, SeedingSeconds: op.LimitSec}
+					v.OwnRatio, v.OwnSeeding = new(op.LimitRatio), new(time.Duration(op.LimitSec)*time.Second)
 				}
 			})
 			hashes[op.Ref] = v.InfoHash
@@ -129,9 +127,9 @@ func seedFixture(t *testing.T, s *stack, fx *adaptertest.Fixture) map[string]str
 		case "files":
 			var fs []qbit.TorrentFile
 			for _, f := range op.Files {
-				fs = append(fs, qbit.TorrentFile{Name: f.Name, Size: f.Size, Progress: f.Progress})
+				fs = append(fs, qbit.TorrentFile{Name: f.Name, Size: f.Size})
 			}
-			s.engine.files[hashes[op.Ref]] = fs
+			s.engine.setFiles(hashes[op.Ref], fs...)
 		default:
 			t.Fatalf("unknown seed op %q", op.Op)
 		}

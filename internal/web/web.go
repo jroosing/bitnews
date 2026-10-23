@@ -11,6 +11,7 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // Deps is what the UI needs. Later pages add their services here; New
@@ -29,7 +30,10 @@ type Deps struct {
 	Settings *app.SettingsService
 
 	// Application services for the pages (optional until a page needs them).
-	Downloads  *app.DownloadService
+	Downloads *app.DownloadService
+	// View gives each Download's phase, progress, rates, ETA, stage, torrent
+	// facts and failure. Required with Downloads.
+	View       *view.Module
 	Categories *app.CategoryService
 	Servers    *app.ServerService
 	Bus        *core.Bus
@@ -37,10 +41,10 @@ type Deps struct {
 	Adder *app.AddService
 	// AppKey is the one API key of the app, shown on Settings → Security.
 	AppKey *auth.AppKeyService
-	// Runtime reports what the runners are doing right now (speeds, queue
-	// state, post-processing stage). Torrents reports torrent-only facts.
-	// Both are filled in by the daemon; see sources.go. They may be nil in
-	// tests, and pages must cope with that.
+	// Runtime reports what the Queues are doing right now (speeds, pause
+	// state, limits). Torrents gives a torrent's files and sets its Share
+	// Limit. Both are filled in by the daemon; see sources.go. They may be
+	// nil in tests, and pages must cope with that.
 	Runtime  RuntimeSource
 	Torrents TorrentSource
 	// Live tunes the /ui/events stream (queue_events.go); the zero value is
@@ -77,6 +81,9 @@ type Server struct {
 func New(deps Deps) (*Server, error) {
 	if deps.Sessions == nil || deps.UIAuth == nil || deps.Setup == nil || deps.Settings == nil {
 		return nil, errors.New("web: Deps is missing a required service")
+	}
+	if deps.Downloads != nil && deps.View == nil {
+		return nil, errors.New("web: Deps.View is required with Deps.Downloads")
 	}
 	if deps.Logger == nil {
 		deps.Logger = slog.Default()

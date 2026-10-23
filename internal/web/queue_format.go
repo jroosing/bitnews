@@ -3,8 +3,9 @@ package web
 import (
 	"fmt"
 	"strconv"
+	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 // The formatters below turn numbers into the short strings the queue shows.
@@ -37,14 +38,17 @@ func formatRate(bytesPerSecond int64) string {
 	return formatBytes(bytesPerSecond) + "/s"
 }
 
-// formatETA renders the time left for remaining bytes at rate bytes/s, "-"
-// when it cannot be estimated.
-func formatETA(remaining, rate int64) string {
-	if remaining <= 0 || rate <= 0 {
-		return "-"
-	}
-	secs := (remaining + rate - 1) / rate // round up
+// formatETA renders a View's ETA, rounded up to the second, "-" when there
+// is none.
+func formatETA(eta time.Duration) string {
 	const day = 24 * 3600
+	switch {
+	case eta <= 0:
+		return "-"
+	case eta > 99*day*time.Second:
+		return ">99d"
+	}
+	secs := int64((eta + time.Second - 1) / time.Second) // round up
 	switch {
 	case secs > 99*day:
 		return ">99d"
@@ -58,6 +62,16 @@ func formatETA(remaining, rate int64) string {
 	return fmt.Sprintf("%ds", secs)
 }
 
+// progressPercent is a View's progress as a whole percentage, as the queue
+// and the detail page show it: 100 once the Download has all its data, and
+// never 100 before.
+func progressPercent(v view.View) int {
+	if v.Progress >= 1 {
+		return 100
+	}
+	return percent(v.Done, v.Total)
+}
+
 // percent is done as a whole percentage of total, never 100 before done is
 // total, and 0 when the total is unknown.
 func percent(done, total int64) int {
@@ -68,21 +82,6 @@ func percent(done, total int64) int {
 		return 100
 	}
 	return min(int(done*100/total), 99)
-}
-
-// stageLabel is the text of a Post-processing stage.
-func stageLabel(s core.Stage) string {
-	switch s {
-	case core.StageVerifying:
-		return "Verifying"
-	case core.StageRepairing:
-		return "Repairing"
-	case core.StageUnpacking:
-		return "Extracting"
-	case core.StageFinishing:
-		return "Moving"
-	}
-	return "Processing"
 }
 
 // truncateRunes shortens s to at most n characters, ending in an ellipsis.

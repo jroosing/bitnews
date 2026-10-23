@@ -1,12 +1,11 @@
 package sabnzbd
 
-import "gitlab.com/kyura4k/gitnews/internal/core"
+import "gitlab.com/kyura4k/gitnews/internal/view"
 
-// Classify exposes classify to the table test: it returns whether the
+// Classify exposes the translation of a View to the table test: whether the
 // Download is listed in the queue, and its SAB status.
-func Classify(d core.Download, stage core.Stage, haveStage bool) (inQueueList bool, status string) {
-	l, s := classify(d, stage, haveStage)
-	return l == inQueue, s
+func Classify(v view.View) (inQueueList bool, sabStatus string) {
+	return listingOf(v.Download) == inQueue, status(v)
 }
 
 // FailureText exposes failureText.

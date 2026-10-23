@@ -41,8 +41,8 @@ func TestTheVersionsAreConfigurable(t *testing.T) {
 func TestWebAPI211ReportsStoppedInsteadOfPaused(t *testing.T) {
 	t.Parallel()
 	s := newStack(t, withDeps(func(d *qbit.Deps) { d.WebAPIVersion = "2.11.2" }))
-	s.seed("down", func(d *core.Download, _ *qbit.TorrentView) { d.Paused = true })
-	s.seed("up", ready("/d/up"), func(_ *core.Download, v *qbit.TorrentView) { v.Paused = true })
+	s.seed("down", func(d *core.Download, _ *torrent) { d.Paused = true })
+	s.seed("up", ready("/d/up"), func(_ *core.Download, v *torrent) { v.Paused = true })
 	sid := s.login()
 
 	got := s.info(sid, "")
@@ -166,4 +166,10 @@ func TestSetPreferencesIsAcceptedAndChangesNothing(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, before, s.settings.Current())
+}
+
+func TestNewRefusesToRunWithoutTheViewModule(t *testing.T) {
+	t.Parallel()
+
+	assert.Panics(t, func() { newStack(t, withDeps(func(d *qbit.Deps) { d.View = nil })) })
 }

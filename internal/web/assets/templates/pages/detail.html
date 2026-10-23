@@ -84,7 +84,7 @@
     <div class="card card-body col-span-2 sm:col-span-1">
       <dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Progress</dt>
       <dd class="mt-2">{{template "progress" dict "Value" .Percent "Label" "Download progress" "Show" true "Variant" (cond .Failed "bad" (cond .Ready "ok" ""))}}</dd>
-      <dd class="mt-1.5 text-sm text-fg-muted tabular-nums">{{if .Ready}}{{.Size}}{{else}}{{.Done}} of {{.Size}}{{end}}</dd>
+      <dd class="mt-1.5 text-sm text-fg-muted tabular-nums">{{if .Ready}}{{.Size}}{{else}}{{.Done}} of {{.Size}}{{end}}{{if .ETA}}<span id="detail-eta">, {{.ETA}} left</span>{{end}}</dd>
     </div>
     {{template "detail_stat" dict "Label" "Size" "Value" .Size}}
     {{if .Speed}}{{template "detail_stat" dict "Label" "Speed" "Value" .Speed}}

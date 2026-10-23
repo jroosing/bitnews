@@ -22,7 +22,8 @@ import (
 //	status    out-of-band spans for the top bar (speeds, queue state); sent
 //	          first, then whenever they change
 //	live      (queue view only) out-of-band cells of the rows whose progress
-//	          or stage changed: status badge, progress, speed and ETA
+//	          or stage changed: status badge, progress, speed and ETA, from
+//	          the Download's View
 //	removed   (queue view only) out-of-band deletes of removed rows
 //	refresh   (queue view only) the lists changed shape: refetch /queue/fragment
 //	resync    the stream missed events and ends: the client reconnects, and on
@@ -86,16 +87,20 @@ type liveHub struct {
 	open atomic.Int32
 }
 
-// batch collects what happened since the last Tick.
+// batch collects what happened since the last Tick. It only notes which
+// rows to render again: the facts of a row (stage, rates) come from its View
+// when it is rendered, except the bytes of the latest progress event, which
+// may be ahead of the Download row.
 type batch struct {
 	progress map[core.ID]core.DownloadProgress
-	stages   map[core.ID]core.Stage
-	removed  []core.ID
-	refresh  bool
+	// staged are the Downloads whose Post-processing stage changed.
+	staged  map[core.ID]struct{}
+	removed []core.ID
+	refresh bool
 }
 
 func newBatch() *batch {
-	return &batch{progress: map[core.ID]core.DownloadProgress{}, stages: map[core.ID]core.Stage{}}
+	return &batch{progress: map[core.ID]core.DownloadProgress{}, staged: map[core.ID]struct{}{}}
 }
 
 // note records an event. It does no I/O.
@@ -108,17 +113,17 @@ func (b *batch) note(ev core.Event) {
 		}
 		b.progress[e.ID] = e
 	case core.PostProcessStage:
-		if _, ok := b.stages[e.ID]; !ok && len(b.stages) >= maxPending {
+		if _, ok := b.staged[e.ID]; !ok && len(b.staged) >= maxPending {
 			b.refresh = true
 			return
 		}
-		b.stages[e.ID] = e.Stage
+		b.staged[e.ID] = struct{}{}
 	case core.DownloadAdded, core.DownloadUpdated, core.Fetched, core.Ready, core.Failed, core.QueuePaused, core.QueueResumed:
 		b.refresh = true
 	case core.Removed:
 		b.refresh = true
 		delete(b.progress, e.ID)
-		delete(b.stages, e.ID)
+		delete(b.staged, e.ID)
 		if len(b.removed) < maxPending {
 			b.removed = append(b.removed, e.ID)
 		}
@@ -131,7 +136,7 @@ func (b *batch) note(ev core.Event) {
 }
 
 func (b *batch) empty() bool {
-	return !b.refresh && len(b.progress) == 0 && len(b.stages) == 0 && len(b.removed) == 0
+	return !b.refresh && len(b.progress) == 0 && len(b.staged) == 0 && len(b.removed) == 0
 }
 
 // getLiveEvents serves the stream.
@@ -280,11 +285,11 @@ func (s *Server) liveCells(ctx context.Context, b batch) string {
 	if s.Downloads == nil {
 		return ""
 	}
-	ids := make([]core.ID, 0, len(b.progress)+len(b.stages))
+	ids := make([]core.ID, 0, len(b.progress)+len(b.staged))
 	for id := range b.progress {
 		ids = append(ids, id)
 	}
-	for id := range b.stages {
+	for id := range b.staged {
 		if _, ok := b.progress[id]; !ok {
 			ids = append(ids, id)
 		}
@@ -299,24 +304,16 @@ func (s *Server) liveCells(ctx context.Context, b batch) string {
 		if err != nil {
 			continue // gone: the refresh that follows a removal covers it
 		}
-		if !slices.Contains(queueStates, d.State) {
-			continue
-		}
-		var live DownloadLive
-		if s.Runtime != nil {
-			live = s.Runtime.Live(id)
+		if terminal(d.State) {
+			continue // not in the queue page any more
 		}
 		if p, ok := b.progress[id]; ok {
 			d.DoneBytes = p.DoneBytes
 			if p.TotalBytes > 0 {
 				d.TotalBytes = p.TotalBytes
 			}
-			live.DownRate = p.BytesPerSecond
 		}
-		if st, ok := b.stages[id]; ok {
-			live.Stage = st
-		}
-		out, err := s.tpl.execute("queue.html", "queue_live", queueRowCtx{queueRow: newQueueRow(d, live, ""), OOB: true})
+		out, err := s.tpl.execute("queue.html", "queue_live", queueRowCtx{queueRow: newQueueRow(s.View.Of(ctx, d), ""), OOB: true})
 		if err != nil {
 			s.Logger.Error("live row render failed", "err", err)
 			continue

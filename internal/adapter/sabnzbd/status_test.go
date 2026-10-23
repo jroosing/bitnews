@@ -1,6 +1,7 @@
 package sabnzbd_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 
 	"gitlab.com/kyura4k/gitnews/internal/adapter/sabnzbd"
 	"gitlab.com/kyura4k/gitnews/internal/core"
+	"gitlab.com/kyura4k/gitnews/internal/view"
 )
 
 var allStates = []core.State{
@@ -16,7 +18,7 @@ var allStates = []core.State{
 	core.StateFetched, core.StatePostProcessing, core.StateReady, core.StateFailed,
 }
 
-// stageCases are every stage the StageSource can answer with: none, each real
+// stageCases are every stage the live source can answer with: none, each real
 // stage, and a value from a future version.
 var stageCases = []struct {
 	name  string
@@ -31,8 +33,27 @@ var stageCases = []struct {
 	{"future stage", "reticulating", true},
 }
 
+// stageLive answers one stage for every Download.
+type stageLive struct {
+	stage core.Stage
+	have  bool
+}
+
+func (l stageLive) Live(context.Context, core.Download) view.Live {
+	return view.Live{Stage: l.stage, HaveStage: l.have}
+}
+
+// classify builds the View of d with the given stage and translates it.
+func classify(t *testing.T, d core.Download, stage core.Stage, have bool) (bool, string) {
+	t.Helper()
+	m, err := view.New(view.Config{Live: stageLive{stage, have}})
+	require.NoError(t, err)
+	return sabnzbd.Classify(m.Of(context.Background(), d))
+}
+
 // TestStatusMappingTable covers the status mapping table of the M4 design
-// for every State, every stage and both values of the paused flag.
+// for every State, every stage and both values of the paused flag, through
+// the view module.
 func TestStatusMappingTable(t *testing.T) {
 	postProcessing := map[core.Stage]string{
 		core.StageVerifying: "Verifying", core.StageRepairing: "Repairing",
@@ -44,7 +65,7 @@ func TestStatusMappingTable(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/%s/paused=%v", st, sc.name, paused), func(t *testing.T) {
 					d := core.Download{State: st, Paused: paused}
 
-					inQueue, status := sabnzbd.Classify(d, sc.stage, sc.have)
+					inQueue, status := classify(t, d, sc.stage, sc.have)
 
 					wantQueue := st == core.StateAdded || st == core.StateFetchingMetadata || st == core.StateQueued || st == core.StateFetching
 					assert.Equal(t, wantQueue, inQueue, "which list")
@@ -76,7 +97,7 @@ func TestStatusMappingTable(t *testing.T) {
 }
 
 func TestAnUnknownStateIsNeverCompleted(t *testing.T) {
-	inQueue, status := sabnzbd.Classify(core.Download{State: "teleporting"}, "", false)
+	inQueue, status := classify(t, core.Download{State: "teleporting"}, "", false)
 
 	assert.False(t, inQueue)
 	assert.Equal(t, "Queued", status)
@@ -138,7 +159,9 @@ func TestOverHTTPNoDownloadIsCompletedBeforeReady(t *testing.T) {
 	}
 }
 
-func TestPostProcessingStatusFollowsTheStageSource(t *testing.T) {
+// TestPostProcessingStatusFollowsTheStageThroughTheView: the history status
+// and action line follow the stage the view's live source reports.
+func TestPostProcessingStatusFollowsTheStageThroughTheView(t *testing.T) {
 	s := newStack(t)
 	d := s.seed("Show.S01E01", inState(core.StatePostProcessing))
 	statusOf := func() string {
@@ -191,25 +214,20 @@ func TestPriorityMappingBothDirections(t *testing.T) {
 	}
 }
 
-func TestFailureTextIsHumanReadableAndRedacted(t *testing.T) {
+// TestFailureTextIsHumanReadable covers SAB's wording; cleaning the detail
+// is the view's (view.CleanDetail), and the redacted fail_message is checked
+// over HTTP in the history tests.
+func TestFailureTextIsHumanReadable(t *testing.T) {
 	for _, reason := range []core.FailureReason{
 		core.FailureMissingArticles, core.FailureRepairInsufficient, core.FailureArchiveUnsupported,
 		core.FailureArchivePassword, core.FailureArchiveCorrupt, core.FailureDiskFull,
 		core.FailurePathViolation, core.FailureSourceInvalid, core.FailureInternal, "something new",
 	} {
-		msg := sabnzbd.FailureText(reason, "")
+		msg := sabnzbd.FailureText(view.Failure{Reason: reason})
 		assert.NotEmpty(t, msg, reason)
 		assert.NotContains(t, msg, string(reason), "the machine name is not for humans")
 	}
-	assert.Contains(t, sabnzbd.FailureText(core.FailureArchivePassword, ""), "password")
-
-	msg := sabnzbd.FailureText(core.FailureInternal, "fetch http://idx.example/get?apikey=SECRET123&x=1 failed\n\x00 \x1b[31mred")
-
-	assert.NotContains(t, msg, "SECRET123")
-	assert.NotContains(t, msg, "\n")
-	assert.NotContains(t, msg, "\x1b")
-	assert.Contains(t, msg, "idx.example")
-	long := sabnzbd.FailureText(core.FailureInternal, string(make([]byte, 0))+repeat("é", 1000))
-	assert.LessOrEqual(t, len(long), 400)
-	assert.True(t, utf8Valid(long))
+	assert.Contains(t, sabnzbd.FailureText(view.Failure{Reason: core.FailureArchivePassword}), "password")
+	assert.Equal(t, "Download failed: disk on fire",
+		sabnzbd.FailureText(view.Failure{Reason: core.FailureInternal, Detail: "disk on fire"}))
 }
