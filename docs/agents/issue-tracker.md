@@ -32,7 +32,3 @@ Create a GitHub issue.
 ## When a skill says "fetch the relevant ticket"
 
 Run `gh issue view <number> --comments`.
-
-## History
-
-Issues up to milestone M9 were tracked on GitLab (kyura4k/bitnews) until October 2026. The four that were still open moved to GitHub; the specs in `docs/milestones/` carry everything the closed ones said.

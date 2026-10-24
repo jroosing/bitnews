@@ -366,7 +366,7 @@ The fixtures are the spec, as in M4. M5-09 (dropped) was to record real Sonarr/R
 - Add a manual Sonarr/Radarr checklist to `docs/compat/media-managers.md` (hardlink import, Share Limit → removal).
 
 **Acceptance criteria**
-- [ ] CI runs the contract tests on every MR and the e2e job on `main`, and both pass.
+- [ ] CI runs the contract tests on every pull request and the e2e job on `main`, and both pass.
 - [ ] The manual checklist is recorded with versions.
 
 ## Implementation notes (M5-01, M5-02)

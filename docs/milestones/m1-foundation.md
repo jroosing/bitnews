@@ -16,8 +16,8 @@ Read first: [architecture](../architecture.md), [glossary](../../CONTEXT.md), an
 
 ### Module and tooling
 
-- Module path is `github.com/jroosing/bitnews` (originally `gitlab.com/kyura4k/gitnews`, renamed when the project moved to GitHub in October 2026), with Go 1.27.3 or later as the `go` directive.
-- External dependencies are kept to a minimum and each one is justified in its MR. M1 allows only `modernc.org/sqlite` and `golang.org/x/crypto` (argon2, chacha20poly1305) in production code. Test code may use `github.com/stretchr/testify` (`require`/`assert`) for clearer assertions; test-only dependencies never ship in the binary.
+- Module path is `github.com/jroosing/bitnews`, with Go 1.27.3 or later as the `go` directive.
+- External dependencies are kept to a minimum and each one is justified in its commit message. M1 allows only `modernc.org/sqlite` and `golang.org/x/crypto` (argon2, chacha20poly1305) in production code. Test code may use `github.com/stretchr/testify` (`require`/`assert`) for clearer assertions; test-only dependencies never ship in the binary.
 - Routing uses the standard `net/http` `ServeMux` with method and path patterns, so there is no router dependency.
 - Logging uses `log/slog`, with text or JSON output.
 
@@ -210,12 +210,12 @@ M1 routes (more are added in later milestones):
 - Create the package directories from the architecture layout. Each gets a `doc.go` with a one-line package comment.
 - Add `cmd/bitnews/main.go`, which prints its version. The version is injected via `-ldflags` (version, commit).
 - Add a `Makefile` with targets `build`, `fmt` and `fmt-check` (`gofmt -s`), `fix` and `fix-check` (`go fix`), `test` (`go test -race ./...`), `lint` (`go vet` + `staticcheck`), `vuln` (`govulncheck`) and `fuzz-smoke` (runs each `Fuzz*` for 10 s). The `-check` targets only report and fail, and the others rewrite files.
-- Add a CI pipeline (GitHub Actions, `.github/workflows/ci.yml`; it was `.gitlab-ci.yml` until the move to GitHub) with jobs `lint` (one job: `make lint` and `make vuln`), `test` (one job: `make test`; fuzzing is run locally with `make fuzz-smoke`, not in CI) and `build`. Formatting (`make fmt`, `make fix`) is done locally before pushing, so CI has no format job. `build` produces a linux amd64 static binary with `CGO_ENABLED=0`. Cache the Go module and build caches.
+- Add a CI pipeline (GitHub Actions, `.github/workflows/ci.yml`) with jobs `lint` (one job: `make lint` and `make vuln`), `test` (one job: `make test`; fuzzing is run locally with `make fuzz-smoke`, not in CI) and `build`. Formatting (`make fmt`, `make fix`) is done locally before pushing, so CI has no format job. `build` produces a linux amd64 static binary with `CGO_ENABLED=0`. Cache the Go module and build caches.
 - Add `.gitignore` and a short `README.md` that points to `docs/`.
 
 **Acceptance criteria**
 - [ ] `make test lint vuln build` passes locally.
-- [ ] The pipeline runs on MRs and on `main` and is green.
+- [ ] The pipeline runs on pull requests and on `main` and is green.
 - [ ] The binaries are static (`file` reports statically linked) and `bitnews --version` prints the version and commit.
 
 ### M1-02: Bootstrap configuration and logging

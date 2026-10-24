@@ -6,7 +6,7 @@ Issue IDs (`M1-01`, …) are stable: don't renumber them, and append new IDs ins
 
 ## Status
 
-The Status column is maintained by hand when issues close. Run `gh issue list` for the open ones. Milestones M1 to M9 were tracked on GitLab (kyura4k/bitnews) until October 2026; that project is now read-only.
+The Status column is maintained by hand when issues close. Run `gh issue list` for the open ones.
 
 ## Index
 
