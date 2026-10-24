@@ -56,8 +56,8 @@ jobs:
           path: dist/
           retention-days: 7
 
-  # Image for ghcr.io, linux/amd64 only, tagged with the version (the tag, or
-  # the short commit on main) and `latest`. Never runs for pull requests. On a
+  # Image for ghcr.io, linux/amd64 only, tagged `latest`, plus the tag name on
+  # a tag push (no commit-hash tag). Never runs for pull requests. On a
   # tag lint and test are skipped, so the job waits for them only when they ran.
   docker-image:
     if: >-
@@ -82,8 +82,12 @@ jobs:
         run: |
           short="$(git rev-parse --short HEAD)"
           version="$short"
-          if [ "$GITHUB_REF_TYPE" = tag ]; then version="$GITHUB_REF_NAME"; fi
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tags=(-t "$image:latest")
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="$GITHUB_REF_NAME"
+            tags+=(-t "$image:$version")
+          fi
           docker buildx build --platform linux/amd64 \
             --build-arg VERSION="$version" --build-arg COMMIT="$short" \
-            -t "$image:$version" -t "$image:latest" --push .
+            "${tags[@]}" --push .
