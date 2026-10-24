@@ -14,6 +14,7 @@ env:
 
 jobs:
   lint:
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +25,7 @@ jobs:
       - run: make vuln
 
   test:
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +57,14 @@ jobs:
           retention-days: 7
 
   # Image for ghcr.io, linux/amd64 only, tagged with the version (the tag, or
-  # the short commit on main) and `latest`. Never runs for pull requests.
+  # the short commit on main) and `latest`. Never runs for pull requests. On a
+  # tag lint and test are skipped, so the job waits for them only when they ran.
   docker-image:
-    if: github.event_name == 'push'
+    if: >-
+      !cancelled() && github.event_name == 'push' &&
+      needs.build.result == 'success' &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.lint.result) &&
+      !contains(fromJSON('["failure","cancelled"]'), needs.test.result)
     needs: [lint, test, build]
     runs-on: ubuntu-latest
     permissions:
