@@ -45,7 +45,7 @@ While first-run setup is open, every route except `POST /setup` and `GET /health
 | POST | `/api/v1/downloads/{id}/pause` | write | | `200 Download`; `409 not_pausable` once Fetched |
 | POST | `/api/v1/downloads/{id}/resume` | write | | `200 Download` |
 | PATCH | `/api/v1/downloads/{id}` | write | any of `{"priority":"force\|high\|normal\|low","category_id":"<id>"\|null,"queue_position":{"move":"top\|bottom\|up\|down"}}` | `200 Download`; `409 not_queued` for a move of a Download that is Fetched or later. The state cannot be changed. |
-| DELETE | `/api/v1/downloads/{id}?delete_data=true` | write | | `204`. The row is deleted and a `removed` event follows. Data is deleted only with `delete_data=true` (engines hook in later). |
+| DELETE | `/api/v1/downloads/{id}?delete_data=true` | write | | `204`. The row is deleted and a `removed` event follows. Data is deleted only with `delete_data=true`: the fetch (or the torrent) is stopped first, then the working directory and the output go. `409 download_busy` while the Download is `fetched` or `post_processing`, with or without `delete_data`: par2 or 7-Zip may be using its files, so nothing is touched; retry once it is `ready` or `failed`. `409 download_deleting` while another delete of it runs. |
 | GET | `/api/v1/categories` | read | | `200 {"items":[Category]}` |
 | POST | `/api/v1/categories` | write | `{"name","dir_override"?}` | `201 Category`; `400 invalid_name`, `400 invalid_dir_override`, `409 name_taken` |
 | PATCH | `/api/v1/categories/{id}` | write | any of `{"name","dir_override":"/abs/path"\|null}` | `200 Category` |

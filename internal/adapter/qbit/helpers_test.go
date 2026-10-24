@@ -74,6 +74,8 @@ type removed struct {
 	ids []core.ID
 }
 
+func (r *removed) Hold(context.Context, core.Download) (func(), error) { return func() {}, nil }
+
 func (r *removed) RemoveData(_ context.Context, d core.Download) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

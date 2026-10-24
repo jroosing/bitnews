@@ -108,6 +108,23 @@ The protocol adapter (the seam) is: `Prepare(ctx) (canStart bool)`, `Exclude(id)
 - [ ] No transport computes the in-queue set, queue order, ETA or ratio itself.
 - [ ] The adapters' and the UI's behaviour tests pass (rewritten only where they asserted a deleted helper).
 
+### M8-10: Download removal
+- **Labels:** area:core, ready-for-agent
+
+**Goal:** One place decides when a Download may be deleted. Before this, only the SABnzbd and qBittorrent adapters refused a Download that was being post-processed; the UI, the own API and the Share Limit actions could delete its files under a running par2 or 7-Zip. `DownloadService.Delete` also held the service's one lock while deleting files, so every other Download action waited for the delete.
+
+**Design**
+- `DownloadService.Delete` refuses a Download in `fetched` or `post_processing` (conflict `download_busy`), with or without its data. `app.IsBusy` tells callers; the adapters skip such a Download as before, the Share Limit action tries again on its next check.
+- With data: `DataRemover.Hold` stops the fetch or the torrent and keeps it stopped, the state is read again (the fetch may have finished just before the hold), and only then `RemoveData` deletes the files. A failure releases the hold and keeps the row.
+- The row goes through `DownloadRepo.DeleteUnlessIn`, which checks the state and deletes in one transaction, so the Post-processor cannot claim the Download between the check and the delete.
+- No lock is held while files are deleted. A second delete of the same Download while the first runs is a conflict (`download_deleting`).
+
+**Acceptance criteria**
+- [x] Deleting a `fetched` or `post_processing` Download through the UI, the API, the adapters or a Share Limit touches no file and keeps the row.
+- [x] A fetch that finishes while the hold is being taken is caught: no file is touched and the hold is released.
+- [x] Pausing another Download is not blocked by a running file removal.
+- [x] The adapters no longer check the state themselves.
+
 ### M8-06: One Add call (planned)
 ### M8-07: Settings change under lock and one card engine (planned)
 ### M8-08: Post-processing steps implement the core ports (planned)

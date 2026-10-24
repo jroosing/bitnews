@@ -15,6 +15,20 @@ import (
 	"gitlab.com/kyura4k/gitnews/internal/core"
 )
 
+// removeData holds d and removes its data as app.DownloadService.Delete
+// does: the hold is released when the removal fails.
+func (e *removerEnv) removeData(ctx context.Context, d core.Download) error {
+	release, err := e.remover.Hold(ctx, d)
+	if err != nil {
+		return err
+	}
+	if err := e.remover.RemoveData(ctx, d); err != nil {
+		release()
+		return err
+	}
+	return nil
+}
+
 type fakeHolder struct {
 	holdErr  error
 	held     []core.ID
@@ -77,7 +91,7 @@ func TestRemoveDataDeletesTheWorkingDirAndTheOutput(t *testing.T) {
 	writeFile(t, filepath.Join(e.incomplete, string(d.ID), "part.bin"))
 	writeFile(t, filepath.Join(d.OutputPath, "episode.mkv"))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), d))
+	require.NoError(t, e.removeData(context.Background(), d))
 
 	assert.NoDirExists(t, filepath.Join(e.incomplete, string(d.ID)))
 	assert.NoDirExists(t, d.OutputPath)
@@ -91,8 +105,8 @@ func TestRemoveDataIsIdempotent(t *testing.T) {
 	e := newRemoverEnv(t)
 	d := nzbDownload(filepath.Join(e.complete, "gone"))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), d))
-	require.NoError(t, e.remover.RemoveData(context.Background(), d))
+	require.NoError(t, e.removeData(context.Background(), d))
+	require.NoError(t, e.removeData(context.Background(), d))
 }
 
 func TestRemoveDataRefusesTheRootsThemselves(t *testing.T) {
@@ -101,7 +115,7 @@ func TestRemoveDataRefusesTheRootsThemselves(t *testing.T) {
 	writeFile(t, filepath.Join(e.incomplete, "keep.txt"))
 
 	for _, out := range []string{e.complete, e.complete + "/", filepath.Join(e.complete, "tv", ".."), e.incomplete, filepath.Dir(e.complete), "/", ""} {
-		require.NoError(t, e.remover.RemoveData(context.Background(), nzbDownload(out)), out)
+		require.NoError(t, e.removeData(context.Background(), nzbDownload(out)), out)
 	}
 
 	assert.FileExists(t, filepath.Join(e.complete, "keep.txt"))
@@ -113,8 +127,8 @@ func TestRemoveDataLeavesPathsOutsideEveryRoot(t *testing.T) {
 	outside := t.TempDir()
 	writeFile(t, filepath.Join(outside, "precious"))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), nzbDownload(outside)))
-	require.NoError(t, e.remover.RemoveData(context.Background(), nzbDownload("relative/path")))
+	require.NoError(t, e.removeData(context.Background(), nzbDownload(outside)))
+	require.NoError(t, e.removeData(context.Background(), nzbDownload("relative/path")))
 
 	assert.FileExists(t, filepath.Join(outside, "precious"))
 }
@@ -126,7 +140,7 @@ func TestRemoveDataUnlinksASymlinkedOutputWithoutFollowingIt(t *testing.T) {
 	link := filepath.Join(e.complete, "link")
 	require.NoError(t, os.Symlink(outside, link))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), nzbDownload(link)))
+	require.NoError(t, e.removeData(context.Background(), nzbDownload(link)))
 
 	_, err := os.Lstat(link)
 	assert.True(t, os.IsNotExist(err), "the link is gone")
@@ -141,7 +155,7 @@ func TestRemoveDataDoesNotEnterSymlinksInsideTheOutput(t *testing.T) {
 	writeFile(t, filepath.Join(out, "a.mkv"))
 	require.NoError(t, os.Symlink(outside, filepath.Join(out, "escape")))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), nzbDownload(out)))
+	require.NoError(t, e.removeData(context.Background(), nzbDownload(out)))
 
 	assert.NoDirExists(t, out)
 	assert.FileExists(t, filepath.Join(outside, "precious"))
@@ -154,7 +168,7 @@ func TestRemoveDataRefusesAPathThatClimbsOutThroughASymlinkedParent(t *testing.T
 	require.NoError(t, os.Symlink(outside, filepath.Join(e.complete, "tv")))
 	d := nzbDownload(filepath.Join(e.complete, "tv", "release"))
 
-	err := e.remover.RemoveData(context.Background(), d)
+	err := e.removeData(context.Background(), d)
 
 	require.Error(t, err)
 	assert.FileExists(t, filepath.Join(outside, "release", "precious"))
@@ -167,8 +181,8 @@ func TestRemoveDataAllowsTheDirectoryOverrideOfACategory(t *testing.T) {
 	out := filepath.Join(override, "show")
 	writeFile(t, filepath.Join(out, "a.mkv"))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), nzbDownload(out)))
-	require.NoError(t, e.remover.RemoveData(context.Background(), nzbDownload(override)))
+	require.NoError(t, e.removeData(context.Background(), nzbDownload(out)))
+	require.NoError(t, e.removeData(context.Background(), nzbDownload(override)))
 
 	assert.NoDirExists(t, out)
 	assert.DirExists(t, override, "the override dir itself stays")
@@ -180,7 +194,7 @@ func TestRemoveDataStopsWhenTheFetchCannotBeHeld(t *testing.T) {
 	d := nzbDownload("")
 	writeFile(t, filepath.Join(e.incomplete, string(d.ID), "part.bin"))
 
-	err := e.remover.RemoveData(context.Background(), d)
+	err := e.removeData(context.Background(), d)
 
 	require.Error(t, err)
 	assert.FileExists(t, filepath.Join(e.incomplete, string(d.ID), "part.bin"))
@@ -192,7 +206,7 @@ func TestRemoveDataIgnoresTorrentsForNow(t *testing.T) {
 	writeFile(t, filepath.Join(out, "a"))
 	d := core.Download{ID: core.NewID(), SourceKind: core.SourceTorrent, OutputPath: out}
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), d))
+	require.NoError(t, e.removeData(context.Background(), d))
 
 	assert.FileExists(t, filepath.Join(out, "a"))
 	assert.Empty(t, e.holder.held)
@@ -233,7 +247,7 @@ func TestRemoveDataOfATorrentDeletesItsWholeDirectoryIncludingUnpackAndHoldsTheT
 	writeFile(t, filepath.Join(e.complete, "tv", "Other", "keep.mkv"))
 	d := torrentDownload(filepath.Join(dir, "Release"))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), d))
+	require.NoError(t, e.removeData(context.Background(), d))
 
 	assert.NoDirExists(t, dir)
 	assert.FileExists(t, filepath.Join(e.complete, "tv", "Other", "keep.mkv"))
@@ -247,7 +261,7 @@ func TestRemoveDataOfATorrentWorksWithoutATorrentRunner(t *testing.T) {
 	dir := filepath.Join(e.complete, "tv", "Release")
 	writeFile(t, filepath.Join(dir, "a.mkv"))
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), torrentDownload(dir)))
+	require.NoError(t, e.removeData(context.Background(), torrentDownload(dir)))
 
 	assert.NoDirExists(t, dir)
 }
@@ -258,7 +272,7 @@ func TestRemoveDataOfATorrentOnlyDeletesInsideTheTorrentRoots(t *testing.T) {
 	writeFile(t, filepath.Join(outside, "precious"))
 	e.remover.torrentDir = func(core.Download) string { return outside }
 
-	require.NoError(t, e.remover.RemoveData(context.Background(), torrentDownload(outside)))
+	require.NoError(t, e.removeData(context.Background(), torrentDownload(outside)))
 
 	assert.FileExists(t, filepath.Join(outside, "precious"), "a Usenet root is not a torrent root")
 }
@@ -267,7 +281,7 @@ func TestRemoveDataOfATorrentReleasesTheHoldWhenDeletionFails(t *testing.T) {
 	e := newTorrentRemoverEnv(t)
 	e.holder.holdErr = errors.New("busy")
 
-	err := e.remover.RemoveData(context.Background(), torrentDownload(""))
+	err := e.removeData(context.Background(), torrentDownload(""))
 
 	require.Error(t, err)
 }

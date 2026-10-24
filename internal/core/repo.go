@@ -57,6 +57,9 @@ type DownloadRepo interface {
 	// unknown ID is ErrNotFound.
 	UpdateDisplay(ctx context.Context, id ID, name string, totalBytes int64) error
 	Delete(ctx context.Context, id ID) error
+	// DeleteUnlessIn deletes the Download unless its State is one of states
+	// (ErrConflict), checked and deleted atomically.
+	DeleteUnlessIn(ctx context.Context, id ID, states []State) error
 }
 
 // CategoryRepo persists Categories. Names are unique (ErrConflict).

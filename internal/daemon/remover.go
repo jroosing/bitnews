@@ -36,26 +36,38 @@ type dataRemover struct {
 	torrentDir    func(core.Download) string
 }
 
-// RemoveData deletes the working directory and the output of d. The running
-// fetch (or, for a torrent, the engine's hold on the files) is stopped and
-// held first, so nothing writes into a directory that is being deleted. When
-// the removal fails the hold is released again: the Download stays and goes
-// on.
+// Hold stops the running fetch of d (or, for a torrent, the engine's hold on
+// the files) and keeps it stopped, so nothing writes into a directory that is
+// being deleted. release undoes it when the removal does not go ahead.
+func (r *dataRemover) Hold(ctx context.Context, d core.Download) (func(), error) {
+	holder := r.holder
+	if d.SourceKind == core.SourceTorrent {
+		holder = r.torrentHolder
+	}
+	if holder == nil {
+		return func() {}, nil
+	}
+	if err := holder.Hold(ctx, d.ID); err != nil {
+		return nil, err
+	}
+	return func() { holder.Release(d.ID) }, nil
+}
+
+// RemoveData deletes the working directory and the output of d. The caller
+// holds d first (Hold).
 //
 // A torrent's working directory is its Download directory, which holds the
 // originals and _unpack/ together, so both go. The roots a torrent may be
 // deleted from are the torrent roots, never the Usenet ones.
 func (r *dataRemover) RemoveData(ctx context.Context, d core.Download) error {
-	holder, dirFor := r.holder, r.dirFor
+	dirFor := r.dirFor
 	if d.SourceKind == core.SourceTorrent {
-		holder, dirFor = r.torrentHolder, r.torrentDir
-	}
-	if holder != nil {
-		if err := holder.Hold(ctx, d.ID); err != nil {
-			return err
-		}
+		dirFor = r.torrentDir
 	}
 	roots, err := r.roots(ctx, d.SourceKind)
+	if err != nil {
+		return err
+	}
 	// The working directory is trusted when it is <parent>/<id>: it was made
 	// for this Download at add time, even if the incomplete root has been
 	// changed since.
@@ -63,19 +75,13 @@ func (r *dataRemover) RemoveData(ctx context.Context, d core.Download) error {
 	if dirFor != nil {
 		work = dirFor(d)
 	}
-	if err == nil && work != "" && filepath.Base(work) == string(d.ID) {
+	if work != "" && filepath.Base(work) == string(d.ID) {
 		roots = append(roots, filepath.Dir(work))
 	}
-	if err == nil {
-		err = errors.Join(
-			r.removeInside(roots, work, d.ID),
-			r.removeInside(roots, d.OutputPath, d.ID),
-		)
-	}
-	if err != nil && holder != nil {
-		holder.Release(d.ID)
-	}
-	return err
+	return errors.Join(
+		r.removeInside(roots, work, d.ID),
+		r.removeInside(roots, d.OutputPath, d.ID),
+	)
 }
 
 // roots returns the directories data of kind may be deleted inside: that

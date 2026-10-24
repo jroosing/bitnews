@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -222,6 +223,24 @@ func (r *DownloadRepo) UpdateDisplay(ctx context.Context, id core.ID, name strin
 func (r *DownloadRepo) Delete(ctx context.Context, id core.ID) error {
 	res, err := r.db.Writer().ExecContext(ctx, `DELETE FROM downloads WHERE id = ?`, string(id))
 	return mapExec("delete download", res, err)
+}
+
+// DeleteUnlessIn deletes the Download unless its State is one of states, in
+// one transaction, so a concurrent state change cannot slip in between the
+// check and the delete. A Download in one of the states is core.ErrConflict.
+func (r *DownloadRepo) DeleteUnlessIn(ctx context.Context, id core.ID, states []core.State) error {
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		var st string
+		err := tx.QueryRowContext(ctx, `SELECT state FROM downloads WHERE id = ?`, string(id)).Scan(&st)
+		if err != nil {
+			return mapErr("delete download", err)
+		}
+		if slices.Contains(states, core.State(st)) {
+			return fmt.Errorf("store: delete download in state %s: %w", st, core.ErrConflict)
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM downloads WHERE id = ?`, string(id))
+		return mapExec("delete download", res, err)
+	})
 }
 
 type rowScanner interface {

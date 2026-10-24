@@ -245,7 +245,12 @@ func (r *Runner) applyAction(ctx context.Context, action core.SeedingAction, t *
 		r.mu.Lock()
 		t.removing = false
 		r.mu.Unlock()
-		if err != nil && !errors.Is(err, core.ErrNotFound) {
+		switch {
+		case err == nil, errors.Is(err, core.ErrNotFound):
+		case errors.Is(err, core.ErrConflict):
+			// Post-processing is still unpacking it: the next check tries again.
+			r.log.Debug("torrent runner: download busy, removal postponed", "id", t.id)
+		default:
 			r.log.Warn("torrent runner: cannot remove the download, will try again", "id", t.id, "err", err)
 		}
 	})

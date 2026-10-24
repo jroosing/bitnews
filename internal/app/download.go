@@ -21,8 +21,10 @@ type DownloadService struct {
 	events    Publisher
 	opts      options
 
-	// mu serializes the read-modify-write cycles of the mutations.
-	mu sync.Mutex
+	// mu serializes the read-modify-write cycles of the mutations and guards
+	// deleting. It is never held while files are deleted.
+	mu       sync.Mutex
+	deleting map[core.ID]struct{} // Downloads a Delete is working on
 }
 
 // NewDownloadService returns a DownloadService.
@@ -292,24 +294,101 @@ func (s *DownloadService) reposition(ctx context.Context, d core.Download, move 
 	return positions, queue, nil
 }
 
-// Delete removes the Download and publishes core.Removed. With deleteData it
-// first asks the DataRemover to delete the Download's files; if that fails
-// the Download stays so the user can retry.
+// busyStates are the States in which Post-processing owns a Download's
+// files: Fetched (it is about to start) and PostProcessing (par2 or 7zz may
+// be running). A Download in one of them is not deleted.
+var busyStates = []core.State{core.StateFetched, core.StatePostProcessing}
+
+func busyError() error {
+	return conflict("download_busy", "This download is being post-processed (repaired or unpacked) and its files are in use. Remove it once it is ready or has failed.")
+}
+
+// IsBusy reports whether err is Delete refusing a Download that
+// Post-processing is working on (code "download_busy").
+func IsBusy(err error) bool {
+	appErr, ok := errors.AsType[*Error](err)
+	return ok && appErr.Code == "download_busy"
+}
+
+// Delete removes the Download and publishes core.Removed. A Download that
+// is being post-processed is refused (conflict, code "download_busy"), with
+// or without its data, because its files are in use; a second Delete of a
+// Download that is still being deleted is a conflict too (code
+// "download_deleting").
+//
+// With deleteData the DataRemover first stops and holds whatever still works
+// on the files, then the state is checked again (the fetch may have finished
+// just before the hold), and only then the files are deleted. If that fails,
+// the hold is released and the Download stays, so the user can retry. The
+// row goes last, and only if Post-processing has not claimed it meanwhile.
+//
+// Deleting files can take long; no lock is held meanwhile, so other
+// Downloads are not kept waiting.
 func (s *DownloadService) Delete(ctx context.Context, id core.ID, deleteData bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if !s.startDeleting(id) {
+		return conflict("download_deleting", "the download is already being removed")
+	}
+	defer s.doneDeleting(id)
 	d, err := s.downloads.Get(ctx, id)
 	if err != nil {
 		return fmt.Errorf("app: delete download: %w", err)
 	}
+	if slices.Contains(busyStates, d.State) {
+		return busyError()
+	}
 	if deleteData {
-		if err := s.opts.remover.RemoveData(ctx, d); err != nil {
-			return fmt.Errorf("app: delete download data: %w", err)
+		if err := s.removeData(ctx, d); err != nil {
+			return err
 		}
 	}
-	if err := s.downloads.Delete(ctx, id); err != nil {
+	if err := s.downloads.DeleteUnlessIn(ctx, id, busyStates); err != nil {
+		if errors.Is(err, core.ErrConflict) {
+			return busyError()
+		}
 		return fmt.Errorf("app: delete download: %w", err)
 	}
 	s.events.Publish(core.Removed{ID: id})
 	return nil
+}
+
+// removeData holds d, checks that Post-processing has not taken it, and
+// deletes its files.
+func (s *DownloadService) removeData(ctx context.Context, d core.Download) error {
+	release, err := s.opts.remover.Hold(ctx, d)
+	if err != nil {
+		return fmt.Errorf("app: delete download data: %w", err)
+	}
+	now, err := s.downloads.Get(ctx, d.ID)
+	if err == nil && slices.Contains(busyStates, now.State) {
+		err = busyError()
+	}
+	if err == nil {
+		if err = s.opts.remover.RemoveData(ctx, now); err != nil {
+			err = fmt.Errorf("app: delete download data: %w", err)
+		}
+	}
+	if err != nil {
+		release()
+		return err
+	}
+	return nil
+}
+
+func (s *DownloadService) startDeleting(id core.ID) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, busy := s.deleting[id]; busy {
+		return false
+	}
+	if s.deleting == nil {
+		s.deleting = map[core.ID]struct{}{}
+	}
+	s.deleting[id] = struct{}{}
+	return true
+}
+
+func (s *DownloadService) doneDeleting(id core.ID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.deleting, id)
 }

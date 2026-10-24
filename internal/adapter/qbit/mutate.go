@@ -61,10 +61,10 @@ func (c *call) delete() {
 	}
 	deleteFiles := isTrue(c.get("deleteFiles"))
 	if c.each(es, func(e entry) error {
-		if e.d.State == core.StateFetched || e.d.State == core.StatePostProcessing {
-			return nil
+		if err := c.h.Downloads.Delete(c.ctx(), e.d.ID, deleteFiles); !app.IsBusy(err) {
+			return err
 		}
-		return c.h.Downloads.Delete(c.ctx(), e.d.ID, deleteFiles)
+		return nil
 	}) {
 		c.ok()
 	}

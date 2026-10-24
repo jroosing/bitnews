@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -129,6 +130,20 @@ func (r *ppRepo) UpdateDisplay(_ context.Context, id core.ID, name string, total
 func (r *ppRepo) Delete(_ context.Context, id core.ID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	delete(r.m, id)
+	return nil
+}
+
+func (r *ppRepo) DeleteUnlessIn(_ context.Context, id core.ID, states []core.State) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d, ok := r.m[id]
+	if !ok {
+		return core.ErrNotFound
+	}
+	if slices.Contains(states, d.State) {
+		return core.ErrConflict
+	}
 	delete(r.m, id)
 	return nil
 }

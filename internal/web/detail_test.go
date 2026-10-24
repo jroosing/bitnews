@@ -276,6 +276,19 @@ func TestRemoveWithDeleteDataAsksTheDataRemover(t *testing.T) {
 	assert.Contains(t, rec.Header().Get("HX-Trigger"), "files were deleted")
 }
 
+func TestRemoveOfADownloadBeingPostProcessedSaysWhy(t *testing.T) {
+	d := newDetailEnv(t)
+	dl := d.add(core.Download{State: core.StatePostProcessing})
+
+	rec := d.act("/downloads/"+string(dl.ID)+"/delete", url.Values{"delete_data": {"1"}, "from": {"detail"}})
+
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String()+rec.Header().Get("HX-Trigger"), "post-processed")
+	assert.Empty(t, d.remover.ids(), "no file is touched")
+	_, err := d.get(dl.ID)
+	assert.NoError(t, err)
+}
+
 func TestRemoveFromTheDetailPageRedirectsToTheHistory(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{})

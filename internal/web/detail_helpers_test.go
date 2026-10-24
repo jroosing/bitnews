@@ -92,6 +92,8 @@ type fakeRemover struct {
 	err     error
 }
 
+func (*fakeRemover) Hold(context.Context, core.Download) (func(), error) { return func() {}, nil }
+
 func (f *fakeRemover) RemoveData(_ context.Context, d core.Download) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

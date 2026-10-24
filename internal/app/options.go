@@ -15,18 +15,23 @@ type Publisher interface {
 }
 
 // DataRemover deletes the data a Download left on disk: the incomplete
-// directory, the output, any seeded files. Engines provide the real one in
-// later milestones.
+// directory, the output, any seeded files.
 type DataRemover interface {
-	// RemoveData is called before the Download row is deleted, so it can
-	// still read the row's paths. An error keeps the row, so the user can
-	// retry.
+	// Hold stops whatever still works on the Download's files (its fetch,
+	// or the torrent engine) and keeps it stopped. release undoes the hold;
+	// it is called when the removal does not go ahead. After a removal the
+	// hold ends when core.Removed is published.
+	Hold(ctx context.Context, d core.Download) (release func(), err error)
+	// RemoveData deletes the files. It is called with the hold in place and
+	// before the Download row is deleted, so it can still read the row's
+	// paths. An error keeps the row, so the user can retry.
 	RemoveData(ctx context.Context, d core.Download) error
 }
 
 type noopRemover struct{}
 
-func (noopRemover) RemoveData(context.Context, core.Download) error { return nil }
+func (noopRemover) Hold(context.Context, core.Download) (func(), error) { return func() {}, nil }
+func (noopRemover) RemoveData(context.Context, core.Download) error     { return nil }
 
 type options struct {
 	now     func() time.Time

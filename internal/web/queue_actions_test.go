@@ -200,6 +200,19 @@ func TestPausingAFetchedDownloadIsAToastNotA500(t *testing.T) {
 	assert.Contains(t, msg, "cannot be paused")
 }
 
+func TestRemovingADownloadBeingPostProcessedIsAToast(t *testing.T) {
+	q := newQueueEnv(t)
+	d := q.add(core.Download{State: core.StatePostProcessing})
+
+	rec := q.act("/queue/"+string(d.ID)+"/remove", url.Values{"delete_data": {"true"}})
+
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	_, msg := toastOf(t, rec.Header())
+	assert.Contains(t, msg, "post-processed")
+	_, err := q.repo.Get(t.Context(), d.ID)
+	assert.NoError(t, err, "the download stays")
+}
+
 func TestActionOnADownloadThatFinishedMeanwhileRemovesTheRow(t *testing.T) {
 	q := newQueueEnv(t)
 	d := q.add(core.Download{State: core.StateReady, OutputPath: "/x"})

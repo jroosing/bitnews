@@ -305,6 +305,40 @@ func TestDownloadRepoDeleteUnknownIDIsNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, core.ErrNotFound)
 }
 
+func TestDownloadRepoDeleteUnlessInDeletesADownloadInAnotherState(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("x", 0)
+	require.NoError(t, repo.Create(ctx, d))
+
+	require.NoError(t, repo.DeleteUnlessIn(ctx, d.ID, []core.State{core.StateFetched, core.StatePostProcessing}))
+
+	_, err := repo.Get(ctx, d.ID)
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
+func TestDownloadRepoDeleteUnlessInKeepsADownloadInOneOfTheStates(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newDownloadRepo(t)
+	d := newDownload("x", 0)
+	d.State = core.StatePostProcessing
+	require.NoError(t, repo.Create(ctx, d))
+
+	err := repo.DeleteUnlessIn(ctx, d.ID, []core.State{core.StateFetched, core.StatePostProcessing})
+
+	assert.ErrorIs(t, err, core.ErrConflict)
+	_, err = repo.Get(ctx, d.ID)
+	assert.NoError(t, err, "the row stays")
+}
+
+func TestDownloadRepoDeleteUnlessInOfAnUnknownIDIsNotFound(t *testing.T) {
+	repo, _ := newDownloadRepo(t)
+
+	err := repo.DeleteUnlessIn(context.Background(), core.NewID(), []core.State{core.StateFetched})
+
+	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
 func TestCategoryRepoDeleteClearsCategoryOfItsDownloads(t *testing.T) {
 	ctx := context.Background()
 	downloads, db := newDownloadRepo(t)

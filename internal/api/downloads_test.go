@@ -358,6 +358,8 @@ func TestPatchOfUnknownDownloadIs404(t *testing.T) {
 
 type fakeRemover struct{ removed []core.ID }
 
+func (*fakeRemover) Hold(context.Context, core.Download) (func(), error) { return func() {}, nil }
+
 func (f *fakeRemover) RemoveData(_ context.Context, d core.Download) error {
 	f.removed = append(f.removed, d.ID)
 	return nil
@@ -391,6 +393,24 @@ func TestDeleteWithDeleteDataTrueAsksTheDataRemover(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, []core.ID{d.ID}, remover.removed)
+}
+
+func TestDeleteOfADownloadBeingPostProcessedIsAConflictAndTouchesNothing(t *testing.T) {
+	t.Parallel()
+	remover := &fakeRemover{}
+	e := newEnv(t, withDataRemover(remover))
+	d := e.addDownload("movie", 0)
+	d.State = core.StatePostProcessing
+	require.NoError(t, e.downloads.Delete(context.Background(), d.ID))
+	require.NoError(t, e.downloads.Create(context.Background(), d))
+
+	rec := e.do("DELETE", patchPath(d)+"?delete_data=true", "", withBearer(e.apiKey()))
+
+	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "download_busy")
+	assert.Empty(t, remover.removed)
+	_, err := e.downloads.Get(context.Background(), d.ID)
+	assert.NoError(t, err)
 }
 
 func TestDeleteRejectsBadDeleteDataAndUnknownDownloads(t *testing.T) {

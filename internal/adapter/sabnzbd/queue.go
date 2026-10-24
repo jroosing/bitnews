@@ -166,7 +166,7 @@ func (c *call) deleteDownloads(from listing) []string {
 			continue
 		}
 		if err := c.h.Downloads.Delete(c.ctx(), id, deleteData); err != nil {
-			if errors.Is(err, core.ErrNotFound) {
+			if errors.Is(err, core.ErrNotFound) || app.IsBusy(err) {
 				continue
 			}
 			c.appFail(err)
@@ -178,13 +178,10 @@ func (c *call) deleteDownloads(from listing) []string {
 }
 
 // deletable says whether a delete aimed at one list may remove d. A Download
-// that is being post-processed is in neither list's reach: SAB refuses to
-// delete a job while it is processing, and the data is in use.
+// that is being post-processed is refused by the DownloadService and
+// skipped: SAB refuses to delete a job while it is processing too.
 func deletable(d core.Download, from listing) bool {
-	if listingOf(d) != from {
-		return false
-	}
-	return d.State != core.StateFetched && d.State != core.StatePostProcessing
+	return listingOf(d) == from
 }
 
 // queuePriority serves name=priority&value=<nzo_id>&value2=<priority>.

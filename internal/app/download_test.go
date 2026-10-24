@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -323,20 +324,49 @@ func TestUpdateOfUnknownDownloadIsNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, core.ErrNotFound)
 }
 
-// recordingRemover records what it was asked to remove and whether the row
-// still existed at that moment.
+// recordingRemover records what it was asked to hold and remove, and
+// whether the row still existed at that moment.
 type recordingRemover struct {
-	repo    core.DownloadRepo
-	removed []core.Download
-	rowSeen []bool
-	err     error
+	repo     core.DownloadRepo
+	held     []core.ID
+	released []core.ID
+	removed  []core.Download
+	rowSeen  []bool
+	err      error
+	holdErr  error
+	// onHold runs inside Hold; onRemove inside RemoveData.
+	onHold, onRemove func()
+}
+
+func (r *recordingRemover) Hold(_ context.Context, d core.Download) (func(), error) {
+	r.held = append(r.held, d.ID)
+	if r.onHold != nil {
+		r.onHold()
+	}
+	if r.holdErr != nil {
+		return nil, r.holdErr
+	}
+	return func() { r.released = append(r.released, d.ID) }, nil
 }
 
 func (r *recordingRemover) RemoveData(ctx context.Context, d core.Download) error {
 	_, getErr := r.repo.Get(ctx, d.ID)
 	r.removed = append(r.removed, d)
 	r.rowSeen = append(r.rowSeen, getErr == nil)
+	if r.onRemove != nil {
+		r.onRemove()
+	}
 	return r.err
+}
+
+// moveTo walks the stored Download through the given States.
+func (s *stack) moveTo(t *testing.T, id core.ID, states ...core.State) {
+	t.Helper()
+	for _, st := range states {
+		c := core.StateChange{To: st, At: epoch}
+		_, err := s.downloads.UpdateState(context.Background(), id, c)
+		require.NoError(t, err, "to %s", st)
+	}
 }
 
 func TestDeleteRemovesRowThenPublishesRemovedWithoutTouchingData(t *testing.T) {
@@ -383,6 +413,128 @@ func TestDeleteKeepsRowAndPublishesNothingWhenDataRemovalFails(t *testing.T) {
 	_, getErr := s.downloads.Get(ctx, d.ID)
 	assert.NoError(t, getErr)
 	assert.Empty(t, s.events())
+	assert.Equal(t, []core.ID{d.ID}, remover.released, "the fetch goes on")
+}
+
+func TestDeleteRefusesADownloadThatIsBeingPostProcessed(t *testing.T) {
+	for name, states := range map[string][]core.State{
+		"fetched":         {core.StateFetching, core.StateFetched},
+		"post-processing": {core.StateFetching, core.StateFetched, core.StatePostProcessing},
+	} {
+		for _, deleteData := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/delete_data=%v", name, deleteData), func(t *testing.T) {
+				ctx := context.Background()
+				s := newStack(t)
+				remover := &recordingRemover{repo: s.downloads}
+				svc := s.downloadService(app.WithDataRemover(remover))
+				d := s.addDownload(t, "movie", 0)
+				s.moveTo(t, d.ID, states...)
+
+				err := svc.Delete(ctx, d.ID, deleteData)
+
+				require.ErrorIs(t, err, core.ErrConflict)
+				assert.True(t, app.IsBusy(err))
+				assert.Equal(t, "download_busy", errCode(t, err))
+				_, getErr := s.downloads.Get(ctx, d.ID)
+				assert.NoError(t, getErr, "the row stays")
+				assert.Empty(t, remover.removed, "no file is touched")
+				assert.Empty(t, s.events())
+			})
+		}
+	}
+}
+
+func TestDeleteWithDataRefusesWhenTheFetchFinishedBeforeTheHold(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	remover := &recordingRemover{repo: s.downloads}
+	svc := s.downloadService(app.WithDataRemover(remover))
+	d := s.addDownload(t, "movie", 0)
+	s.moveTo(t, d.ID, core.StateFetching)
+	// The fetch completes while the remover is stopping it, and the
+	// Post-processor may pick the Download up at any moment.
+	remover.onHold = func() { s.moveTo(t, d.ID, core.StateFetched) }
+
+	err := svc.Delete(ctx, d.ID, true)
+
+	assert.True(t, app.IsBusy(err), "%v", err)
+	assert.Empty(t, remover.removed, "no file is touched")
+	assert.Equal(t, []core.ID{d.ID}, remover.released)
+	_, getErr := s.downloads.Get(ctx, d.ID)
+	assert.NoError(t, getErr)
+}
+
+func TestDeleteWithDataHoldsBeforeRemovingFiles(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	remover := &recordingRemover{repo: s.downloads}
+	svc := s.downloadService(app.WithDataRemover(remover))
+	d := s.addDownload(t, "movie", 0)
+
+	require.NoError(t, svc.Delete(ctx, d.ID, true))
+
+	assert.Equal(t, []core.ID{d.ID}, remover.held)
+	assert.Empty(t, remover.released, "the Queue forgets the hold when it sees Removed")
+}
+
+func TestDeleteWithDataFailsWhenTheHoldFails(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	remover := &recordingRemover{repo: s.downloads, holdErr: assert.AnError}
+	svc := s.downloadService(app.WithDataRemover(remover))
+	d := s.addDownload(t, "movie", 0)
+
+	err := svc.Delete(ctx, d.ID, true)
+
+	require.ErrorIs(t, err, assert.AnError)
+	assert.Empty(t, remover.removed)
+	_, getErr := s.downloads.Get(ctx, d.ID)
+	assert.NoError(t, getErr)
+}
+
+func TestRemovingFilesDoesNotBlockOtherDownloads(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	removing, finish := make(chan struct{}), make(chan struct{})
+	remover := &recordingRemover{repo: s.downloads, onRemove: func() { close(removing); <-finish }}
+	svc := s.downloadService(app.WithDataRemover(remover))
+	big := s.addDownload(t, "big", 0)
+	other := s.addDownload(t, "other", time.Second)
+
+	done := make(chan error, 1)
+	go func() { done <- svc.Delete(ctx, big.ID, true) }()
+	<-removing
+
+	paused := make(chan error, 1)
+	go func() { _, err := svc.Pause(ctx, other.ID); paused <- err }()
+	select {
+	case err := <-paused:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("pausing another download waited for the file removal")
+	}
+	close(finish)
+	require.NoError(t, <-done)
+}
+
+func TestASecondDeleteOfTheSameDownloadWhileTheFirstRunsIsAConflict(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	removing, finish := make(chan struct{}), make(chan struct{})
+	remover := &recordingRemover{repo: s.downloads, onRemove: func() { close(removing); <-finish }}
+	svc := s.downloadService(app.WithDataRemover(remover))
+	d := s.addDownload(t, "big", 0)
+
+	done := make(chan error, 1)
+	go func() { done <- svc.Delete(ctx, d.ID, true) }()
+	<-removing
+
+	err := svc.Delete(ctx, d.ID, true)
+
+	assert.ErrorIs(t, err, core.ErrConflict)
+	assert.Equal(t, "download_deleting", errCode(t, err))
+	close(finish)
+	require.NoError(t, <-done)
 }
 
 func TestDeleteWithoutARemoverStillSucceedsWithDeleteData(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/kyura4k/gitnews/internal/app"
 	"gitlab.com/kyura4k/gitnews/internal/auth"
 	"gitlab.com/kyura4k/gitnews/internal/core"
 	"gitlab.com/kyura4k/gitnews/internal/view"
@@ -441,6 +442,10 @@ func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 	if err := s.Downloads.Delete(r.Context(), core.ID(id), deleteData); err != nil {
 		if errors.Is(err, core.ErrNotFound) {
 			s.renderError(w, r, http.StatusNotFound, "Download not found", "It was already removed.")
+			return
+		}
+		if ae, ok := errors.AsType[*app.Error](err); ok && errors.Is(err, core.ErrConflict) {
+			s.renderError(w, r, http.StatusConflict, "Not removed yet", ae.Message)
 			return
 		}
 		s.Logger.Error("remove download failed", "id", id, "delete_data", deleteData, "err", err)
