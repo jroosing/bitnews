@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/jroosing/bitnews/internal/core"
@@ -35,6 +37,45 @@ func (s *CategoryService) List(ctx context.Context) ([]core.Category, error) {
 		cs = []core.Category{}
 	}
 	return cs, nil
+}
+
+// Ensure returns the Category with the given name, ignoring case, and
+// creates it (lower case, default directory) when there is none. The media
+// managers rely on this: SABnzbd and qBittorrent create an unknown Category
+// on add.
+func (s *CategoryService) Ensure(ctx context.Context, name string) (core.Category, error) {
+	return ensureCategory(ctx, s.cats, s.opts.log, name)
+}
+
+// ensureCategory is Ensure on a repository. Two callers creating the same
+// name at once both end up with the one Category.
+func ensureCategory(ctx context.Context, repo core.CategoryRepo, log *slog.Logger, name string) (core.Category, error) {
+	name = strings.TrimSpace(name)
+	for attempt := range 2 {
+		cats, err := repo.List(ctx)
+		if err != nil {
+			return core.Category{}, fmt.Errorf("app: list categories: %w", err)
+		}
+		for _, c := range cats {
+			if strings.EqualFold(c.Name, name) {
+				return c, nil
+			}
+		}
+		c := core.Category{ID: core.NewID(), Name: strings.ToLower(name)}
+		if err := validateCategory(c); err != nil {
+			return core.Category{}, err
+		}
+		err = repo.Create(ctx, c)
+		if err == nil {
+			log.Info("category created", "category", c.Name)
+			return c, nil
+		}
+		// Someone created it between our List and Create: look again.
+		if !errors.Is(err, core.ErrConflict) || attempt == 1 {
+			return core.Category{}, categoryWriteError("create", err)
+		}
+	}
+	return core.Category{}, nil
 }
 
 // Create validates and stores a new Category. A name that is already taken

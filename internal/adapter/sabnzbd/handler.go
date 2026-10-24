@@ -101,7 +101,7 @@ type call struct {
 	params url.Values
 
 	// staged is the uploaded NZB of an addfile call, with its file name.
-	staged   *app.StagedNZB
+	staged   *app.Upload
 	fileName string
 
 	authDone, authOK bool
@@ -226,7 +226,7 @@ func (c *call) readMultipart() bool {
 			if !c.authorize() {
 				return false
 			}
-			st, err := c.h.Adder.Stage(c.ctx(), part)
+			st, err := c.h.Adder.Receive(c.ctx(), part, part.FileName(), core.SourceNZB)
 			if err != nil {
 				c.appFail(err)
 				return false

@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -115,22 +114,18 @@ func (s *Server) renderAddForm(w http.ResponseWriter, r *http.Request, status in
 
 // addInput is what the form posted.
 type addInput struct {
-	link       string
-	name       string
-	category   string
-	priority   string
-	password   string
-	paused     bool
-	mode       string
-	fileName   string
-	stagedNZB  *app.StagedNZB
-	stagedTorr *app.StagedTorrent
+	link     string
+	name     string
+	category string
+	priority string
+	password string
+	paused   bool
+	mode     string
+	fileName string
+	upload   *app.Upload
 }
 
-func (in *addInput) discard() {
-	in.stagedNZB.Discard()
-	in.stagedTorr.Discard()
-}
+func (in *addInput) discard() { in.upload.Discard() }
 
 // postAdd adds a Download from an uploaded NZB or torrent file, or from a
 // link (a magnet link, or the URL of an NZB or torrent), mirroring
@@ -259,78 +254,39 @@ func addReadError(err error) error {
 	return &errAddRequest{msg: "The upload could not be read. Reload the page and try again."}
 }
 
-// stageUpload stages the "file" part as an NZB or a torrent, deciding by the
-// content (a bencoded dictionary starts with "d") and checking that the file
+// stageUpload receives the "file" part. The AddService decides by the
+// content whether it is an NZB or a torrent, and checks that the file
 // extension, when it is one of ours, agrees.
 func (s *Server) stageUpload(ctx context.Context, in *addInput, part *multipart.Part) error {
 	if part.FileName() == "" {
 		// A browser sends an empty file part when no file was chosen.
 		return nil
 	}
-	if in.stagedNZB != nil || in.stagedTorr != nil {
+	if in.upload != nil {
 		return &errAddRequest{msg: "Choose one file.", field: "source"}
 	}
 	in.fileName = path.Base(strings.ReplaceAll(part.FileName(), `\`, "/"))
-	br := bufio.NewReader(part)
-	head, err := br.Peek(1)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return addReadError(err)
+	up, err := s.Adder.Receive(ctx, part, in.fileName, "")
+	if err != nil {
+		if _, ok := errors.AsType[*app.Error](err); !ok {
+			return addReadError(err)
+		}
+		return err
 	}
-	if len(head) == 0 {
-		return &errAddRequest{msg: "That file is empty.", field: "source"}
-	}
-	isTorrent := head[0] == 'd'
-	ext := strings.ToLower(path.Ext(in.fileName))
-	switch {
-	case ext == ".torrent" && !isTorrent:
-		return &errAddRequest{msg: "That file ends in .torrent but is not a torrent file.", field: "source"}
-	case ext == ".nzb" && isTorrent:
-		return &errAddRequest{msg: "That file ends in .nzb but is a torrent file.", field: "source"}
-	}
-	if isTorrent {
-		in.stagedTorr, err = s.Adder.StageTorrent(ctx, br)
-	} else {
-		in.stagedNZB, err = s.Adder.Stage(ctx, br)
-	}
-	return err
+	in.upload = up
+	return nil
 }
 
-// addDownload checks the request and adds the staged file, or fetches and
-// adds the link.
+// addDownload adds the received file or the link.
 func (s *Server) addDownload(ctx context.Context, in *addInput, req app.AddRequest) (core.Download, error) {
-	hasFile := in.stagedNZB != nil || in.stagedTorr != nil
 	switch {
-	case hasFile && in.link != "":
+	case in.upload != nil && in.link != "":
 		return core.Download{}, &errAddRequest{msg: "Choose a file or a link, not both.", field: "source"}
-	case !hasFile && in.link == "":
+	case in.upload == nil && in.link == "":
 		return core.Download{}, &errAddRequest{msg: "Choose an NZB or torrent file, or paste a link.", field: "source"}
 	}
-	// The cheap fields first, so a mistake costs no fetch.
-	if err := s.Adder.Check(ctx, req); err != nil {
-		return core.Download{}, err
-	}
-	switch {
-	case in.stagedTorr != nil:
-		return s.Adder.AddTorrent(ctx, in.stagedTorr, req)
-	case in.stagedNZB != nil:
-		return s.Adder.Add(ctx, in.stagedNZB, req)
-	case len(in.link) >= len("magnet:") && strings.EqualFold(in.link[:len("magnet:")], "magnet:"):
-		st, err := s.Adder.StageMagnet(ctx, in.link)
-		if err != nil {
-			return core.Download{}, err
-		}
-		in.stagedTorr = st
-		return s.Adder.AddTorrent(ctx, st, req)
-	}
-	got, err := s.Adder.Fetch(ctx, in.link)
-	if err != nil {
-		return core.Download{}, err
-	}
-	in.stagedNZB, in.stagedTorr = got.NZB, got.Torrent
-	if got.Torrent != nil {
-		return s.Adder.AddTorrent(ctx, got.Torrent, req)
-	}
-	return s.Adder.Add(ctx, got.NZB, req)
+	req.Upload, req.URL = in.upload, in.link
+	return s.Adder.Add(ctx, req)
 }
 
 // addProblem records err in the form and returns the status to answer with.
@@ -377,7 +333,8 @@ func (s *Server) addProblem(f *addForm, err error) int {
 			f.PassError = msg
 		case "torrents_unavailable":
 			f.Error = "Torrents are not available on this instance, so only NZB files can be added."
-		case "nzb_too_large", "torrent_too_large", "invalid_nzb", "invalid_torrent", "invalid_magnet", "invalid_url", "fetch_failed":
+		case "nzb_too_large", "torrent_too_large", "invalid_nzb", "invalid_torrent", "invalid_magnet", "invalid_url", "fetch_failed",
+			"empty_file", "not_a_torrent", "not_an_nzb":
 			f.SourceError = msg
 		default:
 			f.Error = msg

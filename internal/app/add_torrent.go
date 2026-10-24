@@ -78,7 +78,7 @@ func (s *AddService) torrentsEnabled() error {
 // that does not parse, or has hostile names, is invalid (code
 // "invalid_torrent") and nothing is left on disk. Read errors of r are
 // returned wrapped.
-func (s *AddService) StageTorrent(ctx context.Context, r io.Reader) (st *StagedTorrent, err error) {
+func (s *AddService) stageTorrent(ctx context.Context, r io.Reader) (st *StagedTorrent, err error) {
 	if err := s.torrentsEnabled(); err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func writeNewFile(path string, data []byte) error {
 // acceptable; see torrent.ParseMagnet). It writes nothing: the metadata is
 // fetched by the torrent runner. The link is never logged or put in an error
 // message, because its tracker URLs may carry a passkey.
-func (s *AddService) StageMagnet(ctx context.Context, uri string) (*StagedTorrent, error) {
+func (s *AddService) stageMagnet(ctx context.Context, uri string) (*StagedTorrent, error) {
 	if err := s.torrentsEnabled(); err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (f FetchedSource) Discard() {
 // error codes are those of FetchNZB, with the torrent size cap for torrents.
 // A torrent without torrent support (WithTorrentSources) is an error of kind
 // ErrUnavailable.
-func (s *AddService) Fetch(ctx context.Context, rawURL string) (FetchedSource, error) {
+func (s *AddService) fetchAny(ctx context.Context, rawURL string) (FetchedSource, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return FetchedSource{}, invalid("invalid_url", "url must be an absolute http or https URL")
@@ -200,7 +200,7 @@ func (s *AddService) Fetch(ctx context.Context, rawURL string) (FetchedSource, e
 
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 		if loc := resp.Header.Get("Location"); len(loc) >= len("magnet:") && strings.EqualFold(loc[:len("magnet:")], "magnet:") {
-			st, err := s.StageMagnet(ctx, loc)
+			st, err := s.stageMagnet(ctx, loc)
 			if err != nil {
 				return FetchedSource{}, err
 			}
@@ -223,9 +223,9 @@ func (s *AddService) Fetch(ctx context.Context, rawURL string) (FetchedSource, e
 	case !isTorrent && resp.ContentLength > s.opts.maxNZBBytes:
 		return FetchedSource{}, tooLarge("nzb_too_large", "the NZB is larger than %d MiB", s.opts.maxNZBBytes>>20)
 	case isTorrent:
-		out.Torrent, err = s.StageTorrent(ctx, br)
+		out.Torrent, err = s.stageTorrent(ctx, br)
 	default:
-		out.NZB, err = s.Stage(ctx, br)
+		out.NZB, err = s.stage(ctx, br)
 	}
 	if err != nil {
 		if _, isApp := errors.AsType[*Error](err); !isApp && body.err != nil && !errors.Is(body.err, io.EOF) {
@@ -258,7 +258,7 @@ func looksLikeBencode(r *bufio.Reader) bool {
 //
 // The Download's directory is <torrent incomplete>/<download id>/. AddTorrent
 // creates it only for a .torrent file, where it holds the stored metainfo.
-func (s *AddService) AddTorrent(ctx context.Context, st *StagedTorrent, req AddRequest) (d core.Download, err error) {
+func (s *AddService) addTorrent(ctx context.Context, st *StagedTorrent, req AddRequest) (d core.Download, err error) {
 	defer func() {
 		if err != nil {
 			st.Discard()
@@ -270,7 +270,7 @@ func (s *AddService) AddTorrent(ctx context.Context, st *StagedTorrent, req AddR
 	if req.Priority == "" {
 		req.Priority = core.DownloadPriorityNormal
 	}
-	if err := s.Check(ctx, req); err != nil {
+	if err := s.check(ctx, req); err != nil {
 		return core.Download{}, err
 	}
 	src := core.TorrentSource{DownloadID: st.id, InfoHash: st.InfoHash(), Magnet: st.uri}

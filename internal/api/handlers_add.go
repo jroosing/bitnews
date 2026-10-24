@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
@@ -59,35 +60,20 @@ func (s *Server) addFromJSON(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "ambiguous_source", "give either a url or a magnet, not both")
 		return
 	}
-	req := app.AddRequest{
-		Name: body.Name, CategoryID: body.CategoryID, Priority: body.Priority,
+	// Each field takes its own kind of link, as documented.
+	isMagnet := func(v string) bool { return strings.HasPrefix(strings.ToLower(strings.TrimSpace(v)), "magnet:") }
+	switch {
+	case body.URL != "" && isMagnet(body.URL):
+		writeError(w, http.StatusBadRequest, "invalid_url", "url must be an absolute http or https URL; send a magnet link as magnet")
+		return
+	case body.Magnet != "" && !isMagnet(body.Magnet):
+		writeError(w, http.StatusBadRequest, "invalid_magnet", "not a usable magnet link")
+		return
+	}
+	s.finishAdd(w, r, app.AddRequest{
+		URL: body.URL + body.Magnet, Name: body.Name, CategoryID: body.CategoryID, Priority: body.Priority,
 		Password: body.Password, Paused: body.Paused,
-	}
-	// Check the cheap fields before fetching anything.
-	if err := s.Adder.Check(r.Context(), req); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if body.Magnet != "" {
-		tt, err := s.Adder.StageMagnet(r.Context(), body.Magnet)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		s.finishAddTorrent(w, r, tt, req)
-		return
-	}
-	got, err := s.Adder.Fetch(r.Context(), body.URL)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer got.Discard() // after a successful add this does nothing
-	if got.Torrent != nil {
-		s.finishAddTorrent(w, r, got.Torrent, req)
-		return
-	}
-	s.finishAdd(w, r, got.NZB, req)
+	})
 }
 
 func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
@@ -98,8 +84,6 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	var (
 		req    app.AddRequest
-		st     *app.StagedNZB
-		tt     *app.StagedTorrent
 		seen   = map[string]bool{}
 		fields = map[string]*string{}
 		paused string
@@ -109,7 +93,7 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 	)
 	fields["name"], fields["category_id"], fields["priority"], fields["password"], fields["paused"] =
 		&req.Name, &cat, &prio, &pass, &paused
-	defer func() { st.Discard(); tt.Discard() }() // after finishAdd this does nothing
+	defer func() { req.Upload.Discard() }() // after a successful add this does nothing
 
 	for n := 0; ; n++ {
 		part, err := mr.NextPart()
@@ -131,17 +115,16 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[name] = true
 		if name == "nzb" || name == "torrent" {
-			if st != nil || tt != nil {
+			if req.Upload != nil {
 				writeError(w, http.StatusBadRequest, "multiple_sources", "give one nzb or torrent file, not several")
 				return
 			}
-			req.FileName = part.FileName()
-			if name == "nzb" {
-				st, err = s.Adder.Stage(r.Context(), part)
-			} else {
-				tt, err = s.Adder.StageTorrent(r.Context(), part)
+			kind := core.SourceNZB
+			if name == "torrent" {
+				kind = core.SourceTorrent
 			}
-			if err != nil {
+			req.FileName = part.FileName()
+			if req.Upload, err = s.Adder.Receive(r.Context(), part, part.FileName(), kind); err != nil {
 				s.fail(w, r, err)
 				return
 			}
@@ -163,7 +146,7 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		*dst = string(raw)
 	}
-	if st == nil && tt == nil {
+	if req.Upload == nil {
 		writeError(w, http.StatusBadRequest, "missing_nzb", `the form needs an "nzb" or "torrent" file part`)
 		return
 	}
@@ -174,11 +157,7 @@ func (s *Server) addFromUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if tt != nil {
-		s.finishAddTorrent(w, r, tt, req)
-		return
-	}
-	s.finishAdd(w, r, st, req)
+	s.finishAdd(w, r, req)
 }
 
 // uploadReadFailed answers for a multipart read error: too large when the
@@ -191,17 +170,8 @@ func (s *Server) uploadReadFailed(w http.ResponseWriter, r *http.Request, err er
 	writeError(w, http.StatusBadRequest, "invalid_multipart", "the multipart body is not valid")
 }
 
-func (s *Server) finishAdd(w http.ResponseWriter, r *http.Request, st *app.StagedNZB, req app.AddRequest) {
-	d, err := s.Adder.Add(r.Context(), st, req)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, toDownloadJSON(d))
-}
-
-func (s *Server) finishAddTorrent(w http.ResponseWriter, r *http.Request, st *app.StagedTorrent, req app.AddRequest) {
-	d, err := s.Adder.AddTorrent(r.Context(), st, req)
+func (s *Server) finishAdd(w http.ResponseWriter, r *http.Request, req app.AddRequest) {
+	d, err := s.Adder.Add(r.Context(), req)
 	if err != nil {
 		s.fail(w, r, err)
 		return

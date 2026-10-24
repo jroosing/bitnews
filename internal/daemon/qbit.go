@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -155,59 +153,45 @@ func qbitGlobalShare(settings func() core.Settings) func() qbit.GlobalShare {
 	}
 }
 
-// qbitAdder implements qbit.TorrentAdder on the AddService, so a torrent
-// added through the adapter goes the same way as one added through the own
-// API: staged, checked, stored and queued. The qBit API is torrent-only, so a
-// URL that turns out to be an NZB is refused.
+// qbitAdder implements qbit.TorrentAdder on AddService.Add: it only turns
+// the adapter's options into an AddRequest that accepts torrents alone.
 type qbitAdder struct {
-	add    *app.AddService
-	limits *qbitTorrents
-	log    *slog.Logger
+	add     *app.AddService
+	sources core.TorrentSourceRepo
+	log     *slog.Logger
 }
 
 // AddTorrentFile implements qbit.TorrentAdder.
 func (a *qbitAdder) AddTorrentFile(ctx context.Context, data []byte, opts qbit.AddOptions) (string, error) {
-	st, err := a.add.StageTorrent(ctx, bytes.NewReader(data))
+	up, err := a.add.Receive(ctx, bytes.NewReader(data), "", core.SourceTorrent)
 	if err != nil {
 		return "", err
 	}
-	return a.addStaged(ctx, st, opts)
+	return a.addTorrent(ctx, app.AddRequest{Upload: up}, opts)
 }
 
 // AddURL implements qbit.TorrentAdder. The URL can hold a passkey: it is
 // never logged here.
 func (a *qbitAdder) AddURL(ctx context.Context, url string, opts qbit.AddOptions) (string, error) {
-	if len(url) >= len("magnet:") && strings.EqualFold(url[:len("magnet:")], "magnet:") {
-		st, err := a.add.StageMagnet(ctx, url)
-		if err != nil {
-			return "", err
-		}
-		return a.addStaged(ctx, st, opts)
-	}
-	fetched, err := a.add.Fetch(ctx, url)
-	if err != nil {
-		return "", err
-	}
-	if fetched.Torrent == nil {
-		fetched.Discard()
-		return "", fmt.Errorf("%w: the URL is not a torrent", app.ErrInvalidInput)
-	}
-	return a.addStaged(ctx, fetched.Torrent, opts)
+	return a.addTorrent(ctx, app.AddRequest{URL: url}, opts)
 }
 
-func (a *qbitAdder) addStaged(ctx context.Context, st *app.StagedTorrent, opts qbit.AddOptions) (string, error) {
-	hash := st.InfoHash().String() // st must not be used after AddTorrent
+func (a *qbitAdder) addTorrent(ctx context.Context, req app.AddRequest, opts qbit.AddOptions) (string, error) {
 	if opts.SavePath != "" {
 		a.log.Debug("qbit: the save path of a torrent add is ignored; the Download goes to its Category's directory")
 	}
-	d, err := a.add.AddTorrent(ctx, st, app.AddRequest{CategoryID: opts.CategoryID, Paused: opts.Paused})
+	req.Only, req.CategoryID, req.Paused = core.SourceTorrent, opts.CategoryID, opts.Paused
+	if l := opts.ShareLimit; l != nil && !l.Global {
+		sl := coreShareLimit(l.Ratio, l.SeedingSeconds)
+		req.ShareLimit = &sl
+	}
+	d, err := a.add.Add(ctx, req)
 	if err != nil {
-		return hash, err // a duplicate matches core.ErrConflict
+		return "", err // a duplicate matches core.ErrConflict
 	}
-	if l := opts.ShareLimit; l != nil {
-		if err := a.limits.SetShareLimit(ctx, d.ID, l.Ratio, l.SeedingSeconds, l.Global); err != nil {
-			a.log.Warn("qbit: cannot set the share limit of a new torrent", "id", d.ID, "err", err)
-		}
+	src, err := a.sources.Get(ctx, d.ID)
+	if err != nil {
+		return "", nil // the hash is only for the log
 	}
-	return hash, nil
+	return src.InfoHash.String(), nil
 }

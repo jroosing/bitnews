@@ -214,7 +214,7 @@ func TestTorrentQueuePositionsAreIndependentOfTheUsenetQueue(t *testing.T) {
 	}
 	nzb, err := r.svc.Stage(ctx, strings.NewReader(tinyNZB))
 	require.NoError(t, err)
-	nd, err := r.svc.Add(ctx, nzb, app.AddRequest{})
+	nd, err := r.svc.AddStaged(ctx, nzb, app.AddRequest{})
 	require.NoError(t, err)
 	require.Positive(t, nd.QueuePosition)
 

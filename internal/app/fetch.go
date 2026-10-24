@@ -83,7 +83,7 @@ func checkRedirectOrMagnet(req *http.Request, via []*http.Request) error {
 // redacted form is logged or returned in an error. Failures to reach the
 // server, a non-200 answer and a timeout are errors of kind ErrUpstream
 // (code "fetch_failed"); content that is not an NZB is "invalid_nzb".
-func (s *AddService) FetchNZB(ctx context.Context, rawURL string) (*StagedNZB, error) {
+func (s *AddService) fetchNZB(ctx context.Context, rawURL string) (*StagedNZB, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return nil, invalid("invalid_url", "url must be an absolute http or https URL")
@@ -113,7 +113,7 @@ func (s *AddService) FetchNZB(ctx context.Context, rawURL string) (*StagedNZB, e
 	}
 
 	body := &errRecorder{r: resp.Body}
-	st, err := s.Stage(ctx, body)
+	st, err := s.stage(ctx, body)
 	if err != nil {
 		if _, isApp := errors.AsType[*Error](err); !isApp && body.err != nil && !errors.Is(body.err, io.EOF) {
 			// The failure was in the transfer, not in our disk or the

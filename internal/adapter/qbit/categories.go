@@ -66,33 +66,17 @@ func (c *call) createCategory() {
 	c.ok()
 }
 
-// ensureCategory resolves a category name. A name that matches a Category
-// (ignoring case) is used; an unknown name creates the Category with the
-// default dir, as qBittorrent does on add. An empty name means none.
+// ensureCategory resolves a category name: an existing Category (ignoring
+// case), or a new one, as qBittorrent does on add. An empty name means none.
 func (h *handler) ensureCategory(c *call, name string) (core.ID, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
+	if strings.TrimSpace(name) == "" {
 		return "", nil
 	}
-	for attempt := range 2 {
-		cats, err := h.Categories.List(c.ctx())
-		if err != nil {
-			return "", err
-		}
-		if cat, ok := findCategory(cats, name); ok {
-			return cat.ID, nil
-		}
-		created, err := h.Categories.Create(c.ctx(), strings.ToLower(name), "")
-		if err == nil {
-			h.log.Info("qbit: category created", "category", created.Name)
-			return created.ID, nil
-		}
-		// Someone created it between our List and Create: look again.
-		if !errors.Is(err, core.ErrConflict) || attempt == 1 {
-			return "", err
-		}
+	cat, err := h.Categories.Ensure(c.ctx(), name)
+	if err != nil {
+		return "", err
 	}
-	return "", nil
+	return cat.ID, nil
 }
 
 func findCategory(cats []core.Category, name string) (core.Category, bool) {

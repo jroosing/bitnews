@@ -134,7 +134,7 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | M8-03 |  | The torrent runner uses the Queue | done |
 | M8-04 |  | Callers use one Queue vocabulary | done |
 | M8-05 |  | Download view module (planned) | planned |
-| M8-06 | [#2](https://github.com/jroosing/bitnews/issues/2) | One Add call (planned) | planned |
+| M8-06 | [#2](https://github.com/jroosing/bitnews/issues/2) | One Add call | done |
 | M8-07 | [#3](https://github.com/jroosing/bitnews/issues/3) | Settings change under lock and one card engine | done |
 | M8-08 | [#4](https://github.com/jroosing/bitnews/issues/4) | Post-processing steps implement the core ports | done |
 | M8-09 |  | Torrent facts from the torrent runner (planned) | planned |

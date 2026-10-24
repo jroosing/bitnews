@@ -45,6 +45,19 @@ type options struct {
 
 	// torrentSources enables adding torrent Downloads.
 	torrentSources core.TorrentSourceRepo
+	// shareLimits receives the Share Limit of a new torrent.
+	shareLimits ShareLimitSetter
+}
+
+// ShareLimitSetter gives a torrent Download its own Share Limit.
+type ShareLimitSetter interface {
+	SetShareLimit(ctx context.Context, id core.ID, l core.ShareLimit) error
+}
+
+// WithShareLimits sets where AddService.Add sends a new torrent's own Share
+// Limit. Without it the limit is ignored.
+func WithShareLimits(s ShareLimitSetter) Option {
+	return func(o *options) { o.shareLimits = s }
 }
 
 // Option configures a service constructor.

@@ -125,7 +125,24 @@ The protocol adapter (the seam) is: `Prepare(ctx) (canStart bool)`, `Exclude(id)
 - [x] Pausing another Download is not blocked by a running file removal.
 - [x] The adapters no longer check the state themselves.
 
-### M8-06: One Add call (planned)
+### M8-06: One Add call
+- **Labels:** area:core, area:adapter, area:api, area:ui, ready-for-agent
+
+**Goal:** Every caller adds a Download with one request-shaped call; staging, sniffing, fetching, the Category auto-create, the torrent's Share Limit and the clean-up on error live behind it.
+
+**Before:** the own API, the UI, the SABnzbd adapter and the daemon's qBittorrent adder each drove `Check`, `Stage`/`StageTorrent`/`StageMagnet`/`Fetch`/`FetchNZB`, `Add`/`AddTorrent` and their own `defer Discard()` by hand. The magnet-prefix test and the NZB-or-torrent sniff were copied; the two adapters each had a byte-for-byte copy of the Category auto-create, run in a different order; the qBittorrent adder refused NZBs and set the Share Limit itself.
+
+**Design**
+- `AddService.Receive(ctx, r, fileName, kind)` stages an uploaded file as it arrives (a multipart body may send the file before the fields). An empty `kind` decides by the content and refuses a lying extension (`not_a_torrent`, `not_an_nzb`, `empty_file`).
+- `AddService.Add(ctx, AddRequest)` takes the received `Upload` or a `URL` (magnet, or http(s) of an NZB or a .torrent), checks the cheap fields before fetching, honours `Only` (one kind accepted), finds or creates `CategoryName`, adds, applies `ShareLimit` through `WithShareLimits`, and removes whatever was staged on any error.
+- `CategoryService.Ensure` is the one Category auto-create (find ignoring case, else create; a concurrent create is looked up again).
+- The staged steps are unexported; tests that drive one step reach them through `export_test.go`.
+
+**Acceptance criteria**
+- [x] No caller outside `internal/app` calls a staged step; the adapters, the API and the UI use `Receive` and `Add`.
+- [x] One Category auto-create (`CategoryService.Ensure`), used by both adapters.
+- [x] The daemon's qBittorrent adder only maps options to an `AddRequest`.
+- [x] The behaviour tests of the API, the UI and both adapters pass unchanged.
 ### M8-07: Settings change under lock and one card engine (planned)
 ### M8-08: Post-processing steps implement the core ports
 - **Labels:** area:postproc, area:usenet, ready-for-agent

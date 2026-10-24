@@ -46,7 +46,7 @@ func addNZB(t *testing.T, svc *app.AddService, req app.AddRequest) core.Download
 	t.Helper()
 	st, err := svc.Stage(context.Background(), strings.NewReader(tinyNZB))
 	require.NoError(t, err)
-	d, err := svc.Add(context.Background(), st, req)
+	d, err := svc.AddStaged(context.Background(), st, req)
 	require.NoError(t, err)
 	return d
 }

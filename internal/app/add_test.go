@@ -62,7 +62,7 @@ func TestAddRemovesTheDownloadAndFilesWhenTheSourceCannotBeStored(t *testing.T) 
 	st, err := svc.Stage(ctx, strings.NewReader(tinyNZB))
 	require.NoError(t, err)
 
-	_, err = svc.Add(ctx, st, app.AddRequest{})
+	_, err = svc.AddStaged(ctx, st, app.AddRequest{})
 
 	require.Error(t, err)
 	list, _, lerr := s.downloads.List(ctx, core.DownloadQuery{})
@@ -82,7 +82,7 @@ func TestAddRemovesTheFilesWhenTheDownloadCannotBeStored(t *testing.T) {
 	st, err := svc.Stage(ctx, strings.NewReader(tinyNZB))
 	require.NoError(t, err)
 
-	_, err = svc.Add(ctx, st, app.AddRequest{})
+	_, err = svc.AddStaged(ctx, st, app.AddRequest{})
 
 	require.Error(t, err)
 	assert.Empty(t, entries(t, root))
@@ -158,7 +158,7 @@ func TestAddNeverShowsAQueuedDownloadBeforeItsSourceIsStored(t *testing.T) {
 	st, err := svc.Stage(ctx, strings.NewReader(tinyNZB))
 	require.NoError(t, err)
 
-	d, err := svc.Add(ctx, st, app.AddRequest{Paused: true, Priority: core.DownloadPriorityHigh})
+	d, err := svc.AddStaged(ctx, st, app.AddRequest{Paused: true, Priority: core.DownloadPriorityHigh})
 
 	require.NoError(t, err)
 	assert.Equal(t, core.StateAdded, seenState)
@@ -183,7 +183,7 @@ func TestAddTheQueuedTransitionFailingRemovesEverything(t *testing.T) {
 	st, err := svc.Stage(ctx, strings.NewReader(tinyNZB))
 	require.NoError(t, err)
 
-	_, err = svc.Add(ctx, st, app.AddRequest{Password: "pw"})
+	_, err = svc.AddStaged(ctx, st, app.AddRequest{Password: "pw"})
 
 	require.Error(t, err)
 	list, _, lerr := s.downloads.List(ctx, core.DownloadQuery{})
@@ -207,7 +207,7 @@ func TestAddQueuePositionsCountDownloadsStillBeingAdded(t *testing.T) {
 	for range 3 {
 		st, err := svc.Stage(ctx, strings.NewReader(tinyNZB))
 		require.NoError(t, err)
-		d, err := svc.Add(ctx, st, app.AddRequest{})
+		d, err := svc.AddStaged(ctx, st, app.AddRequest{})
 		require.NoError(t, err)
 		positions = append(positions, d.QueuePosition)
 	}

@@ -37,17 +37,17 @@ type SettingsReader interface {
 	Current() core.Settings
 }
 
-// AddService creates Downloads from NZBs. Adding is two steps because a
-// multipart upload may send the NZB before the fields that describe it:
+// AddService creates Downloads, from NZBs and torrents. Callers use two
+// calls: Receive stages an uploaded file as it arrives (a multipart upload
+// may send the file before the fields that describe it), and Add takes the
+// whole request, the received file or a link, and does the rest: checking,
+// fetching a link, the Category (found or created), naming, storing and
+// queueing, the torrent's Share Limit, and cleaning up on any error.
 //
-//  1. Stage receives the NZB (from an upload, or FetchNZB from a URL). It
-//     creates the Download directory <usenet incomplete>/<download id>/,
-//     writes the raw bytes there while parsing them, and fails with no
-//     leftovers when the NZB is not valid.
-//  2. Add validates the request, names the file, stores the Download and
-//     its source, and publishes core.DownloadAdded.
-//
-// A StagedNZB that is not passed to Add must be discarded.
+// Inside, an NZB is staged into the new Download's directory
+// <usenet incomplete>/<download id>/ while it is parsed, and a .torrent into
+// <torrent incomplete>/<download id>/; nothing is left behind when it is not
+// valid.
 type AddService struct {
 	ds       *DownloadService
 	sources  core.DownloadSourceRepo
@@ -70,7 +70,7 @@ func NewAddService(ds *DownloadService, sources core.DownloadSourceRepo, setting
 	return &AddService{ds: ds, sources: sources, settings: settings, opts: o, client: c, anyClient: &anyClient}
 }
 
-// AddRequest describes the Download to create from a StagedNZB.
+// AddRequest describes the Download to create.
 type AddRequest struct {
 	// Name is the display name. Empty takes the NZB's own name, then
 	// FileName, then the first file's name, then "nzb-<id>".
@@ -87,6 +87,18 @@ type AddRequest struct {
 	// "{{password}}" suffix of the name.
 	Password core.Secret
 	Paused   bool
+
+	// Upload is the received file (Receive); URL is a magnet link or the
+	// http(s) URL of an NZB or a .torrent. Add takes exactly one of them.
+	Upload *Upload
+	URL    string
+	// Only, when set, accepts that kind of Source alone.
+	Only core.SourceKind
+	// CategoryName names a Category to use, created when it does not
+	// exist. CategoryID wins when both are set.
+	CategoryName string
+	// ShareLimit is the torrent's own Share Limit; nil uses the default.
+	ShareLimit *core.ShareLimit
 }
 
 // StagedNZB is an NZB that was received and parsed, waiting for Add.
@@ -113,7 +125,7 @@ func (st *StagedNZB) Discard() {
 // Download's directory (mode 0600). An NZB that is too large is an error of
 // kind ErrTooLarge (code "nzb_too_large"); one that does not parse is
 // invalid (code "invalid_nzb"). Read errors of r are returned wrapped.
-func (s *AddService) Stage(ctx context.Context, r io.Reader) (st *StagedNZB, err error) {
+func (s *AddService) stage(ctx context.Context, r io.Reader) (st *StagedNZB, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -171,7 +183,7 @@ func (s *AddService) parseError(err error) error {
 // Check validates the fields of req that do not depend on the NZB: priority,
 // password length and the requested Category. Add does it too; calling it
 // first saves fetching an NZB that would be refused anyway.
-func (s *AddService) Check(ctx context.Context, req AddRequest) error {
+func (s *AddService) check(ctx context.Context, req AddRequest) error {
 	if req.Priority != "" && !slices.Contains(knownPriorities, req.Priority) {
 		return invalid("invalid_priority", "unknown priority %q: use force, high, normal or low", req.Priority)
 	}
@@ -191,7 +203,7 @@ func (s *AddService) Check(ctx context.Context, req AddRequest) error {
 // Add creates the Download for a StagedNZB in state Queued at the end of the
 // NZB Queue, stores its source and publishes core.DownloadAdded. On any
 // error the staged files are removed. On success st must not be used again.
-func (s *AddService) Add(ctx context.Context, st *StagedNZB, req AddRequest) (d core.Download, err error) {
+func (s *AddService) addNZB(ctx context.Context, st *StagedNZB, req AddRequest) (d core.Download, err error) {
 	defer func() {
 		if err != nil {
 			st.Discard()
@@ -200,7 +212,7 @@ func (s *AddService) Add(ctx context.Context, st *StagedNZB, req AddRequest) (d 
 	if req.Priority == "" {
 		req.Priority = core.DownloadPriorityNormal
 	}
-	if err := s.Check(ctx, req); err != nil {
+	if err := s.check(ctx, req); err != nil {
 		return core.Download{}, err
 	}
 	categoryID, err := s.resolveCategory(ctx, req.CategoryID, st.nzb.Meta.Category)

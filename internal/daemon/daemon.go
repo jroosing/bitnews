@@ -329,7 +329,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	}
 	addOpts := []app.Option{app.WithLogger(log)}
 	if trun != nil {
-		addOpts = append(addOpts, app.WithTorrentSources(torrentSources))
+		addOpts = append(addOpts, app.WithTorrentSources(torrentSources), app.WithShareLimits(trun))
 	}
 	adder := app.NewAddService(downloadService, sources, settings, addOpts...)
 	categoryService := app.NewCategoryService(categories, downloads, bus)
@@ -341,7 +341,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		qbitHandler = qbit.New(qbit.Deps{
 			AppKey: appKey, Downloads: downloadService, Categories: categoryService, Settings: settings,
 			Torrents: torrents, Files: torrents, ShareLimits: torrents, View: views,
-			Adder:       &qbitAdder{add: adder, limits: torrents, log: log},
+			Adder:       &qbitAdder{add: adder, sources: torrentSources, log: log},
 			GlobalShare: qbitGlobalShare(settings.Current), Logger: log,
 		})
 	}
