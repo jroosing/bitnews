@@ -21,7 +21,7 @@
 services:
   bitnews:
     # Use a published image ...
-    image: registry.gitlab.com/kyura4k/bitnews:latest
+    image: ghcr.io/jroosing/bitnews:latest
     # ... or build it from a checkout of the repository instead:
     # build:
     #   context: ..

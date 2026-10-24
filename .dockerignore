@@ -27,5 +27,5 @@ deploy
 *.md
 Dockerfile
 .dockerignore
-.gitlab-ci.yml
+.github
 Makefile

@@ -3,13 +3,13 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 FUZZTIME ?= 10s
 PLATFORMS ?= linux/amd64
-REGISTRY_IMAGE ?= registry.gitlab.com/kyura4k/bitnews
+REGISTRY_IMAGE ?= ghcr.io/jroosing/bitnews
 
 # Pinned 7-Zip and par2cmdline-turbo (ADR-0007), downloaded into bin/tools/.
 # The tests that exercise them find them through PATH.
 TOOLS_BIN := $(CURDIR)/bin/tools
 
-# image-push builds the linux/amd64 image and pushes it to the GitLab registry
+# image-push builds the linux/amd64 image and pushes it to ghcr.io
 # from this machine, tagged $(VERSION) and latest. Log in first (docs/deploy.md).
 .PHONY: image-push tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check
 

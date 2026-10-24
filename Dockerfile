@@ -67,7 +67,7 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 LABEL org.opencontainers.image.title="bitnews" \
       org.opencontainers.image.description="Self-hosted Usenet and BitTorrent download daemon" \
-      org.opencontainers.image.source="https://gitlab.com/kyura4k/bitnews" \
+      org.opencontainers.image.source="https://github.com/jroosing/bitnews" \
       org.opencontainers.image.version="$VERSION" \
       org.opencontainers.image.revision="$COMMIT"
 

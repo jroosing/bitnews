@@ -200,7 +200,7 @@ The defaults follow the TRaSH-guides layout:
 - **Fake NNTP server:** an in-process server simulates `430`s, slow and dropped connections, and Server Priority fallback.
 - **Torrent:** a local anacrolix swarm (seeder plus bitnews as leecher).
 - **Adapter contract tests:** replay recorded Sonarr/Radarr requests.
-- **GitLab CI:** `go test -race`, `govulncheck`, `staticcheck`, and pinned dependencies. Fuzzing is not part of CI; it runs locally.
+- **GitHub Actions:** `go test -race`, `govulncheck`, `staticcheck`, and pinned dependencies. Fuzzing is not part of CI; it runs locally.
 
 ## Milestones
 
