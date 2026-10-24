@@ -47,6 +47,8 @@ type connectionView struct {
 	// PortFixed is set when the operator fixed the port with
 	// BITNEWS_TORRENT_PORT: the field then shows that port and is read-only.
 	PortFixed bool
+	// Port is the live state of the listen port.
+	Port portView
 }
 
 // fixedPort is the listen port fixed by the operator, or 0.
@@ -70,8 +72,9 @@ func torrentKeyOf(t core.TorrentSettings) torrentKey {
 	return torrentKey{t.EffectivePort(), t.DHTEnabled(), t.PEXEnabled(), t.LSD, t.EffectiveMSE()}
 }
 
-// torrentConnectionCard edits Settings.Torrent. The engine reads it when it
-// starts, so a change needs a restart.
+// torrentConnectionCard edits Settings.Torrent. The listen port moves live;
+// the engine reads the rest when it starts, so a change to it needs a
+// restart.
 var torrentConnectionCard = &settingsCard{
 	key: "connection", route: "/settings/torrent", slug: "torrent", partial: "torrent_connection_card",
 	saved:       "Connection settings saved.",
@@ -107,7 +110,7 @@ var torrentConnectionCard = &settingsCard{
 		return nil
 	},
 	view: func(s *Server, v cardView, _ core.Settings) any {
-		cv := connectionView{cardView: v, MSE: mseOptions}
+		cv := connectionView{cardView: v, MSE: mseOptions, Port: s.portStatus()}
 		if p := s.fixedPort(); p != 0 {
 			cv.PortFixed = true
 			cv.V = maps.Clone(v.V)
@@ -115,11 +118,9 @@ var torrentConnectionCard = &settingsCard{
 		}
 		return cv
 	},
-	restart: func(s *Server, started, saved core.Settings) bool {
+	restart: func(_ *Server, started, saved core.Settings) bool {
 		a, b := torrentKeyOf(started.Torrent), torrentKeyOf(saved.Torrent)
-		if s.fixedPort() != 0 {
-			a.Port, b.Port = 0, 0 // the engine ignores the setting
-		}
+		a.Port, b.Port = 0, 0 // the port moves live (or is fixed by the operator)
 		return a != b
 	},
 }

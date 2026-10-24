@@ -32,16 +32,18 @@ func TestClientConfigWithBindingTurnsOffTheUnboundBuiltinSockets(t *testing.T) {
 	require.NotNil(t, cc.TrackerListenPacket)
 }
 
-func TestClientConfigWithoutBindingKeepsTheBuiltinSockets(t *testing.T) {
+func TestClientConfigWithoutBindingStillTurnsOffTheBuiltinSockets(t *testing.T) {
 	cfg := baseConfig(t)
 	cfg.DHT = true
 
 	cc, err := torrent.ClientConfigFor(cfg)
 
 	require.NoError(t, err)
-	assert.False(t, cc.DisableTCP)
-	assert.False(t, cc.DisableUTP)
-	assert.False(t, cc.NoDHT)
+	// The engine opens its own sockets so that the listen port can change
+	// while it runs.
+	assert.True(t, cc.DisableTCP)
+	assert.True(t, cc.DisableUTP)
+	assert.True(t, cc.NoDHT)
 }
 
 func TestTrackerAndHTTPSocketsUseTheBinding(t *testing.T) {

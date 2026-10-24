@@ -100,7 +100,7 @@ Open `http://<host>:9494`. The healthcheck is inherited from the image.
 
 ### Torrent port
 
-The torrent engine listens on the port of Settings, Torrent network (default `51413`) or, when you set `BITNEWS_TORRENT_PORT`, on that port: the settings page then shows it read-only. It listens for TCP and uTP (UDP) and, with DHT on, uses the same UDP port. bitnews does **no UPnP or NAT-PMP port mapping**, ever. Peers can only reach you if you forward that port yourself (router: TCP and UDP to the host running bitnews). Without a forwarded port torrents still download and seed over the connections bitnews opens itself, only more slowly and to fewer peers.
+The torrent engine listens on the port of Settings, Torrent network (default `51413`) or, when you set `BITNEWS_TORRENT_PORT`, on that port: the settings page then shows it read-only. A port changed in the settings or through `POST /api/v1/torrent/port` is used right away, without a restart. It listens for TCP and uTP (UDP) and, with DHT on, uses the same UDP port. bitnews does **no UPnP or NAT-PMP port mapping**, ever. Peers can only reach you if you forward that port yourself (router: TCP and UDP to the host running bitnews). Without a forwarded port torrents still download and seed over the connections bitnews opens itself, only more slowly and to fewer peers.
 
 With Docker publish both protocols (the example compose file does):
 
@@ -111,7 +111,29 @@ With Docker publish both protocols (the example compose file does):
       - "51413:51413/udp"   # torrent peers, uTP and DHT
 ```
 
-If you change `BITNEWS_TORRENT_PORT`, change the published port with it. Behind a VPN container the forwarded port is the one your VPN provider gives you; set `BITNEWS_TORRENT_PORT` to it.
+If you change `BITNEWS_TORRENT_PORT`, change the published port with it. Behind a VPN container the forwarded port is the one your VPN provider gives you, and it can change on every reconnect: let the VPN container set it (next section) and leave `BITNEWS_TORRENT_PORT` unset.
+
+The torrent queue and Settings, Torrent network show whether the port is **open**: it shows as open once a peer has connected in on the current port, and as *not confirmed* until then. Port forwarding is only needed for seeding; downloading works without it.
+
+### Port forwarding through a VPN (gluetun)
+
+Providers such as ProtonVPN hand out a forwarded port that changes when the VPN reconnects. gluetun can run a command each time it gets a port, and bitnews has an API route for exactly that: `POST /api/v1/torrent/port` with the API key (Settings, Security) moves the listen port live and remembers it. In the gluetun service of the compose example:
+
+```yaml
+  gluetun:
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_PORT_FORWARDING: "on"
+      # bitnews shares gluetun's network namespace, so 127.0.0.1 is bitnews.
+      # The loop retries while bitnews is still starting.
+      VPN_PORT_FORWARDING_UP_COMMAND: >-
+        /bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do
+        wget -qO- --header="X-Api-Key: YOUR_API_KEY" --header="Content-Type: application/json"
+        --post-data="{\"port\":{{PORTS}}}" http://127.0.0.1:9494/api/v1/torrent/port && exit 0;
+        sleep 3; done; exit 1'
+```
+
+Replace `YOUR_API_KEY` with the key (rotating the key on the Security page means updating it here). Do not publish the torrent port on the gluetun service and do not set `BITNEWS_TORRENT_PORT`: gluetun opens the forwarded port in its own firewall, and a fixed port makes the route answer `409 port_fixed`. `GET /api/v1/torrent/port` shows the port in use and whether a peer has connected in yet.
 
 ### Identity and UMASK
 

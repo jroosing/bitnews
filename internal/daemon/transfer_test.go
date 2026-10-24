@@ -170,6 +170,10 @@ func TestRestartWatcherWarnsOncePerChangeOfTheTorrentOrPostprocSettings(t *testi
 
 	s.Torrent.ListenPort = 6881
 	w.check()
+	assert.Empty(t, buf.String(), "the listen port moves live")
+
+	s.Torrent.MSE = core.MSERequire
+	w.check()
 	w.check()
 	assert.Equal(t, 1, countOf(buf.String(), "restart bitnews"))
 

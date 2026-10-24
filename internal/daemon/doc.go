@@ -35,10 +35,11 @@
 // ContentDir, FetchReport answers with a zero report, and the data remover
 // holds the torrent runner and deletes the whole Download directory inside
 // the torrent roots. The Share Limit actions remove Downloads through the
-// DownloadService. The listen port, DHT, PEX and the encryption policy come
-// from settings.torrent, read when the engine starts (BITNEWS_TORRENT_PORT,
-// Deps.Torrent.Port, overrides the port); the sockets are bound as
-// settings.network says.
+// DownloadService. DHT, PEX and the encryption policy come from
+// settings.torrent, read when the engine starts; the listen port comes from
+// there too but moves live (torrentPort, port.go), also through
+// POST /api/v1/torrent/port (BITNEWS_TORRENT_PORT, Deps.Torrent.Port, fixes
+// the port instead); the sockets are bound as settings.network says.
 // A netbind.Killswitch per bound protocol pauses its Queue while the binding
 // is unavailable and resumes only what it paused. Sockets are not rebound
 // live: a change of the network settings logs a warning and needs a restart.

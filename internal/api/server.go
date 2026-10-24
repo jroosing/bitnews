@@ -40,6 +40,9 @@ type Config struct {
 	// and qBittorrent.
 	AppKey *auth.AppKeyService
 	Bus    *core.Bus
+	// TorrentPort moves the torrent listen port. Nil when torrents are off:
+	// the torrent port routes then answer 503.
+	TorrentPort TorrentPort
 
 	// SABnzbd serves the SABnzbd API emulation at /sabnzbd/api for every
 	// method. It authenticates its own requests with the app key,

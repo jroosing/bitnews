@@ -121,7 +121,7 @@ func TestChangingTheConnectionTellsYouToRestart(t *testing.T) {
 	assert.Equal(t, "success", level)
 	assert.Nil(t, byID(parseHTML(t, same.Body.String()), "connection-restart"))
 
-	changed := b.settingsPost("/settings/torrent", connectionForm("6881", true, true, false, "prefer"))
+	changed := b.settingsPost("/settings/torrent", connectionForm("51413", true, true, false, "require"))
 
 	level, msg := settingsToastOf(t, changed)
 	assert.Equal(t, "info", level)
@@ -130,6 +130,18 @@ func TestChangingTheConnectionTellsYouToRestart(t *testing.T) {
 
 	back := b.settingsPost("/settings/torrent", connectionForm("51413", true, true, false, "prefer"))
 	assert.Nil(t, byID(parseHTML(t, back.Body.String()), "connection-restart"), "back to what is running")
+}
+
+func TestChangingOnlyTheListenPortNeedsNoRestart(t *testing.T) {
+	cfg := &fakeConfig{started: core.DefaultSettings()}
+	e, b := settingsSignedIn(t, withConfig(cfg))
+
+	rec := b.settingsPost("/settings/torrent", connectionForm("6881", true, true, false, "prefer"))
+
+	level, msg := settingsToastOf(t, rec)
+	assert.Equal(t, "success", level, msg)
+	assert.Nil(t, byID(parseHTML(t, rec.Body.String()), "connection-restart"))
+	assert.Equal(t, 6881, e.settings.Current().Torrent.ListenPort)
 }
 
 func TestAPortFixedByTheOperatorIsShownAndNotEditable(t *testing.T) {

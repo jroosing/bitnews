@@ -44,6 +44,25 @@ func (s *SettingsService) Current() core.Settings {
 func (s *SettingsService) Update(ctx context.Context, next core.Settings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.store(ctx, next)
+}
+
+// Change applies change to a copy of the current Settings and stores the
+// result like Update, all under one lock, so two changes to different
+// settings never undo each other. When change returns an error nothing is
+// stored and that error is returned.
+func (s *SettingsService) Change(ctx context.Context, change func(*core.Settings) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := clone(s.current)
+	if err := change(&next); err != nil {
+		return err
+	}
+	return s.store(ctx, next)
+}
+
+// store is Update without the lock.
+func (s *SettingsService) store(ctx context.Context, next core.Settings) error {
 	if err := next.Validate(); err != nil {
 		return invalid("invalid_settings", "%s", err.Error())
 	}

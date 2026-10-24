@@ -187,3 +187,24 @@ type TorrentEvent struct {
 	Hash InfoHash
 	Err  error // set for TorrentErrored
 }
+
+// ListenPortStatus is what the torrent engine knows about whether peers can
+// reach its listen port. Port forwarding (by the router, or a VPN such as
+// gluetun) is only needed for incoming connections: downloading works
+// without it, but Seeding to peers that cannot accept connections does not.
+//
+// Nothing can prove from the inside that a port is closed, so the status is
+// "open" once a peer has connected in on the current port, and unconfirmed
+// until then.
+type ListenPortStatus struct {
+	// Port is the TCP and uTP port the engine listens on.
+	Port int `json:"port"`
+	// Since is when the engine started listening on Port.
+	Since time.Time `json:"since"`
+	// LastIncoming is the last time a peer connected in on Port, zero if
+	// none has yet.
+	LastIncoming time.Time `json:"last_incoming"`
+}
+
+// Open reports whether a peer has connected in on the current port.
+func (s ListenPortStatus) Open() bool { return !s.LastIncoming.IsZero() }

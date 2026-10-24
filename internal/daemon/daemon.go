@@ -129,6 +129,7 @@ type Daemon struct {
 	binding  *bindingWatcher
 	restarts *restartWatcher
 	speed    *speedApplier
+	port     *torrentPort
 	switches []namedSwitch
 
 	ran atomic.Bool
@@ -226,6 +227,10 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	tport := &torrentPort{settings: settings, override: deps.Torrent.Port, log: log}
+	if lp, ok := engine.(listenPorter); ok {
+		tport.engine = lp
 	}
 	dirFor := dirs.dirFor
 	var torrentHolder fetchHolder
@@ -351,7 +356,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
 		Adder: adder, AppKey: appKey, View: views,
-		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port},
+		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port, port: tport},
 		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}},
 	})
 	if err != nil {
@@ -370,6 +375,8 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		UIAuth:     uiAuth,
 		AppKey:     appKey,
 		Bus:        bus,
+
+		TorrentPort: tport,
 
 		Web:  webUI,
 		QBit: qbitHandler,
@@ -394,6 +401,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		binding:  &bindingWatcher{start: started.Network, current: settings.Current, log: log},
 		restarts: &restartWatcher{start: restartOnlyOf(started), current: settings.Current, log: log},
 		speed:    speed,
+		port:     tport,
 	}
 	d.switches = networkSwitches(settings.Current().Network, run, trun, log, tune)
 	return d, nil
@@ -568,6 +576,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 	})
 	start("speed limits", func(ctx context.Context) error {
 		d.speed.run(ctx, d.bus)
+		return nil
+	})
+	start("torrent listen port", func(ctx context.Context) error {
+		d.port.run(ctx, d.bus)
 		return nil
 	})
 	start("post-processor", d.post.Run)

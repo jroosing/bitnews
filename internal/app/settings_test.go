@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,4 +74,46 @@ func TestCurrentSettingsReturnsACopyCallersCannotMutate(t *testing.T) {
 	svc.Current().Auth.TrustedProxies[0] = "0.0.0.0/0"
 
 	assert.Equal(t, []string{"10.0.0.0/8"}, svc.Current().Auth.TrustedProxies)
+}
+
+func TestChangeSettingsAppliesConcurrentChangesWithoutLosingAny(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	svc := s.settingsService(t)
+
+	done := make(chan error, 2)
+	go func() { done <- svc.Change(ctx, func(n *core.Settings) error { n.Queues.Usenet = 7; return nil }) }()
+	go func() {
+		done <- svc.Change(ctx, func(n *core.Settings) error { n.Torrent.ListenPort = 40000; return nil })
+	}()
+	require.NoError(t, <-done)
+	require.NoError(t, <-done)
+
+	cur := svc.Current()
+	assert.Equal(t, 7, cur.Queues.Usenet)
+	assert.Equal(t, 40000, cur.Torrent.ListenPort)
+}
+
+func TestChangeSettingsKeepsTheSettingsWhenTheChangeFails(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	svc := s.settingsService(t)
+	refused := errors.New("refused")
+
+	err := svc.Change(ctx, func(n *core.Settings) error { n.Queues.Usenet = 7; return refused })
+
+	require.ErrorIs(t, err, refused)
+	assert.Equal(t, core.DefaultSettings(), svc.Current())
+	assert.Empty(t, s.events())
+}
+
+func TestChangeSettingsValidatesTheResult(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	svc := s.settingsService(t)
+
+	err := svc.Change(ctx, func(n *core.Settings) error { n.Torrent.ListenPort = 70000; return nil })
+
+	require.ErrorIs(t, err, app.ErrInvalidInput)
+	assert.Equal(t, core.DefaultSettings(), svc.Current())
 }

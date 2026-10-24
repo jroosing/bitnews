@@ -17,7 +17,9 @@ import (
 //   - speed limits and the Queue limits apply live: speedApplier pushes the
 //     limits to the runners on every change, and the runners read the Queue
 //     limits and min_free from the Settings on each pass;
-//   - the torrent engine's network options and the post-processing
+//   - the torrent listen port applies live: torrentPort moves the engine's
+//     sockets (port.go);
+//   - the torrent engine's other network options and the post-processing
 //     concurrency are read once, when Build constructs the component. A change
 //     is stored at once and applied by the next start; restartWatcher says so
 //     in the log.
@@ -116,7 +118,9 @@ type restartOnly struct {
 }
 
 func restartOnlyOf(s core.Settings) restartOnly {
-	return restartOnly{Torrent: s.Torrent, Postproc: s.Queues.EffectivePostprocConcurrency()}
+	t := s.Torrent
+	t.ListenPort = 0 // applied live by torrentPort
+	return restartOnly{Torrent: t, Postproc: s.Queues.EffectivePostprocConcurrency()}
 }
 
 // restartWatcher warns once per change when settings that need a restart
@@ -155,6 +159,8 @@ type webConfig struct {
 	started core.Settings
 	// portOverride is the torrent port the operator fixed, or 0.
 	portOverride int
+	// port is the live torrent listen port; nil in tests.
+	port *torrentPort
 	// lookup lists the host's interfaces; nil means the system's.
 	lookup netbind.Lookup
 }
@@ -164,6 +170,8 @@ var _ web.ConfigSource = (*webConfig)(nil)
 func (c *webConfig) Started() core.Settings { return c.started }
 
 func (c *webConfig) TorrentPortOverride() int { return c.portOverride }
+
+func (c *webConfig) ListenPort() (core.ListenPortStatus, bool) { return c.port.ListenPortStatus() }
 
 func (c *webConfig) Binding(kind core.SourceKind) web.BindingStatus {
 	var b core.ProtocolBinding

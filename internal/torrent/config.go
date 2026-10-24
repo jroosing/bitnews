@@ -156,6 +156,10 @@ func (e *Engine) clientConfig(cfg Config) (*anacrolix.ClientConfig, error) {
 		cc.HeaderObfuscationPolicy = anacrolix.HeaderObfuscationPolicy{Preferred: true}
 	}
 
+	// anacrolix's own sockets can neither be bound to an interface nor move
+	// to another port: turn them all off and let attachSockets add the
+	// engine's own (see bind.go).
+	cc.DisableTCP, cc.DisableUTP, cc.NoDHT = true, true, true
 	if b := cfg.binding(); b.Enabled() {
 		if b.Address != "" {
 			ip := net.ParseIP(b.Address)
@@ -163,9 +167,6 @@ func (e *Engine) clientConfig(cfg Config) (*anacrolix.ClientConfig, error) {
 			cc.DisableIPv4 = ip.To4() == nil
 			cc.DisableIPv6 = ip.To4() != nil
 		}
-		// anacrolix's own sockets cannot be bound to an interface: turn them
-		// all off and let attachBound add bound ones (see bind.go).
-		cc.DisableTCP, cc.DisableUTP, cc.NoDHT = true, true, true
 		d := b.Dialer(&net.Dialer{})
 		cc.HTTPDialContext = d.DialContext
 		cc.TrackerDialContext = d.DialContext

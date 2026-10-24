@@ -98,7 +98,8 @@ const (
 )
 
 // TorrentSettings are the network options of the torrent engine. The engine
-// reads them once, when it starts: a change needs a restart of bitnews.
+// reads them once, when it starts: a change needs a restart of bitnews. The
+// one exception is ListenPort, which the daemon applies live.
 //
 // The zero value is the default, so a client that does not know the key and
 // sends none gets the defaults: the default port, DHT and PEX on, local peer

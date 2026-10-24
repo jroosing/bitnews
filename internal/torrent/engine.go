@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/netip"
 	"os"
@@ -53,7 +54,8 @@ type Engine struct {
 	now    func() time.Time
 
 	cl     *anacrolix.Client
-	bound  []io.Closer // bound sockets (see bind.go), closed after cl
+	socks  *sockets    // the listen sockets (see bind.go)
+	bound  []io.Closer // the DHT servers and socks, closed after cl
 	pieces *SQLitePieceCompletion
 	down   *rate.Limiter
 	up     *rate.Limiter
@@ -160,15 +162,13 @@ func New(cfg Config) (*Engine, error) {
 		return nil, fmt.Errorf("torrent: start client: %w", err)
 	}
 	e.cl = cl
-	if cfg.binding().Enabled() {
-		bound, err := attachBound(cl, cfg, e.logger)
-		if err != nil {
-			_ = cl.Close()
-			_ = e.pieces.Close()
-			return nil, err
-		}
-		e.bound = bound
+	socks, bound, err := attachSockets(cl, cfg, e.logger)
+	if err != nil {
+		_ = cl.Close()
+		_ = e.pieces.Close()
+		return nil, err
 	}
+	e.socks, e.bound = socks, bound
 	if cfg.LSD {
 		e.logger.Warn("torrent: local service discovery is not supported by anacrolix/torrent v1.61.0")
 	}
@@ -636,6 +636,25 @@ func (e *Engine) BytesHashed(h core.InfoHash) int64 {
 
 // Port is the TCP (and uTP) port the engine listens on.
 func (e *Engine) Port() int { return e.cl.LocalPort() }
+
+// SetListenPort moves the engine's TCP and uTP listeners (and the DHT) to
+// port while it runs. Torrents keep running; new announces carry the new
+// port. When the port cannot be opened, for example because it is taken,
+// the engine keeps listening on the old one and the error says why.
+func (e *Engine) SetListenPort(port int) error {
+	if port < 1 || port > math.MaxUint16 {
+		return fmt.Errorf("%w: listen port %d", ErrInvalidConfig, port)
+	}
+	if err := e.socks.rebind(port); err != nil {
+		return err
+	}
+	e.logger.Info("torrent: listen port changed", "port", port)
+	return nil
+}
+
+// ListenPortStatus says which port the engine listens on and whether a peer
+// has connected in on it yet.
+func (e *Engine) ListenPortStatus() core.ListenPortStatus { return e.socks.status() }
 
 // AddPeers offers peer addresses ("host:port") to torrent h, as a tracker
 // answer or a magnet link's x.pe parameter would. The addresses are only

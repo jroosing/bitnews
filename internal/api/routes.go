@@ -61,6 +61,10 @@ func (s *Server) routes() {
 	handle("GET /api/v1/settings", keyOrUI, smallBodyLimit, s.getSettings)
 	handle("PUT /api/v1/settings", keyOrUI, defaultBodyLimit, s.putSettings)
 
+	// A VPN's port-forwarding hook sets the port with the app key.
+	handle("GET /api/v1/torrent/port", keyOrUI, smallBodyLimit, s.getTorrentPort)
+	handle("POST /api/v1/torrent/port", keyOrUI, smallBodyLimit, s.setTorrentPort)
+
 	// The event stream bounds its own writes instead of using the server's
 	// write timeout.
 	handle("GET /api/v1/events", keyOrUI, smallBodyLimit, s.events)

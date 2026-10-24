@@ -183,7 +183,10 @@ type qopt func(*qcfg)
 type qcfg struct {
 	noRuntime bool
 	live      web.LiveConfig
+	config    web.ConfigSource
 }
+
+func withQueueConfig(c web.ConfigSource) qopt { return func(q *qcfg) { q.config = c } }
 
 func withoutRuntime() qopt { return func(c *qcfg) { c.noRuntime = true } }
 
@@ -246,6 +249,9 @@ func newQueueEnv(t *testing.T, opts ...qopt) *qenv {
 	}
 	if !cfg.noRuntime {
 		deps.Runtime = q.rt
+	}
+	if cfg.config != nil {
+		deps.Config = cfg.config
 	}
 	q.server, err = web.New(deps)
 	require.NoError(t, err)

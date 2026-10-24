@@ -35,14 +35,14 @@ func TestClientConfigMapsDiscoverySettings(t *testing.T) {
 	cc, err := torrent.ClientConfigFor(cfg)
 
 	require.NoError(t, err)
-	assert.False(t, cc.NoDHT)
+	// The DHT runs on the engine's own sockets, so anacrolix's is always off.
+	assert.True(t, cc.NoDHT)
 	assert.True(t, cc.DisablePEX)
 	assert.False(t, cc.PeriodicallyAnnounceTorrentsToDht, "the engine announces itself, skipping private torrents")
 
 	cfg.DHT, cfg.PEX = false, true
 	cc, err = torrent.ClientConfigFor(cfg)
 	require.NoError(t, err)
-	assert.True(t, cc.NoDHT)
 	assert.False(t, cc.DisablePEX)
 }
 

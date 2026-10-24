@@ -40,7 +40,8 @@ services:
     ports:
       - "9494:9494"
       # Torrent peers. There is no UPnP: forward this port on your router too.
-      # Change BITNEWS_TORRENT_PORT together with it.
+      # Change it together with the port in Settings > Torrent network (or
+      # BITNEWS_TORRENT_PORT). Port forwarding is only needed for seeding.
       - "51413:51413"
       - "51413:51413/udp"
 
@@ -117,6 +118,16 @@ services:
   #     - /dev/net/tun:/dev/net/tun
   #   environment:
   #     VPN_SERVICE_PROVIDER: your-provider   # plus credentials etc.: see the gluetun wiki
+  #     # With a provider that forwards a port (ProtonVPN, for example), let
+  #     # gluetun tell bitnews the port each time it gets one. The torrent
+  #     # port then needs no `ports:` entry and no BITNEWS_TORRENT_PORT.
+  #     # YOUR_API_KEY is on bitnews's Settings > Security page.
+  #     # VPN_PORT_FORWARDING: "on"
+  #     # VPN_PORT_FORWARDING_UP_COMMAND: >-
+  #     #   /bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do
+  #     #   wget -qO- --header="X-Api-Key: YOUR_API_KEY" --header="Content-Type: application/json"
+  #     #   --post-data="{\"port\":{{PORTS}}}" http://127.0.0.1:9494/api/v1/torrent/port && exit 0;
+  #     #   sleep 3; done; exit 1'
   #   ports:
   #     - "9494:9494"     # bitnews API/UI
   #

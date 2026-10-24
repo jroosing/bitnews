@@ -13,8 +13,18 @@
   {{if .Restart}}
   {{template "alert" dict "Variant" "info" "ID" "connection-restart" "Title" "Saved, waiting for a restart" "Body" "Your changes are saved. Restart bitnews to start using them."}}
   {{else}}
-  {{template "alert" dict "Variant" "info" "Title" "Changes need a restart" "Body" "The torrent engine reads these settings when bitnews starts. They are saved right away and used after the next restart."}}
+  {{template "alert" dict "Variant" "info" "Title" "Most changes need a restart" "Body" "A new listen port is used right away. The torrent engine reads the other settings when bitnews starts: they are saved right away and used after the next restart."}}
   {{end}}
+
+  {{with .Port}}{{if .Known}}
+  <div id="torrent-port-status" data-state="{{.State}}" class="space-y-1 text-sm text-fg-muted" role="status">
+    <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span class="badge {{if eq .State "open"}}badge-ready{{else}}badge-paused{{end}}">{{.Label}}</span>
+      <span class="min-w-0 break-words">{{.Detail}}</span>
+    </p>
+    <p>{{icon "info" "mr-1.5 inline size-4 align-text-bottom"}}{{.Help}}</p>
+  </div>
+  {{end}}{{end}}
 
   <div class="grid gap-4 sm:grid-cols-2">
     {{template "field" dict "ID" "listen-port" "Name" "listen_port" "Label" "Listen port" "Value" (index .V "listen_port") "Error" (index .E "listen_port") "Help" (cond .PortFixed "This port is fixed by the BITNEWS_TORRENT_PORT setting of your installation, so it cannot be changed here. Forward it (TCP and UDP) on your router." "The port other peers connect to. Forward it (TCP and UDP) on your router so more peers can reach you: bitnews does not open ports by itself.") "Placeholder" "51413" "Inputmode" "numeric" "Raw" true "Autocomplete" "off" "Required" (not .PortFixed) "Disabled" .PortFixed}}

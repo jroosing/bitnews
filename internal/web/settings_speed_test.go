@@ -174,6 +174,15 @@ type fakeConfig struct {
 	started      core.Settings
 	bindings     map[core.SourceKind]web.BindingStatus
 	portOverride int
+	// port is the live listen port status; nil means torrents are off.
+	port *core.ListenPortStatus
+}
+
+func (f *fakeConfig) ListenPort() (core.ListenPortStatus, bool) {
+	if f.port == nil {
+		return core.ListenPortStatus{}, false
+	}
+	return *f.port, true
 }
 
 func (f *fakeConfig) Started() core.Settings   { return f.started }

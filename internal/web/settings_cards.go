@@ -30,6 +30,9 @@ type ConfigSource interface {
 	// TorrentPortOverride is the listen port the operator fixed with
 	// BITNEWS_TORRENT_PORT, or 0. It wins over the setting.
 	TorrentPortOverride() int
+	// ListenPort is the torrent engine's live listen port and whether a peer
+	// has connected in on it; ok is false when torrents are off.
+	ListenPort() (st core.ListenPortStatus, ok bool)
 }
 
 // BindingStatus is the live state of one protocol's network binding.

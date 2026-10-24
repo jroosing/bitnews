@@ -92,6 +92,9 @@ type queueSection struct {
 	PauseTitle  string
 	PauseText   string
 
+	// Port is the torrent listen port's state; Known only for torrents.
+	Port portView
+
 	LimitDown, LimitUp     string // text: "5.0 MB/s" or "No limit"
 	LimitDownKB, LimitUpKB int64
 	HasUpLimit             bool
@@ -241,6 +244,9 @@ func (s *Server) newSection(kind core.SourceKind, csrf string) queueSection {
 		return sec
 	}
 	sec.Controls = true
+	if kind == core.SourceTorrent {
+		sec.Port = s.portStatus()
+	}
 	sec.Paused = st.Paused
 	if st.Paused {
 		sec.PauseTitle, sec.PauseText = pauseText(sec.Title, st.Reason)

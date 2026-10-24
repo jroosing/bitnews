@@ -22,6 +22,7 @@
     </div>
     {{if .Controls}}
     <div class="flex flex-wrap items-center gap-2">
+      {{if .Port.Known}}{{template "torrent_port" .Port}}{{end}}
       {{template "queue_limit" .}}
       {{if .Paused}}
       <form method="post" action="/queues/{{.Kind}}/resume" hx-post="/queues/{{.Kind}}/resume" hx-target="#queue-lists" hx-swap="outerHTML">
@@ -71,6 +72,21 @@
   {{end}}
   <span id="queue-rows-{{.Kind}}-end" hidden></span>
 </section>
+{{end}}
+
+{{/* torrent_port: the listen port badge and its info popover. Receives a portView. */}}
+{{define "torrent_port"}}
+<div x-data="popover" class="relative flex items-center gap-1" @keydown.escape="close" @click.outside="closeQuiet">
+  <span id="torrent-port" data-state="{{.State}}" role="status" class="badge {{if eq .State "open"}}badge-ready{{else}}badge-paused{{end}}">{{.Label}}</span>
+  <button type="button" x-ref="button" @click="toggle" class="btn btn-ghost btn-sm px-1.5" aria-haspopup="dialog" :aria-expanded="open" aria-controls="torrent-port-info">
+    {{icon "info" "size-4"}}<span class="sr-only">About the listen port</span>
+  </button>
+  <div id="torrent-port-info" x-ref="panel" x-show="open" x-cloak class="menu-panel w-80 space-y-2 p-4 text-sm" role="dialog" aria-label="Listen port">
+    <p class="font-medium text-fg">{{.Label}}</p>
+    <p class="text-fg-muted">{{.Detail}}</p>
+    <p class="text-fg-muted">{{.Help}}</p>
+  </div>
+</div>
 {{end}}
 
 {{/* queue_limit: the speed-limit popover of a Queue (runtime only). */}}

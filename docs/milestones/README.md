@@ -156,3 +156,9 @@ GitLab: [milestone](https://gitlab.com/kyura4k/bitnews/-/milestones/9) · [wiki]
 | M9-01 | [#82](https://gitlab.com/kyura4k/bitnews/-/issues/82) | The rename module | done |
 | M9-02 | [#83](https://gitlab.com/kyura4k/bitnews/-/issues/83) | Settings and hooks | done |
 | M9-03 | [#84](https://gitlab.com/kyura4k/bitnews/-/issues/84) | The Settings page | done |
+
+### [M10 — Port forwarding](m10-port-forwarding.md)
+
+| ID | Issue | Title | Status |
+|---|---|---|---|
+| M10-01 | | Torrent listen port from a VPN hook | done |
