@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -101,7 +102,6 @@ func (s *Server) postAccess(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusBadRequest, "Bad request", "The form could not be read.")
 		return
 	}
-	cur := s.Settings.Current()
 	f := r.PostForm
 	disable := f.Has("disable_auth")
 	typed := f.Get("lan_bypass")
@@ -117,47 +117,66 @@ func (s *Server) postAccess(w http.ResponseWriter, r *http.Request) {
 	nets, bad := parseNetworks(typed)
 	if len(bad) > 0 {
 		v.Errors["lan_bypass"] = badNetworksMsg(bad)
-	}
-	if (disable || len(nets) > 0) && len(v.Errors) == 0 {
-		switch {
-		case len(cur.Auth.AllowedHosts) == 0:
-			if disable {
-				v.Errors["disable_auth"] = needHostsMsg
-			}
-			if len(nets) > 0 {
-				v.Errors["lan_bypass"] = needHostsMsg
-			}
-		case !auth.HostAllowed(r.Host, cur.Auth.AllowedHosts):
-			field := "lan_bypass"
-			if disable {
-				field = "disable_auth"
-			}
-			v.Errors[field] = lockoutMsg(r.Host)
-		}
-	}
-	if len(v.Errors) > 0 {
 		fail()
 		return
 	}
 	v.LAN = lines(nets)
 
-	newlyOff := disable && !cur.Auth.DisableAuth
-	newNets := addedEntries(nets, cur.Auth.LANBypassCIDRs)
-	if (newlyOff || len(newNets) > 0) && !confirmed {
+	// The lockout guard and the confirmation depend on the hosts that are
+	// stored, so they are decided under the Settings lock, on the Settings
+	// the change is applied to.
+	// Nothing in the callback may read the Settings again (that would wait
+	// for the lock it holds): the confirmation is built after it.
+	var (
+		next     core.Settings
+		newlyOff bool
+		newNets  []string
+	)
+	err := s.Settings.Change(r.Context(), func(n *core.Settings) error {
+		if disable || len(nets) > 0 {
+			switch {
+			case len(n.Auth.AllowedHosts) == 0:
+				if disable {
+					v.Errors["disable_auth"] = needHostsMsg
+				}
+				if len(nets) > 0 {
+					v.Errors["lan_bypass"] = needHostsMsg
+				}
+			case !auth.HostAllowed(r.Host, n.Auth.AllowedHosts):
+				field := "lan_bypass"
+				if disable {
+					field = "disable_auth"
+				}
+				v.Errors[field] = lockoutMsg(r.Host)
+			}
+		}
+		if len(v.Errors) > 0 {
+			return errFieldsInvalid
+		}
+		newlyOff = disable && !n.Auth.DisableAuth
+		newNets = addedEntries(nets, n.Auth.LANBypassCIDRs)
+		if (newlyOff || len(newNets) > 0) && !confirmed {
+			return errNeedsConfirm
+		}
+		n.Auth.DisableAuth = disable
+		n.Auth.LANBypassCIDRs = nets
+		next = *n
+		return nil
+	})
+	switch ae, ok := settingsAppError(err); {
+	case err == nil:
+	case errors.Is(err, errFieldsInvalid):
+		fail()
+		return
+	case errors.Is(err, errNeedsConfirm):
 		v.Confirm = s.accessConfirm(r, disable, newlyOff, nets, newNets)
 		s.respondAccess(w, r, http.StatusOK, v)
 		return
-	}
-
-	next := s.Settings.Current()
-	next.Auth.DisableAuth = disable
-	next.Auth.LANBypassCIDRs = nets
-	if err := s.Settings.Update(r.Context(), next); err != nil {
-		if ae, ok := settingsAppError(err); ok {
-			v.Dirty, v.Error = true, ae.Message
-			s.respondAccess(w, r, http.StatusUnprocessableEntity, v)
-			return
-		}
+	case ok:
+		v.Dirty, v.Error = true, ae.Message
+		s.respondAccess(w, r, http.StatusUnprocessableEntity, v)
+		return
+	default:
 		s.settingsFail(w, r, "settings", err)
 		return
 	}
@@ -174,6 +193,10 @@ func (s *Server) postAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	s.respondAccess(w, r, http.StatusOK, v)
 }
+
+// errNeedsConfirm stops a Settings change that the user has to confirm
+// first.
+var errNeedsConfirm = errors.New("web: change needs confirmation")
 
 // accessConfirm words what the change does, in plain terms.
 func (s *Server) accessConfirm(r *http.Request, disable, newlyOff bool, nets, newNets []string) *confirmView {
@@ -272,12 +295,15 @@ func (s *Server) postHosts(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusBadRequest, "Bad request", "The form could not be read.")
 		return
 	}
-	cur := s.Settings.Current()
 	f := r.PostForm
 	confirmed := f.Get("confirmed") == "1"
 
 	v := s.hostsViewFor(r)
 	v.AllowedHosts, v.TrustedProxies, v.Errors = f.Get("allowed_hosts"), f.Get("trusted_proxies"), map[string]string{}
+	fail := func() {
+		v.Dirty, v.Error = true, "Nothing was saved. Fix the marked fields and try again."
+		s.respondHosts(w, r, http.StatusUnprocessableEntity, v)
+	}
 
 	hosts, badHosts := parseHosts(f.Get("allowed_hosts"))
 	proxies, badProxies := parseNetworks(f.Get("trusted_proxies"))
@@ -287,37 +313,52 @@ func (s *Server) postHosts(w http.ResponseWriter, r *http.Request) {
 	if len(badProxies) > 0 {
 		v.Errors["trusted_proxies"] = badNetworksMsg(badProxies)
 	}
-	if len(badHosts) == 0 && bypassOn(cur.Auth) {
-		switch {
-		case len(hosts) == 0:
-			v.Errors["allowed_hosts"] = noHostsLeft
-		case !auth.HostAllowed(r.Host, hosts):
-			v.Errors["allowed_hosts"] = lockoutMsg(r.Host)
-		}
-	}
 	if len(v.Errors) > 0 {
-		v.Dirty, v.Error = true, "Nothing was saved. Fix the marked fields and try again."
-		s.respondHosts(w, r, http.StatusUnprocessableEntity, v)
+		fail()
 		return
 	}
 	v.AllowedHosts, v.TrustedProxies = lines(hosts), lines(proxies)
 
-	newProxies := addedEntries(proxies, cur.Auth.TrustedProxies)
-	if len(newProxies) > 0 && (bypassOn(cur.Auth) || anyWide(newProxies)) && !confirmed {
-		v.Confirm = s.hostsConfirm(r, hosts, proxies, newProxies, bypassOn(cur.Auth))
+	// As for the access card, the guards read the stored Settings under the
+	// lock, and the confirmation is built after it.
+	var (
+		newProxies []string
+		bypass     bool
+	)
+	err := s.Settings.Change(r.Context(), func(n *core.Settings) error {
+		if bypassOn(n.Auth) {
+			switch {
+			case len(hosts) == 0:
+				v.Errors["allowed_hosts"] = noHostsLeft
+			case !auth.HostAllowed(r.Host, hosts):
+				v.Errors["allowed_hosts"] = lockoutMsg(r.Host)
+			}
+		}
+		if len(v.Errors) > 0 {
+			return errFieldsInvalid
+		}
+		newProxies, bypass = addedEntries(proxies, n.Auth.TrustedProxies), bypassOn(n.Auth)
+		if len(newProxies) > 0 && (bypass || anyWide(newProxies)) && !confirmed {
+			return errNeedsConfirm
+		}
+		n.Auth.AllowedHosts = hosts
+		n.Auth.TrustedProxies = proxies
+		return nil
+	})
+	switch ae, ok := settingsAppError(err); {
+	case err == nil:
+	case errors.Is(err, errFieldsInvalid):
+		fail()
+		return
+	case errors.Is(err, errNeedsConfirm):
+		v.Confirm = s.hostsConfirm(r, hosts, proxies, newProxies, bypass)
 		s.respondHosts(w, r, http.StatusOK, v)
 		return
-	}
-
-	next := s.Settings.Current()
-	next.Auth.AllowedHosts = hosts
-	next.Auth.TrustedProxies = proxies
-	if err := s.Settings.Update(r.Context(), next); err != nil {
-		if ae, ok := settingsAppError(err); ok {
-			v.Dirty, v.Error = true, ae.Message
-			s.respondHosts(w, r, http.StatusUnprocessableEntity, v)
-			return
-		}
+	case ok:
+		v.Dirty, v.Error = true, ae.Message
+		s.respondHosts(w, r, http.StatusUnprocessableEntity, v)
+		return
+	default:
 		s.settingsFail(w, r, "settings", err)
 		return
 	}

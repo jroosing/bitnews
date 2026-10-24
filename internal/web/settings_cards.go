@@ -1,6 +1,8 @@
 package web
 
 import (
+	"cmp"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -85,7 +87,15 @@ type settingsCard struct {
 	restart func(s *Server, started, saved core.Settings) bool
 	// restartNote is added to the toast when restart reports true.
 	restartNote string
+	// invalid replaces the card's note when fields need fixing.
+	invalid string
+	// page builds the whole section page around the card views, for a
+	// section that shows more than cards. Nil means the views are the data.
+	page func(s *Server, r *http.Request, views cardViews) (any, error)
 }
+
+// errFieldsInvalid stops a Settings change whose form has bad fields.
+var errFieldsInvalid = errors.New("web: form fields invalid")
 
 // cardViews is the page data of a section made of cards, by card key.
 type cardViews map[string]any
@@ -133,20 +143,30 @@ func (s *Server) postCard(cards []*settingsCard, c *settingsCard) http.HandlerFu
 			return
 		}
 		form := flatten(r.PostForm)
-		cur := s.Settings.Current()
-		next := cur
-		if errs := c.read(s, form, &next); len(errs) > 0 {
-			v := cardView{CSRF: settingsCSRF(r), V: form, E: errs, Dirty: true, Error: "Some values need fixing. Nothing was saved."}
-			s.respondCard(w, r, http.StatusUnprocessableEntity, cards, c, s.finishCard(c, v, cur))
-			return
-		}
-		if err := s.Settings.Update(r.Context(), next); err != nil {
-			if ae, ok := settingsAppError(err); ok {
-				v := cardView{CSRF: settingsCSRF(r), V: form, E: map[string]string{}, Dirty: true, Error: ae.Message}
-				s.respondCard(w, r, http.StatusUnprocessableEntity, cards, c, s.finishCard(c, v, cur))
+		// The form is read into the Settings under the service's lock, so a
+		// save of another card at the same moment is never undone.
+		var errs map[string]string
+		var next core.Settings
+		err := s.Settings.Change(r.Context(), func(n *core.Settings) error {
+			if errs = c.read(s, form, n); len(errs) > 0 {
+				return errFieldsInvalid
+			}
+			next = *n
+			return nil
+		})
+		if err != nil {
+			cur := s.Settings.Current()
+			v := cardView{CSRF: settingsCSRF(r), V: form, E: map[string]string{}, Dirty: true}
+			switch ae, ok := settingsAppError(err); {
+			case errors.Is(err, errFieldsInvalid):
+				v.E, v.Error = errs, cmp.Or(c.invalid, "Some values need fixing. Nothing was saved.")
+			case ok:
+				v.Error = ae.Message
+			default:
+				s.settingsFail(w, r, "settings", err)
 				return
 			}
-			s.settingsFail(w, r, "settings", err)
+			s.respondCard(w, r, http.StatusUnprocessableEntity, cards, c, s.finishCard(c, v, cur))
 			return
 		}
 		v := cardView{CSRF: settingsCSRF(r), V: c.values(next), E: map[string]string{}}
@@ -178,7 +198,17 @@ func (s *Server) respondCard(w http.ResponseWriter, r *http.Request, status int,
 		s.renderSettingsPart(w, status, sec.Template, c.partial, view)
 		return
 	}
-	s.renderSettingsPage(w, r, status, c.slug, s.cardPage(r, cards, map[string]any{c.key: view}))
+	views := s.cardPage(r, cards, map[string]any{c.key: view})
+	if c.page == nil {
+		s.renderSettingsPage(w, r, status, c.slug, views)
+		return
+	}
+	data, err := c.page(s, r, views)
+	if err != nil {
+		s.settingsFail(w, r, "settings", err)
+		return
+	}
+	s.renderSettingsPage(w, r, status, c.slug, data)
 }
 
 // flatten keeps the first value of each form field.

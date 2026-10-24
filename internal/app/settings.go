@@ -50,7 +50,8 @@ func (s *SettingsService) Update(ctx context.Context, next core.Settings) error 
 // Change applies change to a copy of the current Settings and stores the
 // result like Update, all under one lock, so two changes to different
 // settings never undo each other. When change returns an error nothing is
-// stored and that error is returned.
+// stored and that error is returned. change runs under the lock: it must not
+// call back into the service (Current would wait forever).
 func (s *SettingsService) Change(ctx context.Context, change func(*core.Settings) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"slices"
 
@@ -35,17 +36,32 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &next) {
 		return
 	}
-	if p, ok := auth.FromContext(r.Context()); ok && p.Kind == auth.PrincipalAPIKey &&
-		!authEqual(s.Settings.Current().Auth, next.Auth) {
+	byKey := false
+	if p, ok := auth.FromContext(r.Context()); ok && p.Kind == auth.PrincipalAPIKey {
+		byKey = true
+	}
+	// The guard compares with the stored Settings under the lock, so the
+	// auth section cannot change between the check and the write.
+	err := s.Settings.Change(r.Context(), func(cur *core.Settings) error {
+		if byKey && !authEqual(cur.Auth, next.Auth) {
+			return errSessionRequired
+		}
+		*cur = next
+		return nil
+	})
+	if errors.Is(err, errSessionRequired) {
 		writeError(w, http.StatusForbidden, "session_required", "changing the authentication settings needs a logged-in session")
 		return
 	}
-	if err := s.Settings.Update(r.Context(), next); err != nil {
+	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, settingsResponse(s.Settings.Current()))
 }
+
+// errSessionRequired stops an API key from changing the auth section.
+var errSessionRequired = errors.New("api: session required")
 
 func authEqual(a, b core.Auth) bool {
 	return a.DisableAuth == b.DisableAuth &&

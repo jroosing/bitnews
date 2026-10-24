@@ -74,9 +74,12 @@ func pathsViewFrom(csrf string, paths core.Paths, errs map[string]string) pathsV
 }
 
 func settingsPathsData(s *Server, r *http.Request) (any, error) {
-	d := pathsPageData{
-		Paths: pathsViewFrom(settingsCSRF(r), s.Settings.Current().Paths, nil),
-	}
+	return pathsPage(s, r, s.cardPage(r, pathsCards, nil))
+}
+
+// pathsPage is the section page: the folders card and the categories card.
+func pathsPage(s *Server, r *http.Request, views cardViews) (any, error) {
+	d := pathsPageData{Paths: views["paths"].(pathsView)}
 	cv, err := s.categoriesViewFor(r, categoriesView{})
 	if err != nil {
 		return nil, err
@@ -86,8 +89,58 @@ func settingsPathsData(s *Server, r *http.Request) (any, error) {
 }
 
 func (s *Server) registerPathRoutes() {
-	s.handleAuthed("POST /settings/paths", s.postPaths)
+	s.registerCards(pathsCards)
 	s.registerCategoryRoutes()
+}
+
+var pathsCards = []*settingsCard{pathsCard}
+
+// pathsFields are the form fields of the folders, in the order of core.Paths.
+var pathsFields = []string{"usenet_incomplete", "usenet_complete", "torrent_incomplete", "torrent_complete"}
+
+// pathsOf reads the four folders from form values, as they are.
+func pathsOf(v map[string]string) core.Paths {
+	return core.Paths{
+		Usenet:  core.Roots{Incomplete: v["usenet_incomplete"], Complete: v["usenet_complete"]},
+		Torrent: core.Roots{Incomplete: v["torrent_incomplete"], Complete: v["torrent_complete"]},
+	}
+}
+
+// pathsCard edits Settings.Paths. New downloads use the folders at once.
+var pathsCard = &settingsCard{
+	key: "paths", route: "/settings/paths", slug: "paths", partial: "paths_card",
+	saved:   "Folders saved. New downloads use them.",
+	invalid: "Some folders need fixing. Nothing was saved.",
+	values: func(s core.Settings) map[string]string {
+		p := s.Paths
+		return map[string]string{
+			"usenet_incomplete": p.Usenet.Incomplete, "usenet_complete": p.Usenet.Complete,
+			"torrent_incomplete": p.Torrent.Incomplete, "torrent_complete": p.Torrent.Complete,
+		}
+	},
+	read: func(_ *Server, f map[string]string, next *core.Settings) map[string]string {
+		form := map[string][]string{}
+		for _, name := range pathsFields {
+			form[name] = []string{f[name]}
+		}
+		paths, _, errs := parsePaths(form)
+		pathProblemErrors(paths, errs)
+		if len(errs) > 0 {
+			return errs
+		}
+		next.Paths = paths
+		return nil
+	},
+	view: func(_ *Server, v cardView, _ core.Settings) any {
+		typed := map[string]string{}
+		for _, name := range pathsFields {
+			typed[name] = strings.TrimSpace(v.V[name])
+		}
+		pv := pathsViewFrom(v.CSRF, pathsOf(typed), v.E)
+		pv.Error, pv.Dirty, pv.Saved = v.Error, v.Dirty, v.Saved
+		return pv
+	},
+	page: pathsPage,
 }
 
 // parsePaths reads the four folders of the form. It returns the folders
@@ -143,56 +196,4 @@ func pathProblemErrors(p core.Paths, errs map[string]string) {
 			errs[name] = "This folder " + pp.Reason + ". Keep the incomplete and complete folders apart, not one inside the other."
 		}
 	}
-}
-
-// postPaths saves the Paths part of the Settings and leaves the rest alone.
-func (s *Server) postPaths(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		s.renderError(w, r, http.StatusBadRequest, "Bad request", "The form could not be read.")
-		return
-	}
-	paths, typed, errs := parsePaths(r.PostForm)
-	pathProblemErrors(paths, errs)
-	if len(errs) > 0 {
-		v := pathsViewFrom(settingsCSRF(r), typed, errs)
-		v.Dirty = true
-		v.Error = "Some folders need fixing. Nothing was saved."
-		s.respondPaths(w, r, http.StatusUnprocessableEntity, v)
-		return
-	}
-
-	next := s.Settings.Current()
-	next.Paths = paths
-	if err := s.Settings.Update(r.Context(), next); err != nil {
-		if ae, ok := settingsAppError(err); ok {
-			v := pathsViewFrom(settingsCSRF(r), typed, nil)
-			v.Dirty, v.Error = true, ae.Message
-			s.respondPaths(w, r, http.StatusUnprocessableEntity, v)
-			return
-		}
-		s.settingsFail(w, r, "settings", err)
-		return
-	}
-
-	v := pathsViewFrom(settingsCSRF(r), paths, nil)
-	if isHTMX(r) {
-		settingsTrigger(w, "success", "Folders saved. New downloads use them.", nil)
-	} else {
-		v.Saved = true
-	}
-	s.respondPaths(w, r, http.StatusOK, v)
-}
-
-// respondPaths answers with the card for htmx, or the whole page.
-func (s *Server) respondPaths(w http.ResponseWriter, r *http.Request, status int, v pathsView) {
-	if isHTMX(r) {
-		s.renderSettingsPart(w, status, settingsPathsPage, "paths_card", v)
-		return
-	}
-	cv, err := s.categoriesViewFor(r, categoriesView{})
-	if err != nil {
-		s.settingsFail(w, r, "category", err)
-		return
-	}
-	s.renderSettingsPage(w, r, status, "paths", pathsPageData{Paths: v, Categories: cv})
 }
