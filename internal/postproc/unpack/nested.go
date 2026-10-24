@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // unpackNested unpacks the archive sets found in the extracted output, one

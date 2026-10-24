@@ -51,7 +51,7 @@
 // The yEnc encoder in EncodeArticles is independent of package yenc.
 package nntptest
 
-import "gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
+import "github.com/jroosing/bitnews/internal/usenet/nntp"
 
 // Both the real client and the in-memory one can sit behind a pool.
 var (

@@ -14,10 +14,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/core/coretest"
-	"gitlab.com/kyura4k/gitnews/internal/store"
-	"gitlab.com/kyura4k/gitnews/internal/torrent/runner"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core/coretest"
+	"github.com/jroosing/bitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/torrent/runner"
 )
 
 // fakeSources is an in-memory core.TorrentSourceRepo.

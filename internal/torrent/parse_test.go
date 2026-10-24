@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/torrent"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/torrent"
 )
 
 // metainfoOf builds a .torrent from files (path, size), with correct piece

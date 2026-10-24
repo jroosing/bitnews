@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
-	"gitlab.com/kyura4k/gitnews/internal/torrent"
+	"github.com/jroosing/bitnews/internal/torrent"
 )
 
 func baseConfig(t *testing.T) torrent.Config {

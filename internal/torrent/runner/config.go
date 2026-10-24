@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // Remover removes a Download when its Share Limit action says so. The daemon

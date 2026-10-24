@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/postproc/tool"
 )
 
 // Defaults for Tool.

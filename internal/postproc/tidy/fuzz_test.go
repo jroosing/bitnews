@@ -3,7 +3,7 @@ package tidy_test
 import (
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tidy"
+	"github.com/jroosing/bitnews/internal/postproc/tidy"
 )
 
 // FuzzClean checks that Clean never panics and never returns an empty name

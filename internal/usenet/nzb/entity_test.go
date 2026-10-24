@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nzb"
+	"github.com/jroosing/bitnews/internal/usenet/nzb"
 )
 
 const billionLaughsDTD = `<?xml version="1.0"?>

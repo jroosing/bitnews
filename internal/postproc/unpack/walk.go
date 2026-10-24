@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // walker checks and normalizes the tree 7zz wrote into the staging directory.

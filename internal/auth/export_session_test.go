@@ -1,6 +1,6 @@
 package auth
 
-import "gitlab.com/kyura4k/gitnews/internal/core"
+import "github.com/jroosing/bitnews/internal/core"
 
 // WithVerifier replaces the password verifier, so tests can observe which
 // hash a login checks against without timing anything.

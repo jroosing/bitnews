@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // fakeClock is a manually advanced clock for throttle tests.

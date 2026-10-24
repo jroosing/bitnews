@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/par2"
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool"
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool/tooltest"
+	"github.com/jroosing/bitnews/internal/postproc/par2"
+	"github.com/jroosing/bitnews/internal/postproc/tool"
+	"github.com/jroosing/bitnews/internal/postproc/tool/tooltest"
 )
 
 // Block size and recovery count of the test sets: small, so par2 is fast.

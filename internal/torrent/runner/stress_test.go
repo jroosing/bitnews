@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/queue"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/queue"
 )
 
 // Many torrents finish while the limit changes, the Queue pauses and

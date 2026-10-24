@@ -3,7 +3,7 @@ package web
 import (
 	"context"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // DetailSource is what the Download detail page asks the running daemon

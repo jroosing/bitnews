@@ -1,6 +1,6 @@
 package runner
 
-import "gitlab.com/kyura4k/gitnews/internal/core"
+import "github.com/jroosing/bitnews/internal/core"
 
 // KindShareLimitReached is the kind of ShareLimitReached. The Queue's own
 // events are core.QueuePaused and core.QueueResumed.

@@ -8,7 +8,7 @@ import (
 	"os"
 	"slices"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // Snapshot wire format (version 1), all integers are unsigned varints

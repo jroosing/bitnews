@@ -6,8 +6,8 @@ import (
 	"time"
 	"unicode"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/view"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/view"
 )
 
 // histBytes formats a byte count for people: 1024-based units with the

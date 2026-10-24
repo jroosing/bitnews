@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
 )
 
 // ProbeClass says which step of a connection test failed.

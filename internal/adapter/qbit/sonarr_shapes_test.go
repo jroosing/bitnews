@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/qbit"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/adapter/qbit"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // These structs mirror what Sonarr and Radarr deserialize: the C# classes

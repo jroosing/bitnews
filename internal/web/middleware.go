@@ -10,7 +10,7 @@ import (
 	"path"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/auth"
 )
 
 // contentSecurityPolicy is the strict CSP of every UI response: only the

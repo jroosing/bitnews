@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // TorrentEntry is one file of a built torrent. A nil Path makes the torrent a

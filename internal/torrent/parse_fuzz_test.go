@@ -7,9 +7,9 @@ import (
 
 	anacrolix "github.com/anacrolix/torrent"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/torrent"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/torrent"
 )
 
 // FuzzParseMetainfo feeds arbitrary bytes as a .torrent file: parsing may

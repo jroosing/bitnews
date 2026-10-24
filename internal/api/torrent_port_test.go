@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/api"
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/api"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // fakePort is an api.TorrentPort that remembers the port it was given.

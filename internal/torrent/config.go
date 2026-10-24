@@ -15,7 +15,7 @@ import (
 	"github.com/anacrolix/torrent/storage"
 	"golang.org/x/time/rate"
 
-	"gitlab.com/kyura4k/gitnews/internal/netbind"
+	"github.com/jroosing/bitnews/internal/netbind"
 )
 
 // ErrInvalidConfig is returned by New for settings that cannot work.

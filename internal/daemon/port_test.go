@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // fakePortEngine is a listenPorter that refuses the ports in taken.

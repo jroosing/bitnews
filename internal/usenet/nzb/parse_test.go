@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nzb"
+	"github.com/jroosing/bitnews/internal/usenet/nzb"
 )
 
 func parseString(t *testing.T, s string) *nzb.NZB {

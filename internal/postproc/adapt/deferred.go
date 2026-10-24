@@ -7,8 +7,8 @@ import (
 	"math"
 	"sort"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nzb"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/usenet/nzb"
 )
 
 // DefaultMargin is the number of recovery blocks fetched beyond what the

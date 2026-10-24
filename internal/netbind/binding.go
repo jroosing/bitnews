@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"strconv"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // ErrUnsupported is returned when a binding needs an OS feature this build

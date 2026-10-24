@@ -1,6 +1,6 @@
 package qbit
 
-import "gitlab.com/kyura4k/gitnews/internal/view"
+import "github.com/jroosing/bitnews/internal/view"
 
 // TorrentState exposes the state mapping to the table test.
 func TorrentState(v view.View, stopped bool) (state string, progress float64) {

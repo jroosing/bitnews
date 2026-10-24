@@ -9,9 +9,9 @@ import (
 	"strings"
 	"unicode"
 
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // add serves torrents/add: the urls field (magnet links and http(s) URLs of

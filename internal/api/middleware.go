@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"github.com/jroosing/bitnews/internal/redact"
 )
 
 type ctxKey int

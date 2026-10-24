@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/auth"
 )
 
 func loginBody(user, password string) string {

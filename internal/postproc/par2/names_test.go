@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/par2"
+	"github.com/jroosing/bitnews/internal/postproc/par2"
 )
 
 func specs(names ...string) []fileSpec {

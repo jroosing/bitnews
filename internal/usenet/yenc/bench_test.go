@@ -3,7 +3,7 @@ package yenc_test
 import (
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // BenchmarkDecode decodes a typical ~700 KB Article part. Throughput is

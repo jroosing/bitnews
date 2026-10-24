@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"syscall"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/postproc/unpack"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/postproc/unpack"
 )
 
 // Unpacker implements core.Unpacker on top of the unpack package, which runs

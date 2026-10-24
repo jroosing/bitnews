@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool/tooltest"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/postproc/tool/tooltest"
 )
 
 // FuzzEntryName feeds arbitrary archive entry names to the guard. Whatever it

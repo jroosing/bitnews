@@ -17,14 +17,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/sabnzbd"
-	"gitlab.com/kyura4k/gitnews/internal/api"
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/store"
-	"gitlab.com/kyura4k/gitnews/internal/view"
-	"gitlab.com/kyura4k/gitnews/internal/web"
+	"github.com/jroosing/bitnews/internal/adapter/sabnzbd"
+	"github.com/jroosing/bitnews/internal/api"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/view"
+	"github.com/jroosing/bitnews/internal/web"
 )
 
 const adminPassword = "correct horse battery staple"

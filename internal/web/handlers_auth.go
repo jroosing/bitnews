@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // signedIn reports whether the request already has a principal, without

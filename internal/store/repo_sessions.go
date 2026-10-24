@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // SessionRepo implements core.SessionRepo on SQLite. Only the SHA-256 hash of

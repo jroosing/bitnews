@@ -3,7 +3,7 @@ package web
 import (
 	"context"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // RuntimeSource is what the UI asks the running daemon about the Queues:

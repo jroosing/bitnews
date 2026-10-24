@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
 )
 
 // ServerSpec describes one configured Server. The runner builds one

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tidy"
+	"github.com/jroosing/bitnews/internal/postproc/tidy"
 )
 
 func TestCleanGivesWhatCleanPyGives(t *testing.T) {

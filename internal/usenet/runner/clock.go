@@ -3,7 +3,7 @@ package runner
 import (
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
 )
 
 type systemClock struct{}

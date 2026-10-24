@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 func randomBytes(seed uint64, n int) []byte {

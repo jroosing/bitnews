@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/redact"
-	"gitlab.com/kyura4k/gitnews/internal/torrent"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/redact"
+	"github.com/jroosing/bitnews/internal/torrent"
 )
 
 // stagingTorrentName is the temporary name of a .torrent file while it is

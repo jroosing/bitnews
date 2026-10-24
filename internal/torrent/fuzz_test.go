@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/torrent"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/torrent"
 )
 
 // FuzzTorrentPaths feeds arbitrary bytes as a .torrent file: parsing may fail,

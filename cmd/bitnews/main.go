@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/api"
-	"gitlab.com/kyura4k/gitnews/internal/bootstrap"
-	"gitlab.com/kyura4k/gitnews/internal/daemon"
-	"gitlab.com/kyura4k/gitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/api"
+	"github.com/jroosing/bitnews/internal/bootstrap"
+	"github.com/jroosing/bitnews/internal/daemon"
+	"github.com/jroosing/bitnews/internal/store"
 )
 
 // Set at build time via -ldflags "-X main.version=... -X main.commit=...".

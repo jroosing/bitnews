@@ -8,7 +8,7 @@ import (
 
 	"modernc.org/sqlite"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // CategoryRepo implements core.CategoryRepo on SQLite.

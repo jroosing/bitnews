@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // outcome classifies one fetch.

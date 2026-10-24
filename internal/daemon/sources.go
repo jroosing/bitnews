@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/store"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/usenet/runner"
 )
 
 // serverSource adapts core.ServerRepo to runner.ServerSource.

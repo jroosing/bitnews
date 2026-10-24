@@ -3,7 +3,7 @@ package nzb_test
 import (
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nzb"
+	"github.com/jroosing/bitnews/internal/usenet/nzb"
 )
 
 func TestParse_ClassifiesFilesByName(t *testing.T) {

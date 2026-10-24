@@ -89,7 +89,7 @@ Everything except the real interface binding runs on any OS. Linux-only tests bi
 3. checks that bound dials fail, that the packet counter of the other interface does not move, and that an unbound dial (the control) does get through the other route;
 4. recreates the interface and checks that the kill switch resumes within 5 s and bound dials work again.
 
-It needs root, `ip` (iproute2) and the right to create network namespaces. The GitLab `test` job does not run it. To run it on a Linux machine:
+It needs root, `ip` (iproute2) and the right to create network namespaces. The CI `test` job does not run it. To run it on a Linux machine:
 
 ```sh
 sudo NETBIND_NETNS=1 "$(command -v go)" test -tags netns -run Netns -v ./internal/netbind/

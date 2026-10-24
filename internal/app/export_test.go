@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
 )
 
 // ProbeConn is the part of an NNTP connection a probe uses.

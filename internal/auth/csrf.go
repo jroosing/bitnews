@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // CSRFHeader carries the synchronizer token on state-changing requests.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool/tooltest"
+	"github.com/jroosing/bitnews/internal/postproc/tool/tooltest"
 )
 
 // t0.7z holds two 4-byte files, bar and foo.

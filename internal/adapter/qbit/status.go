@@ -3,8 +3,8 @@ package qbit
 import (
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/view"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/view"
 )
 
 // holdOffProgress is the progress of a Download that is Fetched or being

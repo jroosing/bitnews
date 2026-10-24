@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/auth"
 )
 
 type middleware = func(http.Handler) http.Handler

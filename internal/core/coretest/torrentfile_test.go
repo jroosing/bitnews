@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/core/coretest"
+	"github.com/jroosing/bitnews/internal/core/coretest"
 )
 
 func TestBuildTorrentHashesTheInfoDictionary(t *testing.T) {

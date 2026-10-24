@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/netbind"
+	"github.com/jroosing/bitnews/internal/netbind"
 )
 
 var _ Dialer = (*netbind.Dialer)(nil)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // ErrInvalidInput is matched (errors.Is) by every error the services return

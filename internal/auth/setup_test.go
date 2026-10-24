@@ -16,9 +16,9 @@ import (
 
 	"log/slog"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/store"
 )
 
 func openStore(t *testing.T) (*store.DB, string) {

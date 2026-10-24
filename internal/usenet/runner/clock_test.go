@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
 )
 
 // fakeClock is a controllable runner.Clock. In auto mode a timer fires at

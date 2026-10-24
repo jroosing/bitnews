@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // TokenKind says what a generated token authenticates. Every kind is the same

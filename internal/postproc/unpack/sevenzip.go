@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool"
+	"github.com/jroosing/bitnews/internal/postproc/tool"
 )
 
 // 7zz exit codes (7-Zip documentation).

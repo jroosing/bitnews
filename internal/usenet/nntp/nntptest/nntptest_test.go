@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
 )
 
 // fetch returns the body lines of id, copied out of the sink.

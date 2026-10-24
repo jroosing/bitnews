@@ -6,8 +6,8 @@ import (
 	"math"
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // listenPorter is the part of the torrent engine that moves its listen port

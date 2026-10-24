@@ -24,8 +24,8 @@ import (
 	pp "github.com/anacrolix/torrent/peer_protocol"
 	"golang.org/x/time/rate"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // ErrClosed is returned by an Engine after Close.

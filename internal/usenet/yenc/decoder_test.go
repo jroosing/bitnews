@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // decode feeds lines to a fresh Decoder and finishes it.

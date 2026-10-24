@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/qbit"
+	"github.com/jroosing/bitnews/internal/adapter/qbit"
 )
 
 func (s *stack) loginAs(user, pass string) *httptest.ResponseRecorder {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // TorrentCall is one recorded call to a FakeTorrentEngine. Only the fields

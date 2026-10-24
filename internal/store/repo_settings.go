@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // settingsKey is the settings row that holds the typed core.Settings.

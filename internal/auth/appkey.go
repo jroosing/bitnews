@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // QBitUsername is the fixed username of the qBittorrent adapter login; the

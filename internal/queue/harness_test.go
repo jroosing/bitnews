@@ -12,9 +12,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/queue"
-	"gitlab.com/kyura4k/gitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/queue"
+	"github.com/jroosing/bitnews/internal/store"
 )
 
 // fakeProtocol records what the Queue asks of it. Running fetches are the

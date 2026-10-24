@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 func TestDefaultQueueLimitsAreOneUsenetAndFiveTorrents(t *testing.T) {

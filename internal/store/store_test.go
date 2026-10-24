@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/store"
 )
 
 func openTemp(t *testing.T, opts ...store.Option) (*store.DB, string) {

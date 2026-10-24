@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"github.com/jroosing/bitnews/internal/redact"
 )
 
 // DefaultFetchTimeout is the total time an NZB URL fetch may take.
@@ -23,7 +23,7 @@ const DefaultFetchTimeout = 30 * time.Second
 const maxRedirects = 5
 
 // fetchUserAgent identifies bitnews to indexers.
-const fetchUserAgent = "bitnews (+https://gitlab.com/kyura4k/bitnews)"
+const fetchUserAgent = "bitnews (+https://github.com/jroosing/bitnews)"
 
 // newFetchClient builds the client that fetches NZB URLs.
 //

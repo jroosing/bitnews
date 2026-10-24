@@ -7,8 +7,8 @@ import (
 	"slices"
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/store"
 )
 
 // DownloadService manages existing Downloads: list, read, pause, resume,

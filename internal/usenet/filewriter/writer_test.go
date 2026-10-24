@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/filewriter"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/filewriter"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // splitParts cuts data into parts of at most partSize bytes, as a yEnc

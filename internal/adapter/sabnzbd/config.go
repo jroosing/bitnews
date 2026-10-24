@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // defaultCategoryName is how SAB calls "no category".

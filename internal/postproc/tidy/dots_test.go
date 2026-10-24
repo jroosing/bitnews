@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tidy"
+	"github.com/jroosing/bitnews/internal/postproc/tidy"
 )
 
 func touch(t *testing.T, path string) {

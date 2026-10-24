@@ -9,7 +9,7 @@ import (
 
 	"modernc.org/sqlite"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // sqliteConstraintForeignKey is SQLITE_CONSTRAINT_FOREIGNKEY.

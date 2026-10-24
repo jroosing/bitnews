@@ -10,8 +10,8 @@ import (
 	"slices"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // tor is the runner's record of one torrent that is in the engine.

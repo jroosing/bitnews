@@ -11,7 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/auth"
 )
 
 // templates holds one parsed set per page file. Every set contains the

@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
+	"github.com/jroosing/bitnews/internal/core"
+	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
 )
 
 type fakeFacts struct {

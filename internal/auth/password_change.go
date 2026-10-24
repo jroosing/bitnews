@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // ChangePassword replaces the password of the user. It needs the current

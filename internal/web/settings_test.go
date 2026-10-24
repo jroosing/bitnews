@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
-	"gitlab.com/kyura4k/gitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/app"
 )
 
 // settingsSlugs are the six sections in navigation order.

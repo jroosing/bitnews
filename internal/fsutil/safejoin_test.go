@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 func TestSafeJoin_JoinsRelativePathsUnderRoot(t *testing.T) {

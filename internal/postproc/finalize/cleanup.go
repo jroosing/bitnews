@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // tmpDirName is the staging dir Unpack may leave behind inside the

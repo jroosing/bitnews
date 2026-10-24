@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/filewriter"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nzb"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/scheduler"
+	"github.com/jroosing/bitnews/internal/usenet/filewriter"
+	"github.com/jroosing/bitnews/internal/usenet/nzb"
+	"github.com/jroosing/bitnews/internal/usenet/scheduler"
 )
 
 // segKey identifies one Article of a Download: the file index in the NZB and

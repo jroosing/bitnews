@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/netbind"
-	"gitlab.com/kyura4k/gitnews/internal/torrent"
-	"gitlab.com/kyura4k/gitnews/internal/web"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/netbind"
+	"github.com/jroosing/bitnews/internal/torrent"
+	"github.com/jroosing/bitnews/internal/web"
 )
 
 // This file wires the speed, torrent network, post-processing and disk

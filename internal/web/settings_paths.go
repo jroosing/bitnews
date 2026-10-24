@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // settingsPaths is the template and data of the Paths & Categories section.

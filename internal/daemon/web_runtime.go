@@ -3,9 +3,9 @@ package daemon
 import (
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/queue"
-	"gitlab.com/kyura4k/gitnews/internal/web"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/queue"
+	"github.com/jroosing/bitnews/internal/web"
 )
 
 // queueControl is the pause side of a Queue; *queue.Queue implements it.

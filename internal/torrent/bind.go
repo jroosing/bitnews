@@ -16,8 +16,8 @@ import (
 	anacrolix "github.com/anacrolix/torrent"
 	"github.com/anacrolix/utp"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/netbind"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/netbind"
 )
 
 // ErrBindUnavailable is wrapped by the error New returns when the configured

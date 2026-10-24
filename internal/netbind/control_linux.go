@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"syscall"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // bindToDevice sets SO_BINDTODEVICE. The name only ever goes into the

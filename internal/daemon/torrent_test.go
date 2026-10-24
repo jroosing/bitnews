@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/qbit"
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
+	"github.com/jroosing/bitnews/internal/adapter/qbit"
+	"github.com/jroosing/bitnews/internal/core"
+	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
 )
 
 var (

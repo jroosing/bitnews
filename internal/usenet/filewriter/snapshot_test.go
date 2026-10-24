@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/filewriter"
+	"github.com/jroosing/bitnews/internal/usenet/filewriter"
 )
 
 func TestSnapshotRestoreRoundTripResumesInPlace(t *testing.T) {

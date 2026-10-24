@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/sabnzbd"
-	"gitlab.com/kyura4k/gitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/adapter/sabnzbd"
+	"github.com/jroosing/bitnews/internal/auth"
 )
 
 func TestVersionNeedsNoKey(t *testing.T) {

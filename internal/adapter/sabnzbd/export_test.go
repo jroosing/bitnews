@@ -1,6 +1,6 @@
 package sabnzbd
 
-import "gitlab.com/kyura4k/gitnews/internal/view"
+import "github.com/jroosing/bitnews/internal/view"
 
 // Classify exposes the translation of a View to the table test: whether the
 // Download is listed in the queue, and its SAB status.

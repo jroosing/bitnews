@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // GET /ui/events is the UI's live stream: server-sent events whose data is

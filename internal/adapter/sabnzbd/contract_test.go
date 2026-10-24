@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/adaptertest"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/adapter/adaptertest"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // contractDir holds the replay fixtures. THEY ARE HAND-WRITTEN FROM THE

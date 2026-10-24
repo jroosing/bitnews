@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // passwordView is the "Password" card. The password fields are write-only:

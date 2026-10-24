@@ -16,7 +16,7 @@ Read first: [architecture](../architecture.md), [glossary](../../CONTEXT.md), an
 
 ### Module and tooling
 
-- Module path is `gitlab.com/kyura4k/gitnews` (the GitLab project stays `kyura4k/bitnews`), with Go 1.27.3 or later as the `go` directive.
+- Module path is `github.com/jroosing/bitnews` (originally `gitlab.com/kyura4k/gitnews`, renamed when the project moved to GitHub in October 2026), with Go 1.27.3 or later as the `go` directive.
 - External dependencies are kept to a minimum and each one is justified in its MR. M1 allows only `modernc.org/sqlite` and `golang.org/x/crypto` (argon2, chacha20poly1305) in production code. Test code may use `github.com/stretchr/testify` (`require`/`assert`) for clearer assertions; test-only dependencies never ship in the binary.
 - Routing uses the standard `net/http` `ServeMux` with method and path patterns, so there is no router dependency.
 - Logging uses `log/slog`, with text or JSON output.
@@ -203,14 +203,14 @@ M1 routes (more are added in later milestones):
 - **Labels:** area:ci, ready-for-agent
 - **Depends on:** —
 
-**Goal:** Create a working Go module skeleton and a GitLab CI pipeline that enforces the quality gates from the architecture.
+**Goal:** Create a working Go module skeleton and a CI pipeline that enforces the quality gates from the architecture.
 
 **Work**
-- Keep the existing `go.mod` (`module gitlab.com/kyura4k/gitnews`, `go 1.27.3`). Import paths use `gitlab.com/kyura4k/gitnews/...`.
+- Keep the existing `go.mod` (`module github.com/jroosing/bitnews`, `go 1.27.3`). Import paths use `github.com/jroosing/bitnews/...`.
 - Create the package directories from the architecture layout. Each gets a `doc.go` with a one-line package comment.
 - Add `cmd/bitnews/main.go`, which prints its version. The version is injected via `-ldflags` (version, commit).
 - Add a `Makefile` with targets `build`, `fmt` and `fmt-check` (`gofmt -s`), `fix` and `fix-check` (`go fix`), `test` (`go test -race ./...`), `lint` (`go vet` + `staticcheck`), `vuln` (`govulncheck`) and `fuzz-smoke` (runs each `Fuzz*` for 10 s). The `-check` targets only report and fail, and the others rewrite files.
-- Add `.gitlab-ci.yml` with stages `lint` (one job: `make lint` and `make vuln`), `test` (one job: `make test`; fuzzing is run locally with `make fuzz-smoke`, not in CI) and `build`. Formatting (`make fmt`, `make fix`) is done locally before pushing, so CI has no format job. `build` produces a linux amd64 static binary with `CGO_ENABLED=0`. Cache the Go module and build caches.
+- Add a CI pipeline (GitHub Actions, `.github/workflows/ci.yml`; it was `.gitlab-ci.yml` until the move to GitHub) with jobs `lint` (one job: `make lint` and `make vuln`), `test` (one job: `make test`; fuzzing is run locally with `make fuzz-smoke`, not in CI) and `build`. Formatting (`make fmt`, `make fix`) is done locally before pushing, so CI has no format job. `build` produces a linux amd64 static binary with `CGO_ENABLED=0`. Cache the Go module and build caches.
 - Add `.gitignore` and a short `README.md` that points to `docs/`.
 
 **Acceptance criteria**
@@ -453,7 +453,7 @@ M1 routes (more are added in later milestones):
 **Work**
 - Write a multi-stage `Dockerfile` ending in distroless static, running as a non-root user that `user:` overrides (see [ADR-0006](../adr/0006-simplify-filesystem-permissions-and-api-key.md)). Add a healthcheck via `bitnews healthcheck`, a subcommand that hits `/api/v1/health`.
 - Write `deploy/docker-compose.example.yml` with the TRaSH `/data` layout, `user:`/`UMASK`, and a commented gluetun variant. The key needs no secret; it is generated in `/config`.
-- Add a CI job that builds the image (linux/amd64 only) and pushes it to the GitLab container registry on the default branch and on tags.
+- Add a CI job that builds the image (linux/amd64 only) and pushes it to the GitHub container registry (ghcr.io) on the default branch and on tags.
 - Write `docs/deploy.md` for the Docker path.
 
 **Acceptance criteria**

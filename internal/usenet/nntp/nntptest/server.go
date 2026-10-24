@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
 )
 
 // Server is a scripted in-memory Server. All methods are safe for concurrent

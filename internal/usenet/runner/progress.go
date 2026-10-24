@@ -9,7 +9,7 @@ import (
 	"math"
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // memStore is the ProgressStore used when Config.Progress is nil.

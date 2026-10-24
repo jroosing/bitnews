@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/scheduler"
+	"github.com/jroosing/bitnews/internal/usenet/scheduler"
 )
 
 // runLarge runs n synthetic Articles over a main and a fill Server where main

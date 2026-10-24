@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
 )
 
 func TestE2EBothPostProcessOptionsCleanTheNameAndDotTheFilesOfASABnzbdAdd(t *testing.T) {

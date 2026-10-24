@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/qbit"
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
+	"github.com/jroosing/bitnews/internal/adapter/qbit"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
+	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
 )
 
 // qbitTorrents implements qbit.TorrentSource, qbit.FileSource and

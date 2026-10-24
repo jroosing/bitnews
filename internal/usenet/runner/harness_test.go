@@ -13,11 +13,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/store"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
+	"github.com/jroosing/bitnews/internal/usenet/runner"
 )
 
 // fakeServers is a mutable ServerSource.

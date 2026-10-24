@@ -7,7 +7,7 @@ import (
 	"slices"
 	"sync"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // SettingsService reads and writes the Settings. It keeps them in memory, so

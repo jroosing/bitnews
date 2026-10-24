@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"github.com/jroosing/bitnews/internal/redact"
 )
 
 // marker prefixes every injected secret. Inputs that already contain it

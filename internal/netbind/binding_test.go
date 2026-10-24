@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/netbind"
+	"github.com/jroosing/bitnews/internal/netbind"
 )
 
 func TestEnabledOnlyWhenInterfaceOrAddressSet(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 func listFilter(after string) app.ListFilter {

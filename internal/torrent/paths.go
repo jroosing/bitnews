@@ -8,9 +8,9 @@ import (
 
 	"github.com/anacrolix/torrent/metainfo"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/store"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/store"
 )
 
 // ErrInvalidMetainfo is returned for torrents that are malformed or exceed

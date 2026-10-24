@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/redact"
+	"github.com/jroosing/bitnews/internal/redact"
 )
 
 func TestURLMasksAPIKeyQueryValue(t *testing.T) {

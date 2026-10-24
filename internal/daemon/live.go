@@ -3,9 +3,9 @@ package daemon
 import (
 	"context"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
-	"gitlab.com/kyura4k/gitnews/internal/view"
+	"github.com/jroosing/bitnews/internal/core"
+	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
+	"github.com/jroosing/bitnews/internal/view"
 )
 
 // torrentFacts is what liveSource needs of the torrent runner.

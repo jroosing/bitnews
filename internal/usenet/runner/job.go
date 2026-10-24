@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/filewriter"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nzb"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/scheduler"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/usenet/filewriter"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nzb"
+	"github.com/jroosing/bitnews/internal/usenet/scheduler"
 )
 
 var errReschedule = errors.New("runner: servers changed")

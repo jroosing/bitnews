@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool"
+	"github.com/jroosing/bitnews/internal/postproc/tool"
 )
 
 // TestMain lets the test binary act as the program under test: started with

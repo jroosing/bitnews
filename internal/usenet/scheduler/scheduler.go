@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // MaxAttempts is how many times one Server is asked for one Article when it

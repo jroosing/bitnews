@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // login serves POST /api/v1/auth/login. The Origin check runs in front of it

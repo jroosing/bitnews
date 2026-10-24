@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/netbind"
+	"github.com/jroosing/bitnews/internal/netbind"
 )
 
 var safeName = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,15}$`)

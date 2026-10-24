@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/app"
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/app"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // addRequest reads the parameters addfile and addurl share. The category is

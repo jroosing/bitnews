@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // ErrUnsafeSet is returned, before par2 is started, for a PAR2 set that

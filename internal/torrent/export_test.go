@@ -10,7 +10,7 @@ import (
 
 	anacrolix "github.com/anacrolix/torrent"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // ClientConfigFor exposes the anacrolix client configuration an Engine would

@@ -3,7 +3,7 @@ package qbit
 import (
 	"context"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // What a media manager reads about a torrent comes from the Download view

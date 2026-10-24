@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool/tooltest"
+	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/postproc/tool/tooltest"
 )
 
 // TestMain makes password hashing cheap for the whole test binary. Every test

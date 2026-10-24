@@ -18,10 +18,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/torrent/torrenttest"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
+	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/torrent/torrenttest"
+	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
 )
 
 // These tests drive the qBittorrent adapter over real HTTP, through the whole

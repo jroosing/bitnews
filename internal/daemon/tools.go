@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/par2"
-	"gitlab.com/kyura4k/gitnews/internal/postproc/tool"
+	"github.com/jroosing/bitnews/internal/postproc/par2"
+	"github.com/jroosing/bitnews/internal/postproc/tool"
 )
 
 // postprocTools are the programs Post-processing runs (ADR-0007), found once

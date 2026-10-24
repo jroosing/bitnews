@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/postproc/par2"
+	"github.com/jroosing/bitnews/internal/postproc/par2"
 )
 
 // hostileDir is a Download folder called dl inside a root that also holds a

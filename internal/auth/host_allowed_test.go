@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/auth"
 )
 
 func TestHostAllowedIgnoresPortCaseAndTrailingDot(t *testing.T) {

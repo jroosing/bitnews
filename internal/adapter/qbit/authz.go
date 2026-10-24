@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"gitlab.com/kyura4k/gitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/auth"
 )
 
 // sidCookie is the name of the session cookie, as in qBittorrent.

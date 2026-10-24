@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // Phase says what a Download is doing, finer than its State only where the

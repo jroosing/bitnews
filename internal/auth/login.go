@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // Login errors. Use errors.Is.

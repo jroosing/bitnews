@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	trunner "gitlab.com/kyura4k/gitnews/internal/torrent/runner"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/runner"
-	"gitlab.com/kyura4k/gitnews/internal/web"
+	"github.com/jroosing/bitnews/internal/core"
+	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
+	"github.com/jroosing/bitnews/internal/usenet/runner"
+	"github.com/jroosing/bitnews/internal/web"
 )
 
 // webTorrents implements web.TorrentSource for the Download detail page: the

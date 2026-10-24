@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
-	"gitlab.com/kyura4k/gitnews/internal/queue"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
-	"gitlab.com/kyura4k/gitnews/internal/web"
+	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/queue"
+	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
+	"github.com/jroosing/bitnews/internal/web"
 )
 
 // uiStream is a client of /ui/events over real HTTP with the web client's

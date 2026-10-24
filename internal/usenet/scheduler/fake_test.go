@@ -7,9 +7,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/nntp/nntptest"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/scheduler"
+	"github.com/jroosing/bitnews/internal/usenet/nntp"
+	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
+	"github.com/jroosing/bitnews/internal/usenet/scheduler"
 )
 
 // behavior is what a fakeFetcher does for one request.

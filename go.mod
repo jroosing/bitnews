@@ -1,4 +1,4 @@
-module gitlab.com/kyura4k/gitnews
+module github.com/jroosing/bitnews
 
 go 1.27.3
 

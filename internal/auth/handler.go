@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // maxSetupBody caps the POST /api/v1/setup body.

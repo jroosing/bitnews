@@ -60,7 +60,7 @@ Domain terms (**Download**, **Source**, **Fetched**, **Ready**, …) are defined
 ## Package layout
 
 ```
-gitlab.com/kyura4k/gitnews   (Go module; GitLab project is kyura4k/bitnews)
+github.com/jroosing/bitnews   (Go module and GitHub repository)
 cmd/bitnews/            bootstrap flags/env, applies the umask, opens the DB
 internal/daemon/        composition root: wires stores, services, API, runner, post-processing
 internal/core/          domain model, lifecycle, scheduler, event bus, ports

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // AppKeyRepo implements core.AppKeyRepo on SQLite. The table holds a single

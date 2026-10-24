@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // FuzzDecode feeds arbitrary bodies, split into lines, to the Decoder. It

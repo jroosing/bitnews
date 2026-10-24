@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // process fetches Article i, which sv's worker holds in flight, and records

@@ -3,7 +3,7 @@ package web
 import (
 	"net/http"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // postprocessingSection is the "Post-processing" entry of the settings

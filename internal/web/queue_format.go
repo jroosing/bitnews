@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/view"
+	"github.com/jroosing/bitnews/internal/view"
 )
 
 // The formatters below turn numbers into the short strings the queue shows.

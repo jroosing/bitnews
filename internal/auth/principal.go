@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // PrincipalKind says how a request was authenticated.

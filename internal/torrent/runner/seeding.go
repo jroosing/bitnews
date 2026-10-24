@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"gitlab.com/kyura4k/gitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/core"
 )
 
 // seedingStates are the States in which a torrent Download is Seeding.

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"gitlab.com/kyura4k/gitnews/internal/fsutil"
-	"gitlab.com/kyura4k/gitnews/internal/usenet/yenc"
+	"github.com/jroosing/bitnews/internal/fsutil"
+	"github.com/jroosing/bitnews/internal/usenet/yenc"
 )
 
 // DefaultMaxOpenFiles is the default bound on simultaneously open files.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/kyura4k/gitnews/internal/adapter/qbit"
+	"github.com/jroosing/bitnews/internal/adapter/qbit"
 )
 
 // FuzzParseHashes: hostile hashes parameters never panic, and everything
