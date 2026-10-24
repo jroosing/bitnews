@@ -1,4 +1,4 @@
-package adapt
+package unpack
 
 import (
 	"context"
@@ -12,11 +12,11 @@ import (
 
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/fsutil"
-	"github.com/jroosing/bitnews/internal/postproc/unpack"
 )
 
-// Unpacker implements core.Unpacker on top of the unpack package, which runs
-// the 7zz program (ADR-0007). The zero value is ready to use (7zz is looked up
+// Unpacker implements core.Unpacker on top of Detect and Unpack, which run
+// the 7zz program (ADR-0007). It owns the mapping of this package's errors to
+// the core sentinels (see MapError). The zero value is ready to use (7zz is looked up
 // on PATH, no passwords, no free space reserve).
 type Unpacker struct {
 	// SevenZip is the path of the 7zz program, as found by tool.Locate at
@@ -38,24 +38,25 @@ type Unpacker struct {
 	FreeSpace func(path string) (uint64, error)
 	// Options are passed to every unpack.Unpack call after the options
 	// above, for example limits.
-	Options []unpack.Option
+	Options []Option
 }
 
 var _ core.Unpacker = Unpacker{}
 
-// Detect finds the archive sets in dir.
+// Detect finds the archive sets in dir. Each is named by its first volume
+// (for example "movie.part01.rar"), which is unique in dir and is how Unpack
+// finds it again.
 //
 // A set that is not complete (a volume is missing, or a volume number is
 // there twice) is a damaged download, whatever the cause: Detect fails with
-// an error that wraps core.ErrArchiveCorrupt and the unpack package's
-// error (unpack.ErrMissingVolume). The alternative, unpacking the sets that
-// are complete and ignoring the broken one, would hand the user a partial
-// result that looks like a success.
+// an error that wraps core.ErrArchiveCorrupt and ErrMissingVolume. The
+// alternative, unpacking the sets that are complete and ignoring the broken
+// one, would hand the user a partial result that looks like a success.
 func (u Unpacker) Detect(ctx context.Context, dir string) ([]core.ArchiveSet, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	sets, err := unpack.Detect(dir)
+	sets, err := Detect(dir)
 	if err != nil {
 		return nil, fmt.Errorf("detect archives: %w", err)
 	}
@@ -64,45 +65,68 @@ func (u Unpacker) Detect(ctx context.Context, dir string) ([]core.ArchiveSet, er
 		if s.Err != nil {
 			return nil, fmt.Errorf("%w: archive %q: %w", core.ErrArchiveCorrupt, s.Name, s.Err)
 		}
-		out = append(out, core.ArchiveSet{Name: s.Name, Opaque: s})
+		out = append(out, core.ArchiveSet{Name: setKey(s)})
 	}
 	return out, nil
 }
 
-// Unpack extracts opts.Sets, in order, into dst. The archives are never
-// modified.
-//
-// One set is unpacked straight into dst by unpack.Unpack, which stages it
-// next to dst and renames it into place. Several sets are each unpacked
-// into their own directory under dst+".sets" (cleared first), merged into
-// one tree there and renamed to dst: where two sets have a directory of the
-// same name the directories are merged, and where anything else collides
-// the later entry gets a free name from fsutil.Unique ("a.mkv" becomes
-// "a.1.mkv"), so nothing is overwritten. In both cases an existing dst is
-// replaced, which is what makes a repeated run after a crash safe (with
-// several sets the replacement is a removal followed by the rename).
-//
-// Errors are mapped to the core sentinels, see MapUnpackError.
-func (u Unpacker) Unpack(ctx context.Context, _, dst string, opts core.UnpackOptions) (core.UnpackResult, error) {
-	sets := make([]unpack.ArchiveSet, 0, len(opts.Sets))
-	for _, s := range opts.Sets {
-		us, ok := s.Opaque.(unpack.ArchiveSet)
-		if !ok {
-			return core.UnpackResult{}, fmt.Errorf("adapt: archive set %q has the Opaque payload %T, not one of this package's Detect", s.Name, s.Opaque)
-		}
-		sets = append(sets, us)
+// setKey names a set within its directory: the name of its first volume.
+func setKey(s ArchiveSet) string {
+	if len(s.Volumes) == 0 {
+		return s.Name
 	}
-	if len(sets) == 0 {
-		return core.UnpackResult{}, errors.New("adapt: no archive sets to unpack")
+	return filepath.Base(s.Volumes[0])
+}
+
+// Unpack extracts the sets of dir named in opts.Sets, in order, into dst.
+// The sets are detected in dir again: one that is gone or no longer complete
+// is core.ErrArchiveCorrupt. The archives are never modified.
+//
+// One set is unpacked straight into dst by Unpack, which stages it next to
+// dst and renames it into place. Several sets are each unpacked into their
+// own directory under dst+".sets" (cleared first), merged into one tree there
+// and renamed to dst: where two sets have a directory of the same name the
+// directories are merged, and where anything else collides the later entry
+// gets a free name from fsutil.Unique ("a.mkv" becomes "a.1.mkv"), so nothing
+// is overwritten. In both cases an existing dst is replaced, which is what
+// makes a repeated run after a crash safe (with several sets the replacement
+// is a removal followed by the rename).
+//
+// Errors are mapped to the core sentinels, see MapError.
+func (u Unpacker) Unpack(ctx context.Context, dir, dst string, opts core.UnpackOptions) (core.UnpackResult, error) {
+	if len(opts.Sets) == 0 {
+		return core.UnpackResult{}, errors.New("unpack: no archive sets to unpack")
+	}
+	if err := ctx.Err(); err != nil {
+		return core.UnpackResult{}, err
+	}
+	found, err := Detect(dir)
+	if err != nil {
+		return core.UnpackResult{}, fmt.Errorf("detect archives: %w", err)
+	}
+	byKey := make(map[string]ArchiveSet, len(found))
+	for _, s := range found {
+		byKey[setKey(s)] = s
+	}
+	sets := make([]ArchiveSet, 0, len(opts.Sets))
+	for _, want := range opts.Sets {
+		s, ok := byKey[want.Name]
+		switch {
+		case !ok:
+			return core.UnpackResult{}, fmt.Errorf("%w: archive %q is no longer in the download", core.ErrArchiveCorrupt, want.Name)
+		case s.Err != nil:
+			return core.UnpackResult{}, fmt.Errorf("%w: archive %q: %w", core.ErrArchiveCorrupt, want.Name, s.Err)
+		}
+		sets = append(sets, s)
 	}
 	uopts, err := u.options(opts.DownloadID)
 	if err != nil {
 		return core.UnpackResult{}, err
 	}
 	if len(sets) == 1 {
-		res, err := unpack.Unpack(ctx, sets[0], dst, append(uopts, unpack.WithReplace())...)
+		res, err := Unpack(ctx, sets[0], dst, append(uopts, WithReplace())...)
 		if err != nil {
-			return core.UnpackResult{}, MapUnpackError(ctx, err)
+			return core.UnpackResult{}, MapError(ctx, err)
 		}
 		return core.UnpackResult{Files: len(res.Files), Bytes: res.Bytes}, nil
 	}
@@ -110,10 +134,10 @@ func (u Unpacker) Unpack(ctx context.Context, _, dst string, opts core.UnpackOpt
 }
 
 // options builds the unpack options for a Download.
-func (u Unpacker) options(id core.ID) ([]unpack.Option, error) {
-	var o []unpack.Option
+func (u Unpacker) options(id core.ID) ([]Option, error) {
+	var o []Option
 	if u.SevenZip != "" {
-		o = append(o, unpack.WithSevenZip(u.SevenZip))
+		o = append(o, WithSevenZip(u.SevenZip))
 	}
 	if u.Passwords != nil {
 		pw, err := u.Passwords(id)
@@ -121,7 +145,7 @@ func (u Unpacker) options(id core.ID) ([]unpack.Option, error) {
 			return nil, fmt.Errorf("archive password: %w", err)
 		}
 		if pw != "" {
-			o = append(o, unpack.WithPassword(pw))
+			o = append(o, WithPassword(pw))
 		}
 	}
 	minFree := u.MinFree
@@ -129,16 +153,16 @@ func (u Unpacker) options(id core.ID) ([]unpack.Option, error) {
 		minFree = u.MinFreeFunc()
 	}
 	if minFree > 0 {
-		o = append(o, unpack.WithMinFree(minFree))
+		o = append(o, WithMinFree(minFree))
 	}
 	if u.FreeSpace != nil {
-		o = append(o, unpack.WithFreeSpace(u.FreeSpace))
+		o = append(o, WithFreeSpace(u.FreeSpace))
 	}
 	return append(o, u.Options...), nil
 }
 
 // unpackMany unpacks several sets and merges them into dst.
-func (u Unpacker) unpackMany(ctx context.Context, sets []unpack.ArchiveSet, dst string, uopts []unpack.Option) (core.UnpackResult, error) {
+func (u Unpacker) unpackMany(ctx context.Context, sets []ArchiveSet, dst string, uopts []Option) (core.UnpackResult, error) {
 	work := dst + ".sets"
 	if err := os.RemoveAll(work); err != nil {
 		return core.UnpackResult{}, fmt.Errorf("clear unpack work directory: %w", err)
@@ -152,9 +176,9 @@ func (u Unpacker) unpackMany(ctx context.Context, sets []unpack.ArchiveSet, dst 
 	parts := make([]string, len(sets))
 	for i, s := range sets {
 		parts[i] = filepath.Join(work, strconv.Itoa(i))
-		res, err := unpack.Unpack(ctx, s, parts[i], uopts...)
+		res, err := Unpack(ctx, s, parts[i], uopts...)
 		if err != nil {
-			return core.UnpackResult{}, MapUnpackError(ctx, err)
+			return core.UnpackResult{}, MapError(ctx, err)
 		}
 		total.Files += len(res.Files)
 		total.Bytes += res.Bytes
@@ -216,16 +240,16 @@ func mergeInto(src, dst string) error {
 	return nil
 }
 
-// MapUnpackError translates an error of the unpack package into the core
+// MapError translates an error of this package into the core
 // sentinels, keeping the original in the chain for the detail:
 //
-//	unpack.ErrPassword                           core.ErrArchivePassword
-//	unpack.ErrUnsupported                        core.ErrArchiveUnsupported
-//	unpack.ErrCorrupt, unpack.ErrMissingVolume   core.ErrArchiveCorrupt
-//	unpack.ErrPathViolation                      core.ErrPathViolation
-//	unpack.ErrDiskFull, ENOSPC                   core.ErrDiskFull
-//	unpack.ErrBomb, ErrTooLarge, ErrTooManyEntries
-//	  (and any other unpack.ErrLimit)            core.ErrArchiveCorrupt
+//	ErrPassword                           core.ErrArchivePassword
+//	ErrUnsupported                        core.ErrArchiveUnsupported
+//	ErrCorrupt, ErrMissingVolume   core.ErrArchiveCorrupt
+//	ErrPathViolation                      core.ErrPathViolation
+//	ErrDiskFull, ENOSPC                   core.ErrDiskFull
+//	ErrBomb, ErrTooLarge, ErrTooManyEntries
+//	  (and any other ErrLimit)            core.ErrArchiveCorrupt
 //
 // A bomb or an oversized or over-full archive is treated as a damaged
 // archive: the Download cannot be unpacked within the limits, and there is
@@ -233,21 +257,21 @@ func mergeInto(src, dst string) error {
 // the archive is core.ErrPathViolation. Context errors and every other error
 // (7zz missing, 7zz killed, a bug in the command line) pass through
 // (wrapped, so the orchestrator takes it as internal).
-func MapUnpackError(ctx context.Context, err error) error {
+func MapError(ctx context.Context, err error) error {
 	switch {
 	case err == nil:
 		return nil
 	case isContextErr(ctx, err):
 		return err
-	case errors.Is(err, unpack.ErrPassword):
+	case errors.Is(err, ErrPassword):
 		return fmt.Errorf("%w: %w", core.ErrArchivePassword, err)
-	case errors.Is(err, unpack.ErrUnsupported):
+	case errors.Is(err, ErrUnsupported):
 		return fmt.Errorf("%w: %w", core.ErrArchiveUnsupported, err)
-	case errors.Is(err, unpack.ErrPathViolation):
+	case errors.Is(err, ErrPathViolation):
 		return fmt.Errorf("%w: %w", core.ErrPathViolation, err)
-	case errors.Is(err, unpack.ErrDiskFull), errors.Is(err, syscall.ENOSPC):
+	case errors.Is(err, ErrDiskFull), errors.Is(err, syscall.ENOSPC):
 		return fmt.Errorf("%w: %w", core.ErrDiskFull, err)
-	case errors.Is(err, unpack.ErrCorrupt), errors.Is(err, unpack.ErrMissingVolume), errors.Is(err, unpack.ErrLimit):
+	case errors.Is(err, ErrCorrupt), errors.Is(err, ErrMissingVolume), errors.Is(err, ErrLimit):
 		return fmt.Errorf("%w: %w", core.ErrArchiveCorrupt, err)
 	}
 	return fmt.Errorf("unpack: %w", err)
@@ -260,4 +284,11 @@ func mapDiskErr(err error) error {
 		return fmt.Errorf("%w: %w", core.ErrDiskFull, err)
 	}
 	return err
+}
+
+// isContextErr reports whether err is the cancellation or deadline of ctx (or
+// wraps either).
+func isContextErr(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		(ctx.Err() != nil && errors.Is(err, ctx.Err()))
 }

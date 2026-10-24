@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -227,7 +226,7 @@ func (s *AddService) Add(ctx context.Context, st *StagedNZB, req AddRequest) (d 
 	d = core.Download{
 		ID: st.id, Name: name, SourceKind: core.SourceNZB, CategoryID: categoryID,
 		State: core.StateQueued, Priority: req.Priority, Paused: req.Paused,
-		TotalBytes: fetchBytes(st.nzb), AddedAt: now, UpdatedAt: now,
+		TotalBytes: nzb.UpFrontBytes(st.nzb), AddedAt: now, UpdatedAt: now,
 	}
 	if err := s.insert(ctx, &d, finalPath, core.Secret(password)); err != nil {
 		return core.Download{}, err
@@ -318,25 +317,6 @@ func firstNonEmpty(vs ...string) string {
 		}
 	}
 	return ""
-}
-
-// fetchBytes sums the segment sizes of the files a run fetches at once:
-// everything except deferred PAR2 recovery volumes. It saturates instead of
-// overflowing.
-func fetchBytes(n *nzb.NZB) int64 {
-	var total int64
-	for _, f := range n.Files {
-		if f.Kind == nzb.KindPar2Volume {
-			continue
-		}
-		for _, seg := range f.Segments {
-			if total > math.MaxInt64-seg.Bytes {
-				return math.MaxInt64
-			}
-			total += seg.Bytes
-		}
-	}
-	return total
 }
 
 // resolveName picks the display name: the request's, the NZB's, the upload's

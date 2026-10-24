@@ -21,8 +21,9 @@ import (
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/fsutil"
 	"github.com/jroosing/bitnews/internal/netbind"
-	"github.com/jroosing/bitnews/internal/postproc/adapt"
 	"github.com/jroosing/bitnews/internal/postproc/finalize"
+	"github.com/jroosing/bitnews/internal/postproc/par2"
+	"github.com/jroosing/bitnews/internal/postproc/unpack"
 	"github.com/jroosing/bitnews/internal/queue"
 	"github.com/jroosing/bitnews/internal/store"
 	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
@@ -101,7 +102,7 @@ type Tuning struct {
 	// PostProcConcurrency is how many Downloads are post-processed at once.
 	PostProcConcurrency int
 	// VolumeMargin is the number of recovery blocks fetched beyond the
-	// minimum; zero means adapt.DefaultMargin.
+	// minimum; zero means runner.DefaultVolumeMargin.
 	VolumeMargin int
 	// SessionCleanup is how often expired sessions are deleted.
 	SessionCleanup time.Duration
@@ -260,7 +261,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Clock:     tune.Clock, Logger: log, Backoff: tune.Backoff,
 		PollInterval: tune.PollInterval, DiskCheckInterval: tune.DiskCheckInterval,
 		SaveInterval: tune.SaveInterval, DoneBytesInterval: tune.DoneBytesInterval,
-		FailureBackoff: tune.FailureBackoff,
+		FailureBackoff: tune.FailureBackoff, VolumeMargin: tune.VolumeMargin,
 	})
 	if err != nil {
 		return nil, err
@@ -460,17 +461,6 @@ func newPostProcessor(
 	dirFor func(core.Download) string,
 	minFree func(context.Context) (uint64, error), concurrency int, tune Tuning, log *slog.Logger, tools postprocTools, finisher core.Finisher,
 ) (*core.PostProcessor, error) {
-	clock := time.Now
-	requeue := func(ctx context.Context, id core.ID) error {
-		// PostProcessing to Fetching: the runner sees the Download without
-		// a job and fetches the volumes that were just un-deferred.
-		d, err := downloads.UpdateState(ctx, id, core.StateChange{To: core.StateFetching, At: clock()})
-		if err != nil {
-			return err
-		}
-		bus.Publish(core.DownloadUpdated{Download: d})
-		return nil
-	}
 	passwords := func(id core.ID) (core.Secret, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -488,11 +478,13 @@ func newPostProcessor(
 	}
 	return core.NewPostProcessor(core.PostProcessorConfig{
 		Downloads: downloads, Bus: bus,
-		Verifier: adapt.Verifier{DeferredBlocks: run.DeferredBlocks, Par2: tools.par2},
-		Repairer: adapt.Repairer{Par2: tools.par2},
-		Unpacker: adapt.Unpacker{SevenZip: tools.sevenZip, Passwords: passwords, MinFreeFunc: func() uint64 { v, _ := minFree(context.Background()); return v }, FreeSpace: tune.FreeSpace},
-		Finisher: finisher, FetchReporter: torrentFetchReporter{usenet: run},
-		DeferredVolumes: &adapt.DeferredVolumes{Controller: run, Requeue: requeue, Margin: tune.VolumeMargin},
+		Verifier: par2.Verifier{DeferredBlocks: run.DeferredBlocks, Par2: tools.par2},
+		Repairer: par2.Repairer{Par2: tools.par2},
+		Unpacker: unpack.Unpacker{SevenZip: tools.sevenZip, Passwords: passwords, MinFreeFunc: func() uint64 { v, _ := minFree(context.Background()); return v }, FreeSpace: tune.FreeSpace},
+		// Torrents never reach the FetchReport: it is asked only when
+		// there is no PAR2 set to verify, and torrents skip Verify.
+		Finisher: finisher, FetchReporter: run,
+		DeferredVolumes: run,
 		FS:              osFS{},
 		Concurrency:     concurrency, PollInterval: tune.PostProcPollInterval,
 		Logger: log, DirFor: dirFor,

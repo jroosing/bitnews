@@ -1,4 +1,4 @@
-package adapt
+package par2
 
 import (
 	"context"
@@ -6,19 +6,12 @@ import (
 	"fmt"
 
 	"github.com/jroosing/bitnews/internal/core"
-	"github.com/jroosing/bitnews/internal/postproc/par2"
 )
 
-// verified is the Opaque payload the Verifier hands, through the
-// orchestrator, to the Repairer: what par2 reported. It is private so nothing
-// else can depend on its shape. The Repairer does not need it (par2 verifies
-// again before it repairs, and the directory may have changed since), so a
-// restart in between loses nothing.
-type verified struct {
-	report *par2.Report
-}
-
-// Verifier implements core.Verifier by running par2 (ADR-0007). The zero
+// Verifier implements core.Verifier by running par2 (ADR-0007). It owns the
+// error mapping into the core sentinels (no recovery data is a
+// core.RecoveryShortfall, a failed repair core.ErrRepairFailed, an unsafe
+// file name core.ErrPathViolation); context errors pass through unchanged. The zero
 // value is ready to use and finds par2 on PATH.
 type Verifier struct {
 	// DeferredBlocks returns how many recovery blocks the fetch side can
@@ -26,7 +19,7 @@ type Verifier struct {
 	// towards Repairable. Optional: nil means none.
 	DeferredBlocks func(id core.ID) int
 	// Par2 runs the program; the zero value is fine.
-	Par2 par2.Tool
+	Par2 Tool
 }
 
 var _ core.Verifier = Verifier{}
@@ -39,7 +32,7 @@ var _ core.Verifier = Verifier{}
 // returned as it is, which the orchestrator treats as an internal error;
 // that includes par2 not being installed (wrapping tool.ErrNotFound).
 //
-// Like par2.Tool.Verify, it renames obfuscated files to their PAR2 names,
+// Like Tool.Verify, it renames obfuscated files to their PAR2 names,
 // which a second run finds already done.
 func (v Verifier) Verify(ctx context.Context, dir string, opts core.VerifyOptions) (core.VerifyOutcome, error) {
 	if err := ctx.Err(); err != nil {
@@ -63,7 +56,6 @@ func (v Verifier) Verify(ctx context.Context, dir string, opts core.VerifyOption
 		DamagedSlices:  rep.DamagedBlocks,
 		RecoveryOnDisk: rep.RecoveryBlocks,
 		Repairable:     rep.Repairable || rep.DamagedBlocks <= rep.RecoveryBlocks+deferred,
-		Opaque:         &verified{report: rep},
 	}, nil
 }
 
@@ -71,20 +63,20 @@ func (v Verifier) Verify(ctx context.Context, dir string, opts core.VerifyOption
 // to use.
 type Repairer struct {
 	// Par2 runs the program; the zero value is fine.
-	Par2 par2.Tool
+	Par2 Tool
 }
 
 var _ core.Repairer = Repairer{}
 
-// Repair rebuilds the damaged files in dir. The outcome of the Verifier is not
-// needed: par2 verifies again as the first step of a repair.
+// Repair rebuilds the damaged files in dir. par2 verifies again as the first
+// step of a repair, so nothing from Verify is needed.
 //
-// Errors: a *par2.InsufficientError becomes a *core.RecoveryShortfall, which
+// Errors: a *InsufficientError becomes a *core.RecoveryShortfall, which
 // wraps core.ErrInsufficientRecovery (par2 changed nothing); a failed repair
 // becomes core.ErrRepairFailed (the par2 error is kept in the chain for the
 // detail); an unsafe set becomes core.ErrPathViolation; context errors pass
 // through unchanged; anything else is returned as a plain error.
-func (r Repairer) Repair(ctx context.Context, dir string, _ core.VerifyOutcome) (core.RepairOutcome, error) {
+func (r Repairer) Repair(ctx context.Context, dir string) (core.RepairOutcome, error) {
 	res, err := r.Par2.Repair(ctx, dir)
 	if err != nil {
 		return core.RepairOutcome{}, mapPar2Error(ctx, "repair", err)
@@ -92,18 +84,18 @@ func (r Repairer) Repair(ctx context.Context, dir string, _ core.VerifyOutcome) 
 	return core.RepairOutcome{RepairedSlices: res.RepairedBlocks}, nil
 }
 
-// mapPar2Error translates an error of the par2 package into the core
+// mapPar2Error translates an error of this package into the core
 // sentinels. what names the step for the fallback message.
 func mapPar2Error(ctx context.Context, what string, err error) error {
-	var ins *par2.InsufficientError
+	var ins *InsufficientError
 	switch {
 	case errors.As(err, &ins):
 		return &core.RecoveryShortfall{Needed: ins.Needed, Available: ins.Available}
 	case isContextErr(ctx, err):
 		return err
-	case errors.Is(err, par2.ErrUnsafeSet):
+	case errors.Is(err, ErrUnsafeSet):
 		return fmt.Errorf("%w: %w", core.ErrPathViolation, err)
-	case errors.Is(err, par2.ErrRepairFailed):
+	case errors.Is(err, ErrRepairFailed):
 		return fmt.Errorf("%w: %w", core.ErrRepairFailed, err)
 	}
 	return fmt.Errorf("%s: %w", what, err)

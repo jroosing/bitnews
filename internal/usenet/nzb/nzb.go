@@ -1,6 +1,7 @@
 package nzb
 
 import (
+	"math"
 	"strconv"
 	"time"
 )
@@ -42,6 +43,30 @@ type File struct {
 	// of recovery blocks it claims to hold. It is 0 for other kinds, and also
 	// for a volume whose MM does not fit in an int.
 	RecoveryBlocks int
+}
+
+// Deferred reports whether f is left out of a Download's first fetch: PAR2
+// recovery volumes are fetched only when Repair needs their blocks (M3-07).
+// This is the one place that decides it.
+func (f File) Deferred() bool { return f.Kind == KindPar2Volume }
+
+// UpFrontBytes is the size of the Articles a Download fetches before any
+// Repair: every file that is not Deferred. It saturates instead of
+// overflowing.
+func UpFrontBytes(n *NZB) int64 {
+	var total int64
+	for _, f := range n.Files {
+		if f.Deferred() {
+			continue
+		}
+		for _, seg := range f.Segments {
+			if seg.Bytes > 0 && total > math.MaxInt64-seg.Bytes {
+				return math.MaxInt64
+			}
+			total += max(seg.Bytes, 0)
+		}
+	}
+	return total
 }
 
 // Kind is the role of a File, guessed from its name.

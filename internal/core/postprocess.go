@@ -474,7 +474,7 @@ func (p *PostProcessor) repair(ctx context.Context, d Download, dir string, vo V
 		return p.shortfall(ctx, d, &RecoveryShortfall{Needed: vo.DamagedSlices, Available: vo.RecoveryOnDisk})
 	}
 	p.stage(d.ID, StageRepairing)
-	_, err := p.cfg.Repairer.Repair(ctx, dir, vo)
+	_, err := p.cfg.Repairer.Repair(ctx, dir)
 	if err == nil {
 		return nil
 	}

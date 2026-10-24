@@ -1,4 +1,4 @@
-package adapt
+package par2
 
 import (
 	"context"
@@ -15,9 +15,9 @@ import (
 var twoFiles = map[string]int{"alpha.bin": 6500, "beta.dat": 3000} // 7 + 3 blocks
 
 func TestVerifier_IntactSetIsClean(t *testing.T) {
-	s := makeSet(t, 4, twoFiles)
+	s := makePortSet(t, 4, twoFiles)
 
-	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
+	out, err := portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
 
 	require.NoError(t, err)
 	assert.True(t, out.HasPAR2)
@@ -26,15 +26,14 @@ func TestVerifier_IntactSetIsClean(t *testing.T) {
 	assert.Zero(t, out.DamagedSlices)
 	assert.Equal(t, 4, out.RecoveryOnDisk)
 	assert.True(t, out.Repairable)
-	assert.NotNil(t, out.Opaque)
 }
 
 func TestVerifier_DamagedCopyNeedsRepair(t *testing.T) {
-	s := makeSet(t, 4, twoFiles)
+	s := makePortSet(t, 4, twoFiles)
 	s.flipByte(t, "alpha.bin", 0)
 	s.flipByte(t, "alpha.bin", 1500) // blocks 0 and 1
 
-	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+	out, err := portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 
 	require.NoError(t, err)
 	assert.True(t, out.HasPAR2)
@@ -46,10 +45,10 @@ func TestVerifier_DamagedCopyNeedsRepair(t *testing.T) {
 }
 
 func TestVerifier_MissingFileCountsAllItsSlices(t *testing.T) {
-	s := makeSet(t, 4, twoFiles)
+	s := makePortSet(t, 4, twoFiles)
 	require.NoError(t, os.Remove(s.path("alpha.bin")))
 
-	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+	out, err := portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 
 	require.NoError(t, err)
 	assert.True(t, out.NeedsRepair)
@@ -58,17 +57,17 @@ func TestVerifier_MissingFileCountsAllItsSlices(t *testing.T) {
 }
 
 func TestVerifier_NoPAR2(t *testing.T) {
-	s := makeSet(t, 4, twoFiles)
+	s := makePortSet(t, 4, twoFiles)
 	s.removePAR2(t)
 
-	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+	out, err := portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 
 	require.NoError(t, err)
 	assert.Equal(t, core.VerifyOutcome{}, out)
 }
 
 func TestVerifier_EmptyDirHasNoPAR2(t *testing.T) {
-	out, err := verifier(t).Verify(context.Background(), t.TempDir(), core.VerifyOptions{})
+	out, err := portVerifier(t).Verify(context.Background(), t.TempDir(), core.VerifyOptions{})
 
 	require.NoError(t, err)
 	assert.False(t, out.HasPAR2)
@@ -78,33 +77,33 @@ func TestVerifier_GarbagePAR2HasNoPAR2(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "x.par2"), []byte("not a par2 file"), 0o644))
 
-	out, err := verifier(t).Verify(context.Background(), dir, core.VerifyOptions{})
+	out, err := portVerifier(t).Verify(context.Background(), dir, core.VerifyOptions{})
 
 	require.NoError(t, err)
 	assert.False(t, out.HasPAR2)
 }
 
 func TestVerifier_MissingDirectoryIsAnError(t *testing.T) {
-	_, err := verifier(t).Verify(context.Background(), filepath.Join(t.TempDir(), "nope"), core.VerifyOptions{})
+	_, err := portVerifier(t).Verify(context.Background(), filepath.Join(t.TempDir(), "nope"), core.VerifyOptions{})
 
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, core.ErrInsufficientRecovery)
 }
 
 func TestVerifier_DeferredBlocksFlipRepairable(t *testing.T) {
-	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	s := makePortSet(t, 2, map[string]int{"single.bin": 3000})
 	for _, off := range []int{0, 1000, 2000} {
 		s.flipByte(t, "single.bin", off)
 	}
 
-	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
+	out, err := portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
 	require.NoError(t, err)
 	assert.Equal(t, 3, out.DamagedSlices)
 	assert.Equal(t, 2, out.RecoveryOnDisk)
 	assert.False(t, out.Repairable)
 
 	var asked core.ID
-	v := verifier(t)
+	v := portVerifier(t)
 	v.DeferredBlocks = func(id core.ID) int { asked = id; return 1 }
 	out, err = v.Verify(context.Background(), s.dir, core.VerifyOptions{DownloadID: "d"})
 	require.NoError(t, err)
@@ -114,41 +113,41 @@ func TestVerifier_DeferredBlocksFlipRepairable(t *testing.T) {
 }
 
 func TestVerifier_CancelledContext(t *testing.T) {
-	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	s := makePortSet(t, 2, map[string]int{"single.bin": 3000})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := verifier(t).Verify(ctx, s.dir, core.VerifyOptions{})
+	_, err := portVerifier(t).Verify(ctx, s.dir, core.VerifyOptions{})
 
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestVerifier_RenamesObfuscatedFiles(t *testing.T) {
-	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	s := makePortSet(t, 2, map[string]int{"single.bin": 3000})
 	require.NoError(t, os.Rename(s.path("single.bin"), s.path("a1b2c3")))
 
-	out, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+	out, err := portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 	require.NoError(t, err)
 	assert.True(t, out.Clean)
 	s.requireOriginals(t)
 
 	// A second run finds it already done.
-	out, err = verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+	out, err = portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 	require.NoError(t, err)
 	assert.True(t, out.Clean)
 }
 
 func TestVerifier_UnsafeNameIsAPathViolation(t *testing.T) {
-	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
-	patchName(t, s.path("set.par2"), "single.bin", "../escaped")
+	s := makePortSet(t, 2, map[string]int{"single.bin": 3000})
+	portPatchName(t, s.path("set.par2"), "single.bin", "../escaped")
 
-	_, err := verifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
+	_, err := portVerifier(t).Verify(context.Background(), s.dir, core.VerifyOptions{})
 
 	assert.ErrorIs(t, err, core.ErrPathViolation)
 }
 
 func TestVerifier_MissingPar2ProgramIsAnError(t *testing.T) {
-	s := makeSet(t, 2, map[string]int{"single.bin": 3000})
+	s := makePortSet(t, 2, map[string]int{"single.bin": 3000})
 	t.Setenv("PATH", t.TempDir())
 
 	_, err := Verifier{}.Verify(context.Background(), s.dir, core.VerifyOptions{})

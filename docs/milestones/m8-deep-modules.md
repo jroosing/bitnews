@@ -127,6 +127,22 @@ The protocol adapter (the seam) is: `Prepare(ctx) (canStart bool)`, `Exclude(id)
 
 ### M8-06: One Add call (planned)
 ### M8-07: Settings change under lock and one card engine (planned)
-### M8-08: Post-processing steps implement the core ports (planned)
+### M8-08: Post-processing steps implement the core ports
+- **Labels:** area:postproc, area:usenet, ready-for-agent
+
+**Goal:** The Post-processing steps implement the core ports in their own packages, nothing private travels through the orchestrator, and deferred recovery volumes are decided in one place.
+
+**Before:** `internal/postproc/adapt` mapped `par2` and `unpack` onto the ports and also held the deferred-volume planner. `VerifyOutcome.Opaque` was written and never read; `ArchiveSet.Opaque` carried an `unpack.ArchiveSet` through core and back with a runtime type assertion, and `Unpack` ignored its `dir`. Which files are deferred was decided in three places (the runner's plan, its volume list and the Add size), the planner sat in `adapt`, and a fourth piece (`adapt.DeferredBytes`) had no caller.
+
+**Design**
+- `par2.Verifier` and `par2.Repairer`, and `unpack.Unpacker`, implement the core ports and own their error mapping. `core.Repairer.Repair(ctx, dir)` takes no outcome: par2 verifies again anyway.
+- `core.ArchiveSet` is a name only: the first volume of the set, unique in its directory. `Unpack` detects the sets in `dir` again and picks them by name; a set that is gone or no longer complete is `ErrArchiveCorrupt`.
+- `nzb.File.Deferred` is the one rule for what the first fetch leaves out (`nzb.UpFrontBytes` sums the rest). The Usenet runner owns the rest: it implements `core.DeferredVolumes` (`FetchDeferred` plans the cheapest volumes, un-defers them and moves the Download back to Fetching itself) and supplies `par2.Verifier.DeferredBlocks`.
+- `internal/postproc/adapt` and the daemon's `torrentFetchReporter` (torrents never reach the FetchReport) are gone.
+
+**Acceptance criteria**
+- [x] No `Opaque` field in the core ports; no type assertion on a port value.
+- [x] The planner, un-defer and requeue live in the Usenet runner; `adapt` is deleted.
+- [x] The adapters' behaviour tests moved with the code and pass (the Opaque-specific ones are replaced by "a set that is gone or incomplete at Unpack is corrupt").
 
 See ADR-0008 for what each is about; each gets a design pass and a spec here before it starts.

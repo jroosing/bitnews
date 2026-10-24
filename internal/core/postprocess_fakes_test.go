@@ -172,15 +172,15 @@ func (v *ppVerifier) Verify(ctx context.Context, dir string, _ core.VerifyOption
 
 type ppRepairer struct {
 	log *ppLog
-	fn  func(ctx context.Context, dir string, o core.VerifyOutcome) (core.RepairOutcome, error)
+	fn  func(ctx context.Context, dir string) (core.RepairOutcome, error)
 }
 
-func (r *ppRepairer) Repair(ctx context.Context, dir string, o core.VerifyOutcome) (core.RepairOutcome, error) {
+func (r *ppRepairer) Repair(ctx context.Context, dir string) (core.RepairOutcome, error) {
 	r.log.add("repair")
 	if r.fn != nil {
-		return r.fn(ctx, dir, o)
+		return r.fn(ctx, dir)
 	}
-	return core.RepairOutcome{RepairedSlices: o.DamagedSlices}, nil
+	return core.RepairOutcome{RepairedSlices: 1}, nil
 }
 
 type ppUnpacker struct {

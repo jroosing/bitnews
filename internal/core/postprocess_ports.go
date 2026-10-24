@@ -8,8 +8,9 @@ import (
 
 // The ports of the Post-processing pipeline. core owns the orchestrator
 // and these interfaces; the implementations live in other packages (PAR2 in
-// internal/postproc/par2, archives in internal/postproc/unpack, cleanup and
-// move in the finisher) and are wired in the composition root.
+// internal/postproc/par2, archives in internal/postproc/unpack, deferred
+// recovery volumes in the Usenet runner, cleanup and move in the finisher)
+// and are wired in the composition root.
 //
 // Idempotency contract. Post-processing progress is not persisted mid-stage.
 // After a restart a Download in StatePostProcessing is processed again from
@@ -96,9 +97,6 @@ type VerifyOutcome struct {
 	RecoveryOnDisk int
 	// Repairable says RecoveryOnDisk covers DamagedSlices.
 	Repairable bool
-	// Opaque is private to the adapter: the orchestrator hands it back to
-	// the Repairer unchanged.
-	Opaque any
 }
 
 // Verifier checks a Download's files against its PAR2 set.
@@ -112,19 +110,19 @@ type RepairOutcome struct {
 	RepairedSlices int
 }
 
-// Repairer rebuilds damaged files from recovery data. It returns
+// Repairer rebuilds damaged files from recovery data. It verifies again
+// itself (the directory may have changed since Verify). It returns
 // ErrInsufficientRecovery (typically a *RecoveryShortfall) or ErrRepairFailed
 // in the cases those say.
 type Repairer interface {
-	Repair(ctx context.Context, dir string, outcome VerifyOutcome) (RepairOutcome, error)
+	Repair(ctx context.Context, dir string) (RepairOutcome, error)
 }
 
 // ArchiveSet is one detected archive, possibly spread over several volumes.
-// Name is for logs and the UI; Opaque is private to the adapter and handed
-// back to Unpack in UnpackOptions.Sets.
+// Name identifies it within its directory: Unpack finds the set again by it,
+// so nothing the Unpacker detected has to travel through the orchestrator.
 type ArchiveSet struct {
-	Name   string
-	Opaque any
+	Name string
 }
 
 // UnpackOptions carries what Unpack needs beyond the directories.
@@ -147,9 +145,11 @@ type UnpackResult struct {
 type Unpacker interface {
 	// Detect returns the archive sets in dir; none means nothing to unpack.
 	Detect(ctx context.Context, dir string) ([]ArchiveSet, error)
-	// Unpack extracts the sets into dst, which does not exist yet. It
-	// returns ErrArchiveUnsupported, ErrArchivePassword, ErrArchiveCorrupt,
-	// ErrPathViolation or ErrDiskFull in the cases those say.
+	// Unpack extracts the sets of dir named in opts.Sets into dst, which
+	// does not exist yet. A set that is no longer in dir is
+	// ErrArchiveCorrupt. It returns ErrArchiveUnsupported,
+	// ErrArchivePassword, ErrArchiveCorrupt, ErrPathViolation or ErrDiskFull
+	// in the cases those say.
 	Unpack(ctx context.Context, dir, dst string, opts UnpackOptions) (UnpackResult, error)
 }
 

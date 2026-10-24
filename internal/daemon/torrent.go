@@ -58,18 +58,6 @@ func (w warnOnly) WithAttrs(a []slog.Attr) slog.Handler { return warnOnly{w.Hand
 
 func (w warnOnly) WithGroup(n string) slog.Handler { return warnOnly{w.Handler.WithGroup(n)} }
 
-// torrentFetchReporter answers the Post-processor's FetchReport for torrents
-// with a zero report: the torrent engine verifies every piece, so there is
-// nothing missing or damaged to report. NZB Downloads go to the Usenet runner.
-type torrentFetchReporter struct{ usenet core.FetchReporter }
-
-func (f torrentFetchReporter) FetchReport(ctx context.Context, d core.Download) (core.FetchReport, error) {
-	if d.SourceKind == core.SourceTorrent {
-		return core.FetchReport{}, nil
-	}
-	return f.usenet.FetchReport(ctx, d)
-}
-
 // torrentFinisher keeps the Finisher's hands off a torrent that the engine
 // seeds. The torrent runner already moved the Download's directory to its
 // complete location, and moving it again, or writing a marker into it,

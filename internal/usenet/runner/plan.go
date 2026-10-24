@@ -48,10 +48,10 @@ func buildPlan(n *nzb.NZB, supplement map[int]bool) plan {
 		if len(f.Segments) == 0 {
 			continue
 		}
-		if supplement == nil && f.Kind == nzb.KindPar2Volume {
+		if supplement == nil && f.Deferred() {
 			continue
 		}
-		if supplement != nil && (!supplement[fi] || f.Kind != nzb.KindPar2Volume) {
+		if supplement != nil && (!supplement[fi] || !f.Deferred()) {
 			continue
 		}
 		p.files++

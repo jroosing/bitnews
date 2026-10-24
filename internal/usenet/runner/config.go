@@ -107,8 +107,12 @@ type Config struct {
 	// default is fsutil.FreeBytes; where that is unsupported
 	// the disk guard is off.
 	FreeSpace func(path string) (uint64, error)
-	Clock     Clock
-	Logger    *slog.Logger
+	// VolumeMargin is the number of recovery blocks un-deferred beyond what
+	// Repair needs (FetchDeferred). Zero means DefaultVolumeMargin; a
+	// negative value means none.
+	VolumeMargin int
+	Clock        Clock
+	Logger       *slog.Logger
 	// Backoff is passed to the Article scheduler as its retry backoff.
 	Backoff func(attempt int) time.Duration
 

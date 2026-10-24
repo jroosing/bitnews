@@ -33,27 +33,6 @@ func (s *stubFinisher) Finish(context.Context, core.Download, string, string) (s
 	return s.out, nil
 }
 
-type stubReporter struct{ calls int }
-
-func (s *stubReporter) FetchReport(context.Context, core.Download) (core.FetchReport, error) {
-	s.calls++
-	return core.FetchReport{MissingArticles: 3}, nil
-}
-
-func TestTorrentFetchReporterAnswersForTorrentsAndLeavesNZBsToTheUsenetRunner(t *testing.T) {
-	usenet := &stubReporter{}
-	r := torrentFetchReporter{usenet: usenet}
-
-	got, err := r.FetchReport(context.Background(), core.Download{SourceKind: core.SourceTorrent})
-	require.NoError(t, err)
-	assert.Equal(t, core.FetchReport{}, got)
-	assert.Zero(t, usenet.calls)
-
-	got, err = r.FetchReport(context.Background(), core.Download{SourceKind: core.SourceNZB})
-	require.NoError(t, err)
-	assert.Equal(t, 3, got.MissingArticles)
-}
-
 func TestTorrentFinisherLeavesAManagedTorrentWhereItIs(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.mkv"), []byte("a"), 0o600))

@@ -13,12 +13,12 @@
 //     store.UsenetReportRepo, store.UsenetUndeferredRepo). The working
 //     directory of a Download is <Settings usenet incomplete root>/<id>,
 //     resolved from the current Settings each time it is asked for.
-//   - The core.PostProcessor runs on adapt.Verifier (with the runner's
-//     DeferredBlocks), adapt.Repairer, adapt.Unpacker (passwords from the
-//     Download's source) and finalize.Finisher. Its FetchReporter is the
-//     runner. Deferred recovery volumes go through adapt.DeferredVolumes with
-//     the runner as the controller; the requeue moves the Download from
-//     PostProcessing back to Fetching, which the runner picks up.
+//   - The core.PostProcessor runs on par2.Verifier (with the runner's
+//     DeferredBlocks), par2.Repairer, unpack.Unpacker (passwords from the
+//     Download's source) and finalize.Finisher. The runner is its
+//     FetchReporter and its DeferredVolumes: FetchDeferred un-defers recovery
+//     volumes and moves the Download from PostProcessing back to Fetching,
+//     which the runner picks up.
 //   - DELETE ?delete_data=true calls the data remover: it holds the
 //     Download's fetch off, then deletes the working directory and the
 //     output, each only if it lies inside a configured root (never the root

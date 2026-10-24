@@ -83,7 +83,7 @@ func (r *Runner) deferredFiles(ctx context.Context, id core.ID) (*nzb.NZB, []int
 	}
 	var idx []int
 	for i, f := range n.Files {
-		if f.Kind == nzb.KindPar2Volume && len(f.Segments) > 0 && !und[i] {
+		if f.Deferred() && len(f.Segments) > 0 && !und[i] {
 			idx = append(idx, i)
 		}
 	}
@@ -112,7 +112,7 @@ func (r *Runner) ListDeferred(ctx context.Context, id core.ID) ([]nzb.File, erro
 // Undefer records that the volumes at fileIndexes (indexes into the list
 // ListDeferred returns) are wanted. The Download must be in
 // StatePostProcessing; moving it back to StateFetching is the caller's job
-// (see adapt.DeferredVolumes). The next fetch of the Download then fetches
+// (see FetchDeferred). The next fetch of the Download then fetches
 // only these volumes: its other Articles were resolved already. The choice
 // is persisted through Config.Volumes. Undefer of a volume that is wanted
 // already changes nothing.
@@ -144,7 +144,7 @@ func (r *Runner) Undefer(ctx context.Context, id core.ID, fileIndexes []int) err
 
 // DeferredBlocks returns how many recovery blocks the Download's volumes
 // that are not fetched yet hold (the MM of their names). It is the supplier
-// adapt.Verifier.DeferredBlocks wants. Any error counts as none, and is
+// par2.Verifier.DeferredBlocks wants. Any error counts as none, and is
 // logged.
 func (r *Runner) DeferredBlocks(id core.ID) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -159,4 +159,25 @@ func (r *Runner) DeferredBlocks(id core.ID) int {
 		total = min(total+max(n.Files[fi].RecoveryBlocks, 0), math.MaxInt32)
 	}
 	return total
+}
+
+var _ core.DeferredVolumes = (*Runner)(nil)
+
+// FetchDeferred implements core.DeferredVolumes: when Repair needs more
+// recovery blocks than are on disk, it un-defers the cheapest volumes that
+// cover minBlocks plus Config.VolumeMargin and moves the Download back to
+// StateFetching, so the next pass fetches just those volumes. It returns
+// more=false, and changes nothing, when all deferred volumes together cannot
+// cover minBlocks.
+func (r *Runner) FetchDeferred(ctx context.Context, d core.Download, minBlocks int) (bool, error) {
+	return deferredFetcher{
+		list: r.ListDeferred, undefer: r.Undefer, requeue: r.refetch, margin: r.cfg.VolumeMargin,
+	}.fetch(ctx, d, minBlocks)
+}
+
+// refetch moves a Download from PostProcessing back to Fetching and
+// publishes the change.
+func (r *Runner) refetch(ctx context.Context, id core.ID) error {
+	_, err := r.q.SetState(ctx, id, core.StateChange{To: core.StateFetching, At: r.clock.Now()})
+	return err
 }

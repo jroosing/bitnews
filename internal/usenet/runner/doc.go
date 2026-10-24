@@ -86,11 +86,12 @@
 //
 // # Deferred recovery volumes
 //
-// ListDeferred, Undefer and DeferredBlocks are the fetch side of M3-07 and
-// satisfy adapt.DeferredController and the supplier adapt.Verifier wants.
-// Undefer (allowed only while the Download is PostProcessing) records the
-// chosen volumes through Config.Volumes. When the caller then moves the
-// Download from PostProcessing back to Fetching, the next fetch is a
+// The runner owns deferred recovery volumes (M3-07): nzb.File.Deferred says
+// which files the first fetch leaves out, DeferredBlocks supplies
+// par2.Verifier, and FetchDeferred (core.DeferredVolumes) plans the cheapest
+// volumes that cover what Repair needs, un-defers them (Undefer, allowed only
+// while the Download is PostProcessing, recorded through Config.Volumes) and
+// moves the Download from PostProcessing back to Fetching. The next fetch is a
 // supplement run: because the Download has un-deferred volumes it was
 // fetched before, so the run plans only the un-deferred volumes that are not
 // fetched yet, opens its writer without touching the earlier files, and

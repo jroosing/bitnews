@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jroosing/bitnews/internal/core"
-	"github.com/jroosing/bitnews/internal/postproc/adapt"
 	"github.com/jroosing/bitnews/internal/store"
 	"github.com/jroosing/bitnews/internal/usenet/runner"
 )
@@ -22,15 +21,15 @@ import (
 // The store repos match the runner's interfaces structurally; the store
 // package must not import the runner, so the assertions live here.
 var (
-	_ runner.ProgressStore     = (*store.UsenetProgressRepo)(nil)
-	_ runner.VolumeStore       = (*store.UsenetUndeferredRepo)(nil)
-	_ runner.ReportStore       = reports{}
-	_ runner.ServerSource      = (*serverSource)(nil)
-	_ runner.NZBSource         = nzbSource{}
-	_ adapt.DeferredController = (*runner.Runner)(nil)
-	_ core.FetchReporter       = (*runner.Runner)(nil)
-	_ fetchHolder              = queueHolder{}
-	_ core.FS                  = osFS{}
+	_ runner.ProgressStore = (*store.UsenetProgressRepo)(nil)
+	_ runner.VolumeStore   = (*store.UsenetUndeferredRepo)(nil)
+	_ runner.ReportStore   = reports{}
+	_ runner.ServerSource  = (*serverSource)(nil)
+	_ runner.NZBSource     = nzbSource{}
+	_ core.DeferredVolumes = (*runner.Runner)(nil)
+	_ core.FetchReporter   = (*runner.Runner)(nil)
+	_ fetchHolder          = queueHolder{}
+	_ core.FS              = osFS{}
 )
 
 type syncBuf struct {

@@ -1,4 +1,4 @@
-package adapt
+package unpack
 
 import (
 	"archive/zip"
@@ -17,15 +17,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jroosing/bitnews/internal/core"
-	"github.com/jroosing/bitnews/internal/postproc/unpack"
 )
 
-const unpackTestdata = "../unpack/testdata"
+const portTestdata = "testdata"
 
 // archiveDir copies the named archives (paths relative to the unpack
 // testdata, e.g. "7z/t0.7z") into a new temporary directory. A "name=path"
 // entry renames the copy.
-func archiveDir(t testing.TB, files ...string) string {
+func portArchiveDir(t testing.TB, files ...string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, f := range files {
@@ -33,7 +32,7 @@ func archiveDir(t testing.TB, files ...string) string {
 		if before, after, ok := strings.Cut(f, "="); ok {
 			dstName, src = before, after
 		}
-		b, err := os.ReadFile(filepath.Join(unpackTestdata, src))
+		b, err := os.ReadFile(filepath.Join(portTestdata, src))
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, dstName), b, 0o644))
 	}
@@ -41,7 +40,7 @@ func archiveDir(t testing.TB, files ...string) string {
 }
 
 // detect runs the adapter's Detect and requires it to succeed.
-func detect(t testing.TB, u Unpacker, dir string) []core.ArchiveSet {
+func portDetect(t testing.TB, u Unpacker, dir string) []core.ArchiveSet {
 	t.Helper()
 	sets, err := u.Detect(context.Background(), dir)
 	require.NoError(t, err)
@@ -49,7 +48,7 @@ func detect(t testing.TB, u Unpacker, dir string) []core.ArchiveSet {
 }
 
 // tree lists the paths below root (directories with a trailing slash).
-func tree(t testing.TB, root string) []string {
+func portTree(t testing.TB, root string) []string {
 	t.Helper()
 	var out []string
 	require.NoError(t, filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
@@ -68,18 +67,17 @@ func tree(t testing.TB, root string) []string {
 }
 
 func TestUnpacker_DetectAndUnpackA7z(t *testing.T) {
-	dir := archiveDir(t, "7z/t0.7z")
+	dir := portArchiveDir(t, "7z/t0.7z")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	require.Len(t, sets, 1)
-	assert.Equal(t, "t0", sets[0].Name)
-	assert.IsType(t, unpack.ArchiveSet{}, sets[0].Opaque)
+	assert.Equal(t, "t0.7z", sets[0].Name, "a set is named by its first volume")
 
 	dst := filepath.Join(t.TempDir(), "out")
 	res, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{DownloadID: "d", Sets: sets})
 	require.NoError(t, err)
 	assert.Equal(t, core.UnpackResult{Files: 2, Bytes: 8}, res)
-	assert.Equal(t, []string{"bar", "foo"}, tree(t, dst))
+	assert.Equal(t, []string{"bar", "foo"}, portTree(t, dst))
 	b, err := os.ReadFile(filepath.Join(dst, "foo"))
 	require.NoError(t, err)
 	assert.Equal(t, "foo\n", string(b))
@@ -87,25 +85,25 @@ func TestUnpacker_DetectAndUnpackA7z(t *testing.T) {
 }
 
 func TestUnpacker_StoredRAR(t *testing.T) {
-	dir := archiveDir(t, "rar/container.rar")
+	dir := portArchiveDir(t, "rar/container.rar")
 	u := Unpacker{}
 	dst := filepath.Join(t.TempDir(), "out")
-	res, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, u, dir)})
+	res, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: portDetect(t, u, dir)})
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Files)
-	assert.Equal(t, []string{"container"}, tree(t, dst))
+	assert.Equal(t, []string{"container"}, portTree(t, dst))
 }
 
 func TestUnpacker_MultiVolume7z(t *testing.T) {
-	dir := archiveDir(t, "7z/multi.7z.001", "7z/multi.7z.002", "7z/multi.7z.003", "7z/multi.7z.004", "7z/multi.7z.005", "7z/multi.7z.006")
+	dir := portArchiveDir(t, "7z/multi.7z.001", "7z/multi.7z.002", "7z/multi.7z.003", "7z/multi.7z.004", "7z/multi.7z.005", "7z/multi.7z.006")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	require.Len(t, sets, 1)
 	dst := filepath.Join(t.TempDir(), "out")
 	res, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: sets})
 	require.NoError(t, err)
 	assert.Equal(t, 10, res.Files)
-	assert.Len(t, tree(t, dst), 10)
+	assert.Len(t, portTree(t, dst), 10)
 }
 
 func TestUnpacker_NothingToDetect(t *testing.T) {
@@ -117,36 +115,31 @@ func TestUnpacker_NothingToDetect(t *testing.T) {
 }
 
 func TestUnpacker_MissingVolumeIsCorruptAtDetect(t *testing.T) {
-	dir := archiveDir(t, "7z/multi.7z.001", "7z/multi.7z.002", "7z/multi.7z.004")
+	dir := portArchiveDir(t, "7z/multi.7z.001", "7z/multi.7z.002", "7z/multi.7z.004")
 	sets, err := Unpacker{}.Detect(context.Background(), dir)
 	require.Error(t, err)
 	assert.Nil(t, sets)
 	assert.ErrorIs(t, err, core.ErrArchiveCorrupt)
-	assert.ErrorIs(t, err, unpack.ErrMissingVolume)
+	assert.ErrorIs(t, err, ErrMissingVolume)
 }
 
-func TestUnpacker_IncompleteOpaqueSetIsCorruptAtUnpack(t *testing.T) {
-	// A set that carries a gap, handed to Unpack directly, maps the same way.
-	dir := archiveDir(t, "7z/multi.7z.001", "7z/multi.7z.002", "7z/multi.7z.004")
-	raw, err := unpack.Detect(dir)
-	require.NoError(t, err)
-	require.Len(t, raw, 1)
-	require.Error(t, raw[0].Err)
+func TestUnpacker_ASetThatIsNoLongerCompleteIsCorruptAtUnpack(t *testing.T) {
+	dir := portArchiveDir(t, "7z/multi.7z.001", "7z/multi.7z.002", "7z/multi.7z.003", "7z/multi.7z.004", "7z/multi.7z.005", "7z/multi.7z.006")
+	sets := portDetect(t, Unpacker{}, dir)
+	require.NoError(t, os.Remove(filepath.Join(dir, "multi.7z.002")))
 
 	dst := filepath.Join(t.TempDir(), "out")
-	_, err = Unpacker{}.Unpack(context.Background(), dir, dst, core.UnpackOptions{
-		Sets: []core.ArchiveSet{{Name: "multi", Opaque: raw[0]}},
-	})
+	_, err := Unpacker{}.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: sets})
 	assert.ErrorIs(t, err, core.ErrArchiveCorrupt)
-	assert.ErrorIs(t, err, unpack.ErrMissingVolume)
+	assert.ErrorIs(t, err, ErrMissingVolume)
 	assert.NoDirExists(t, dst)
 }
 
 func TestUnpacker_Passwords(t *testing.T) {
-	dir := archiveDir(t, "7z/t2.7z")
+	dir := portArchiveDir(t, "7z/t2.7z")
 	run := func(t *testing.T, u Unpacker) (string, error) {
 		dst := filepath.Join(t.TempDir(), "out")
-		_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{DownloadID: "dl1", Sets: detect(t, u, dir)})
+		_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{DownloadID: "dl1", Sets: portDetect(t, u, dir)})
 		return dst, err
 	}
 	t.Run("right password", func(t *testing.T) {
@@ -154,12 +147,12 @@ func TestUnpacker_Passwords(t *testing.T) {
 		dst, err := run(t, Unpacker{Passwords: func(id core.ID) (core.Secret, error) { asked = id; return "password", nil }})
 		require.NoError(t, err)
 		assert.Equal(t, core.ID("dl1"), asked)
-		assert.Equal(t, []string{"bar", "foo"}, tree(t, dst))
+		assert.Equal(t, []string{"bar", "foo"}, portTree(t, dst))
 	})
 	t.Run("wrong password", func(t *testing.T) {
 		dst, err := run(t, Unpacker{Passwords: func(core.ID) (core.Secret, error) { return "nope", nil }})
 		assert.ErrorIs(t, err, core.ErrArchivePassword)
-		assert.ErrorIs(t, err, unpack.ErrPassword)
+		assert.ErrorIs(t, err, ErrPassword)
 		assert.NoDirExists(t, dst)
 	})
 	t.Run("no supplier", func(t *testing.T) {
@@ -179,22 +172,22 @@ func TestUnpacker_Passwords(t *testing.T) {
 }
 
 func TestUnpacker_ResourceLimits(t *testing.T) {
-	dir := archiveDir(t, "7z/t0.7z")
+	dir := portArchiveDir(t, "7z/t0.7z")
 	run := func(u Unpacker) error {
 		dst := filepath.Join(t.TempDir(), "out")
-		_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, u, dir)})
+		_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: portDetect(t, u, dir)})
 		assert.NoDirExists(t, dst)
 		return err
 	}
 	t.Run("too many entries is corrupt", func(t *testing.T) {
-		err := run(Unpacker{Options: []unpack.Option{unpack.WithMaxEntries(1)}})
+		err := run(Unpacker{Options: []Option{WithMaxEntries(1)}})
 		assert.ErrorIs(t, err, core.ErrArchiveCorrupt)
-		assert.ErrorIs(t, err, unpack.ErrTooManyEntries)
+		assert.ErrorIs(t, err, ErrTooManyEntries)
 	})
 	t.Run("too large is corrupt", func(t *testing.T) {
-		err := run(Unpacker{Options: []unpack.Option{unpack.WithMaxBytes(3)}})
+		err := run(Unpacker{Options: []Option{WithMaxBytes(3)}})
 		assert.ErrorIs(t, err, core.ErrArchiveCorrupt)
-		assert.ErrorIs(t, err, unpack.ErrTooLarge)
+		assert.ErrorIs(t, err, ErrTooLarge)
 	})
 	t.Run("not enough free space is disk full", func(t *testing.T) {
 		err := run(Unpacker{FreeSpace: func(string) (uint64, error) { return 4, nil }})
@@ -212,14 +205,14 @@ func TestUnpacker_ResourceLimits(t *testing.T) {
 
 		reserve = 0
 		dst := filepath.Join(t.TempDir(), "out")
-		_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, u, dir)})
+		_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: portDetect(t, u, dir)})
 		assert.NoError(t, err, "a smaller reserve applies without rebuilding the Unpacker")
 	})
 	t.Run("enough free space", func(t *testing.T) {
 		assert.NoError(t, func() error {
 			dst := filepath.Join(t.TempDir(), "out")
 			u := Unpacker{MinFree: 100, FreeSpace: func(string) (uint64, error) { return 1 << 20, nil }}
-			_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, u, dir)})
+			_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: portDetect(t, u, dir)})
 			return err
 		}())
 	})
@@ -227,11 +220,11 @@ func TestUnpacker_ResourceLimits(t *testing.T) {
 
 func TestUnpacker_GarbageArchiveIsCorrupt(t *testing.T) {
 	dir := t.TempDir()
-	full, err := os.ReadFile(filepath.Join(unpackTestdata, "7z", "t0.7z"))
+	full, err := os.ReadFile(filepath.Join(portTestdata, "7z", "t0.7z"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "t.7z"), full[:len(full)-40], 0o644))
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	require.Len(t, sets, 1)
 	dst := filepath.Join(t.TempDir(), "out")
 	_, err = u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: sets})
@@ -239,20 +232,20 @@ func TestUnpacker_GarbageArchiveIsCorrupt(t *testing.T) {
 	assert.NoDirExists(t, dst)
 }
 
-func TestUnpacker_RejectsForeignOrNoSets(t *testing.T) {
+func TestUnpacker_ASetThatIsGoneIsCorruptAndNoSetsIsAnError(t *testing.T) {
+	dir := portArchiveDir(t, "7z/t0.7z")
 	dst := filepath.Join(t.TempDir(), "out")
-	_, err := Unpacker{}.Unpack(context.Background(), "", dst, core.UnpackOptions{Sets: []core.ArchiveSet{{Name: "x", Opaque: "nope"}}})
-	require.Error(t, err)
-	assert.NotErrorIs(t, err, core.ErrArchiveCorrupt)
-	_, err = Unpacker{}.Unpack(context.Background(), "", dst, core.UnpackOptions{})
+	_, err := Unpacker{}.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: []core.ArchiveSet{{Name: "other.7z"}}})
+	assert.ErrorIs(t, err, core.ErrArchiveCorrupt)
+	_, err = Unpacker{}.Unpack(context.Background(), dir, dst, core.UnpackOptions{})
 	require.Error(t, err)
 	assert.NoDirExists(t, dst)
 }
 
 func TestUnpacker_CancelledContext(t *testing.T) {
-	dir := archiveDir(t, "7z/t0.7z")
+	dir := portArchiveDir(t, "7z/t0.7z")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -267,22 +260,22 @@ func TestUnpacker_CancelledContext(t *testing.T) {
 }
 
 func TestUnpacker_SingleSetReplacesAnExistingDestination(t *testing.T) {
-	dir := archiveDir(t, "7z/t0.7z")
+	dir := portArchiveDir(t, "7z/t0.7z")
 	u := Unpacker{}
 	dst := filepath.Join(t.TempDir(), "out")
 	require.NoError(t, os.MkdirAll(dst, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dst, "stale"), []byte("x"), 0o644))
 
-	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, u, dir)})
+	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: portDetect(t, u, dir)})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"bar", "foo"}, tree(t, dst))
+	assert.Equal(t, []string{"bar", "foo"}, portTree(t, dst))
 }
 
 func TestUnpacker_SeveralSetsMergeIntoOneDirectory(t *testing.T) {
 	// t0 (bar, foo) and the stored RAR (container) do not collide.
-	dir := archiveDir(t, "7z/t0.7z", "rar/container.rar")
+	dir := portArchiveDir(t, "7z/t0.7z", "rar/container.rar")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	require.Len(t, sets, 2)
 	base := t.TempDir()
 	dst := filepath.Join(base, "out")
@@ -291,41 +284,41 @@ func TestUnpacker_SeveralSetsMergeIntoOneDirectory(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 3, res.Files)
 	assert.EqualValues(t, 8+len("#!/bin/sh\nexit 0\n"), res.Bytes)
-	assert.Equal(t, []string{"bar", "container", "foo"}, tree(t, dst))
-	assert.Equal(t, []string{"out"}, children(t, base), "work directories are gone")
+	assert.Equal(t, []string{"bar", "container", "foo"}, portTree(t, dst))
+	assert.Equal(t, []string{"out"}, portChildren(t, base), "work directories are gone")
 }
 
 func TestUnpacker_SeveralSetsKeepCollidingNames(t *testing.T) {
 	// t0 and t1 both hold bar and foo; the later set's files are renamed.
-	dir := archiveDir(t, "a.7z=7z/t0.7z", "b.7z=7z/t1.7z")
+	dir := portArchiveDir(t, "a.7z=7z/t0.7z", "b.7z=7z/t1.7z")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	require.Len(t, sets, 2)
-	assert.Equal(t, []string{"a", "b"}, []string{sets[0].Name, sets[1].Name})
+	assert.Equal(t, []string{"a.7z", "b.7z"}, []string{sets[0].Name, sets[1].Name})
 	base := t.TempDir()
 	dst := filepath.Join(base, "out")
 
 	res, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: sets})
 	require.NoError(t, err)
 	assert.Equal(t, 4, res.Files)
-	assert.Equal(t, []string{"bar", "bar.1", "foo", "foo.1"}, tree(t, dst))
-	assert.Equal(t, []string{"out"}, children(t, base))
+	assert.Equal(t, []string{"bar", "bar.1", "foo", "foo.1"}, portTree(t, dst))
+	assert.Equal(t, []string{"out"}, portChildren(t, base))
 }
 
 func TestUnpacker_SeveralSetsKeepFileAndDirectoryCollisions(t *testing.T) {
 	// empty.7z holds directories 01..10 (and files 06..10 at the top);
 	// multi.7z holds the files 01..10, so 01..05 collide as file versus
 	// directory and 06..10 as file versus file.
-	dir := archiveDir(t, "a.7z=7z/empty.7z",
+	dir := portArchiveDir(t, "a.7z=7z/empty.7z",
 		"7z/multi.7z.001", "7z/multi.7z.002", "7z/multi.7z.003", "7z/multi.7z.004", "7z/multi.7z.005", "7z/multi.7z.006")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	require.Len(t, sets, 2)
 	dst := filepath.Join(t.TempDir(), "out")
 
 	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: sets})
 	require.NoError(t, err)
-	got := tree(t, dst)
+	got := portTree(t, dst)
 	for _, n := range []string{"01", "02", "03", "04", "05"} {
 		assert.Contains(t, got, n+"/", "directory %s kept", n)
 		assert.Contains(t, got, n+".1", "file %s renamed", n)
@@ -338,9 +331,9 @@ func TestUnpacker_SeveralSetsKeepFileAndDirectoryCollisions(t *testing.T) {
 }
 
 func TestUnpacker_SeveralSetsReplaceStaleLeftovers(t *testing.T) {
-	dir := archiveDir(t, "a.7z=7z/t0.7z", "b.7z=7z/t1.7z")
+	dir := portArchiveDir(t, "a.7z=7z/t0.7z", "b.7z=7z/t1.7z")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	base := t.TempDir()
 	dst := filepath.Join(base, "out")
 	// A previous, interrupted run left a destination and a work directory.
@@ -349,21 +342,21 @@ func TestUnpacker_SeveralSetsReplaceStaleLeftovers(t *testing.T) {
 
 	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: sets})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"bar", "bar.1", "foo", "foo.1"}, tree(t, dst))
-	assert.Equal(t, []string{"out"}, children(t, base))
+	assert.Equal(t, []string{"bar", "bar.1", "foo", "foo.1"}, portTree(t, dst))
+	assert.Equal(t, []string{"out"}, portChildren(t, base))
 }
 
 func TestUnpacker_SeveralSetsFailureLeavesNothing(t *testing.T) {
 	// The second set needs a password nobody supplies.
-	dir := archiveDir(t, "a.7z=7z/t0.7z", "b.7z=7z/t2.7z")
+	dir := portArchiveDir(t, "a.7z=7z/t0.7z", "b.7z=7z/t2.7z")
 	u := Unpacker{}
-	sets := detect(t, u, dir)
+	sets := portDetect(t, u, dir)
 	base := t.TempDir()
 	dst := filepath.Join(base, "out")
 
 	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: sets})
 	assert.ErrorIs(t, err, core.ErrArchivePassword)
-	assert.Empty(t, children(t, base))
+	assert.Empty(t, portChildren(t, base))
 }
 
 func TestMergeInto_MergesDirectoriesRecursively(t *testing.T) {
@@ -387,7 +380,7 @@ func TestMergeInto_MergesDirectoriesRecursively(t *testing.T) {
 	assert.Equal(t, []string{
 		"Movie/", "Movie/Subs/", "Movie/Subs/en.srt", "Movie/Subs/nl.srt",
 		"Movie/movie.1.mkv", "Movie/movie.mkv", "Movie/readme.txt",
-	}, tree(t, merged))
+	}, portTree(t, merged))
 	got, err := os.ReadFile(filepath.Join(merged, "Movie", "movie.mkv"))
 	require.NoError(t, err)
 	assert.Equal(t, "A-movie", string(got), "the first set keeps its name")
@@ -396,7 +389,7 @@ func TestMergeInto_MergesDirectoriesRecursively(t *testing.T) {
 	assert.Equal(t, "B-movie", string(got))
 }
 
-func TestMapUnpackError(t *testing.T) {
+func TestMapError(t *testing.T) {
 	boom := errors.New("io exploded")
 	tests := []struct {
 		name  string
@@ -404,25 +397,25 @@ func TestMapUnpackError(t *testing.T) {
 		is    []error
 		isNot []error
 	}{
-		{"password", unpack.ErrPassword, []error{core.ErrArchivePassword, unpack.ErrPassword}, []error{core.ErrArchiveCorrupt}},
-		{"unsupported", fmt.Errorf("rar5: %w", unpack.ErrUnsupported), []error{core.ErrArchiveUnsupported}, []error{core.ErrArchiveCorrupt}},
-		{"corrupt", unpack.ErrCorrupt, []error{core.ErrArchiveCorrupt}, []error{core.ErrArchiveUnsupported}},
-		{"missing volume", unpack.ErrMissingVolume, []error{core.ErrArchiveCorrupt, unpack.ErrMissingVolume}, nil},
-		{"path violation", unpack.ErrPathViolation, []error{core.ErrPathViolation}, []error{core.ErrArchiveCorrupt}},
-		{"disk full", unpack.ErrDiskFull, []error{core.ErrDiskFull}, []error{core.ErrArchiveCorrupt}},
+		{"password", ErrPassword, []error{core.ErrArchivePassword, ErrPassword}, []error{core.ErrArchiveCorrupt}},
+		{"unsupported", fmt.Errorf("rar5: %w", ErrUnsupported), []error{core.ErrArchiveUnsupported}, []error{core.ErrArchiveCorrupt}},
+		{"corrupt", ErrCorrupt, []error{core.ErrArchiveCorrupt}, []error{core.ErrArchiveUnsupported}},
+		{"missing volume", ErrMissingVolume, []error{core.ErrArchiveCorrupt, ErrMissingVolume}, nil},
+		{"path violation", ErrPathViolation, []error{core.ErrPathViolation}, []error{core.ErrArchiveCorrupt}},
+		{"disk full", ErrDiskFull, []error{core.ErrDiskFull}, []error{core.ErrArchiveCorrupt}},
 		{"ENOSPC", fmt.Errorf("write: %w", syscall.ENOSPC), []error{core.ErrDiskFull}, []error{core.ErrArchiveCorrupt}},
-		{"bomb", unpack.ErrBomb, []error{core.ErrArchiveCorrupt, unpack.ErrBomb}, []error{core.ErrDiskFull}},
-		{"too large", unpack.ErrTooLarge, []error{core.ErrArchiveCorrupt}, []error{core.ErrDiskFull}},
-		{"too many entries", unpack.ErrTooManyEntries, []error{core.ErrArchiveCorrupt}, []error{core.ErrDiskFull}},
-		{"other limit", unpack.ErrLimit, []error{core.ErrArchiveCorrupt}, nil},
+		{"bomb", ErrBomb, []error{core.ErrArchiveCorrupt, ErrBomb}, []error{core.ErrDiskFull}},
+		{"too large", ErrTooLarge, []error{core.ErrArchiveCorrupt}, []error{core.ErrDiskFull}},
+		{"too many entries", ErrTooManyEntries, []error{core.ErrArchiveCorrupt}, []error{core.ErrDiskFull}},
+		{"other limit", ErrLimit, []error{core.ErrArchiveCorrupt}, nil},
 		{"canceled", context.Canceled, []error{context.Canceled}, []error{core.ErrArchiveCorrupt}},
 		{"deadline wrapped", fmt.Errorf("x: %w", context.DeadlineExceeded), []error{context.DeadlineExceeded}, []error{core.ErrArchiveCorrupt}},
-		{"exists is internal", unpack.ErrExists, []error{unpack.ErrExists}, []error{core.ErrArchiveCorrupt, core.ErrPathViolation}},
+		{"exists is internal", ErrExists, []error{ErrExists}, []error{core.ErrArchiveCorrupt, core.ErrPathViolation}},
 		{"other", boom, []error{boom}, []error{core.ErrArchiveCorrupt, core.ErrArchivePassword, core.ErrArchiveUnsupported, core.ErrPathViolation, core.ErrDiskFull}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := MapUnpackError(context.Background(), tt.in)
+			got := MapError(context.Background(), tt.in)
 			require.Error(t, got)
 			for _, e := range tt.is {
 				assert.ErrorIs(t, got, e)
@@ -432,7 +425,7 @@ func TestMapUnpackError(t *testing.T) {
 			}
 		})
 	}
-	assert.NoError(t, MapUnpackError(context.Background(), nil))
+	assert.NoError(t, MapError(context.Background(), nil))
 }
 
 func TestUnpacker_AssertsPort(t *testing.T) {
@@ -442,7 +435,7 @@ func TestUnpacker_AssertsPort(t *testing.T) {
 	)
 }
 
-func children(t testing.TB, dir string) []string {
+func portChildren(t testing.TB, dir string) []string {
 	t.Helper()
 	ents, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -454,11 +447,11 @@ func children(t testing.TB, dir string) []string {
 }
 
 func TestUnpacker_SevenZipFieldSelectsTheProgram(t *testing.T) {
-	dir := archiveDir(t, "7z/t0.7z")
+	dir := portArchiveDir(t, "7z/t0.7z")
 	u := Unpacker{SevenZip: filepath.Join(t.TempDir(), "no-such-7zz")}
 	dst := filepath.Join(t.TempDir(), "out")
 
-	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: detect(t, Unpacker{}, dir)})
+	_, err := u.Unpack(context.Background(), dir, dst, core.UnpackOptions{Sets: portDetect(t, Unpacker{}, dir)})
 
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, core.ErrArchiveCorrupt, "a missing program is not the archive's fault")
@@ -479,20 +472,22 @@ func TestUnpacker_ASymlinkInTheArchiveIsAPathViolation(t *testing.T) {
 	dir := t.TempDir()
 	vol := filepath.Join(dir, "links.zip")
 	require.NoError(t, os.WriteFile(vol, buf.Bytes(), 0o644))
-	set := core.ArchiveSet{Name: "links", Opaque: unpack.ArchiveSet{Format: unpack.Format7z, Name: "links", Volumes: []string{vol}}}
+	// Detect does not offer a zip, so the set is handed to Unpack directly
+	// and its error goes through MapError as the Unpacker's would.
+	set := ArchiveSet{Format: Format7z, Name: "links", Volumes: []string{vol}}
 	base := t.TempDir()
 
-	_, err = Unpacker{}.Unpack(context.Background(), dir, filepath.Join(base, "out"), core.UnpackOptions{Sets: []core.ArchiveSet{set}})
+	_, err = Unpack(context.Background(), set, filepath.Join(base, "out"), WithReplace())
 
-	assert.ErrorIs(t, err, core.ErrPathViolation)
-	assert.Empty(t, children(t, base))
+	assert.ErrorIs(t, MapError(context.Background(), err), core.ErrPathViolation)
+	assert.Empty(t, portChildren(t, base))
 }
 
 func TestUnpacker_PasswordGoesToSevenZipAndNotIntoTheError(t *testing.T) {
-	dir := archiveDir(t, "7z/t2.7z")
+	dir := portArchiveDir(t, "7z/t2.7z")
 	u := Unpacker{Passwords: func(core.ID) (core.Secret, error) { return "s3cret-wrong", nil }}
 
-	_, err := u.Unpack(context.Background(), dir, filepath.Join(t.TempDir(), "out"), core.UnpackOptions{Sets: detect(t, u, dir)})
+	_, err := u.Unpack(context.Background(), dir, filepath.Join(t.TempDir(), "out"), core.UnpackOptions{Sets: portDetect(t, u, dir)})
 
 	require.ErrorIs(t, err, core.ErrArchivePassword)
 	assert.NotContains(t, err.Error(), "s3cret")

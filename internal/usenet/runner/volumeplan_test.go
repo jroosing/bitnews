@@ -1,4 +1,4 @@
-package adapt
+package runner
 
 import (
 	"context"
@@ -26,7 +26,7 @@ func vol(blocks int, bytes int64) nzb.File {
 
 func TestPlanVolumes_ExactCover(t *testing.T) {
 	files := []nzb.File{vol(1, 100), vol(2, 200), vol(4, 400)}
-	picks, covered, ok := PlanVolumes(files, 4, 0)
+	picks, covered, ok := planVolumes(files, 4, 0)
 	assert.True(t, ok)
 	assert.Equal(t, []int{2}, picks)
 	assert.Equal(t, 4, covered)
@@ -115,7 +115,7 @@ func TestPlanVolumes_Table(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			picks, covered, ok := PlanVolumes(tt.files, tt.needed, tt.margin)
+			picks, covered, ok := planVolumes(tt.files, tt.needed, tt.margin)
 			assert.Equal(t, tt.wantOK, ok)
 			assert.Equal(t, tt.wantPicks, picks)
 			assert.Equal(t, tt.wantCovered, covered)
@@ -130,22 +130,6 @@ func multiSeg(blocks int, sizes ...int64) nzb.File {
 		f.Segments = append(f.Segments, nzb.Segment{Number: i + 1, Bytes: s})
 	}
 	return f
-}
-
-func TestDeferredBytes_SumsVolumesOnly(t *testing.T) {
-	files := []nzb.File{
-		vol(1, 10),
-		multiSeg(2, 5, 7),
-		{Kind: nzb.KindData, Segments: []nzb.Segment{{Bytes: 1000}}},
-		{Kind: nzb.KindPar2Index, Segments: []nzb.Segment{{Bytes: 1000}}},
-	}
-	assert.Equal(t, int64(22), DeferredBytes(files))
-	assert.Equal(t, int64(0), DeferredBytes(nil))
-}
-
-func TestDeferredBytes_Saturates(t *testing.T) {
-	files := []nzb.File{vol(1, math.MaxInt64), vol(1, 5)}
-	assert.Equal(t, int64(math.MaxInt64), DeferredBytes(files))
 }
 
 // randomVolumes builds n volumes with small random sizes.
@@ -197,7 +181,7 @@ func TestPlanVolumes_MatchesBruteForce(t *testing.T) {
 			total += f.RecoveryBlocks
 		}
 
-		picks, covered, ok := PlanVolumes(files, needed, margin)
+		picks, covered, ok := planVolumes(files, needed, margin)
 		if needed > 0 && total < needed {
 			require.False(t, ok)
 			continue
@@ -256,23 +240,23 @@ func TestPlanGreedy_IsValidAndNotCheaperThanOptimal(t *testing.T) {
 func TestPlanVolumes_HugeInputFallsBackToGreedy(t *testing.T) {
 	// 2 volumes x a million blocks exceeds the exact planner's table.
 	files := []nzb.File{vol(2_000_000, 100), vol(2_000_000, 50), vol(10, 5)}
-	picks, covered, ok := PlanVolumes(files, 1_500_000, 1)
+	picks, covered, ok := planVolumes(files, 1_500_000, 1)
 	require.True(t, ok)
 	assert.Equal(t, []int{1}, picks)
 	assert.Equal(t, 2_000_000, covered)
 
-	_, _, ok = PlanVolumes(files, 5_000_000, 1)
+	_, _, ok = planVolumes(files, 5_000_000, 1)
 	assert.False(t, ok)
 }
 
 func TestPlanVolumes_NeverOverflows(t *testing.T) {
 	files := []nzb.File{vol(math.MaxInt, 1), vol(math.MaxInt, 1)}
-	picks, _, ok := PlanVolumes(files, math.MaxInt, math.MaxInt)
+	picks, _, ok := planVolumes(files, math.MaxInt, math.MaxInt)
 	require.True(t, ok)
 	assert.Len(t, picks, 1)
 }
 
-// fakeController records the order of controller calls.
+// fakeController records the order of the fetcher's calls.
 type fakeController struct {
 	log        *[]string
 	files      []nzb.File
@@ -281,33 +265,29 @@ type fakeController struct {
 	undeferred []int
 }
 
-func (f *fakeController) ListDeferred(_ context.Context, id core.ID) ([]nzb.File, error) {
-	*f.log = append(*f.log, "list:"+string(id))
-	return f.files, f.listErr
-}
-
-func (f *fakeController) Undefer(_ context.Context, id core.ID, idx []int) error {
-	*f.log = append(*f.log, "undefer:"+string(id))
-	f.undeferred = idx
-	return f.undeferErr
-}
-
-func newDeferred(files []nzb.File) (*DeferredVolumes, *fakeController, *[]string) {
+func newDeferred(files []nzb.File) (*deferredFetcher, *fakeController, *[]string) {
 	log := &[]string{}
 	ctl := &fakeController{log: log, files: files}
-	dv := &DeferredVolumes{
-		Controller: ctl,
-		Requeue: func(_ context.Context, id core.ID) error {
+	f := &deferredFetcher{
+		list: func(_ context.Context, id core.ID) ([]nzb.File, error) {
+			*log = append(*log, "list:"+string(id))
+			return ctl.files, ctl.listErr
+		},
+		undefer: func(_ context.Context, id core.ID, idx []int) error {
+			*log = append(*log, "undefer:"+string(id))
+			ctl.undeferred = idx
+			return ctl.undeferErr
+		},
+		requeue: func(_ context.Context, id core.ID) error {
 			*log = append(*log, "requeue:"+string(id))
 			return nil
 		},
 	}
-	return dv, ctl, log
+	return f, ctl, log
 }
-
 func TestDeferredVolumes_UndefersThenRequeues(t *testing.T) {
 	dv, ctl, log := newDeferred([]nzb.File{vol(4, 400), vol(2, 100), vol(2, 100)})
-	more, err := dv.FetchDeferred(context.Background(), core.Download{ID: "d1"}, 3)
+	more, err := dv.fetch(context.Background(), core.Download{ID: "d1"}, 3)
 	require.NoError(t, err)
 	assert.True(t, more)
 	// 3 blocks + the default margin of 1 = 4, cheapest as the two small ones.
@@ -317,22 +297,22 @@ func TestDeferredVolumes_UndefersThenRequeues(t *testing.T) {
 
 func TestDeferredVolumes_ExplicitAndNoMargin(t *testing.T) {
 	dv, ctl, _ := newDeferred([]nzb.File{vol(1, 10), vol(1, 10), vol(1, 10)})
-	dv.Margin = -1
-	more, err := dv.FetchDeferred(context.Background(), core.Download{ID: "d"}, 1)
+	dv.margin = -1
+	more, err := dv.fetch(context.Background(), core.Download{ID: "d"}, 1)
 	require.NoError(t, err)
 	assert.True(t, more)
 	assert.Equal(t, []int{0}, ctl.undeferred)
 
 	dv, ctl, _ = newDeferred([]nzb.File{vol(1, 10), vol(1, 10), vol(1, 10)})
-	dv.Margin = 2
-	_, err = dv.FetchDeferred(context.Background(), core.Download{ID: "d"}, 1)
+	dv.margin = 2
+	_, err = dv.fetch(context.Background(), core.Download{ID: "d"}, 1)
 	require.NoError(t, err)
 	assert.Equal(t, []int{0, 1, 2}, ctl.undeferred)
 }
 
 func TestDeferredVolumes_CannotCoverChangesNothing(t *testing.T) {
 	dv, ctl, log := newDeferred([]nzb.File{vol(1, 10), vol(2, 10)})
-	more, err := dv.FetchDeferred(context.Background(), core.Download{ID: "d1"}, 4)
+	more, err := dv.fetch(context.Background(), core.Download{ID: "d1"}, 4)
 	require.NoError(t, err)
 	assert.False(t, more)
 	assert.Nil(t, ctl.undeferred)
@@ -344,7 +324,7 @@ func TestDeferredVolumes_ErrorsPropagate(t *testing.T) {
 	t.Run("list", func(t *testing.T) {
 		dv, ctl, log := newDeferred([]nzb.File{vol(2, 10)})
 		ctl.listErr = boom
-		more, err := dv.FetchDeferred(context.Background(), core.Download{ID: "d"}, 1)
+		more, err := dv.fetch(context.Background(), core.Download{ID: "d"}, 1)
 		assert.ErrorIs(t, err, boom)
 		assert.False(t, more)
 		assert.Equal(t, []string{"list:d"}, *log)
@@ -352,28 +332,20 @@ func TestDeferredVolumes_ErrorsPropagate(t *testing.T) {
 	t.Run("undefer stops before requeue", func(t *testing.T) {
 		dv, ctl, log := newDeferred([]nzb.File{vol(2, 10)})
 		ctl.undeferErr = boom
-		more, err := dv.FetchDeferred(context.Background(), core.Download{ID: "d"}, 1)
+		more, err := dv.fetch(context.Background(), core.Download{ID: "d"}, 1)
 		assert.ErrorIs(t, err, boom)
 		assert.False(t, more)
 		assert.Equal(t, []string{"list:d", "undefer:d"}, *log)
 	})
 	t.Run("requeue failure is returned", func(t *testing.T) {
 		dv, _, log := newDeferred([]nzb.File{vol(2, 10)})
-		dv.Requeue = func(context.Context, core.ID) error {
+		dv.requeue = func(context.Context, core.ID) error {
 			*log = append(*log, "requeue")
 			return boom
 		}
-		more, err := dv.FetchDeferred(context.Background(), core.Download{ID: "d"}, 1)
+		more, err := dv.fetch(context.Background(), core.Download{ID: "d"}, 1)
 		assert.ErrorIs(t, err, boom)
 		assert.False(t, more)
 		assert.Equal(t, []string{"list:d", "undefer:d", "requeue"}, *log)
 	})
-	t.Run("misconfigured", func(t *testing.T) {
-		_, err := (&DeferredVolumes{}).FetchDeferred(context.Background(), core.Download{ID: "d"}, 1)
-		assert.Error(t, err)
-	})
-}
-
-func TestDeferredVolumes_AssertsPort(t *testing.T) {
-	var _ core.DeferredVolumes = (*DeferredVolumes)(nil)
 }

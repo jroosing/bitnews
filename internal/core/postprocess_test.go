@@ -71,7 +71,7 @@ func TestDamagedDownloadIsRepairedThenReady(t *testing.T) {
 func TestFailedRepairFailsTheDownloadAndPublishesFailed(t *testing.T) {
 	h := newPPHarness(t)
 	h.verifier.fn = damaged()
-	h.repairer.fn = func(context.Context, string, core.VerifyOutcome) (core.RepairOutcome, error) {
+	h.repairer.fn = func(context.Context, string) (core.RepairOutcome, error) {
 		return core.RepairOutcome{}, fmt.Errorf("solve: %w", core.ErrRepairFailed)
 	}
 	d := h.add("x", core.StateFetched, core.SourceNZB)
@@ -131,7 +131,7 @@ func TestShortOfRecoveryWithNoMoreVolumesFailsRepairInsufficient(t *testing.T) {
 func TestRepairShortfallErrorAlsoAsksForDeferredVolumes(t *testing.T) {
 	h := newPPHarness(t)
 	h.verifier.fn = damaged() // the verifier thought it repairable
-	h.repairer.fn = func(context.Context, string, core.VerifyOutcome) (core.RepairOutcome, error) {
+	h.repairer.fn = func(context.Context, string) (core.RepairOutcome, error) {
 		return core.RepairOutcome{}, &core.RecoveryShortfall{Needed: 9, Available: 4}
 	}
 	h.deferred.more = true
@@ -240,7 +240,7 @@ func TestUnpackRunsOnlyWhenArchivesAreDetected(t *testing.T) {
 	})
 	t.Run("sets", func(t *testing.T) {
 		h := newPPHarness(t)
-		sets := []core.ArchiveSet{{Name: "a.rar", Opaque: 1}, {Name: "b.7z", Opaque: 2}}
+		sets := []core.ArchiveSet{{Name: "a.rar"}, {Name: "b.7z"}}
 		h.unpacker.sets = sets
 		d := h.add("x", core.StateFetched, core.SourceNZB)
 
@@ -281,7 +281,7 @@ func TestEachSentinelMapsToItsFailureReason(t *testing.T) {
 		"repair": func(h *ppHarness, err error) {
 			h.verifier.fn = damaged()
 			h.deferred.more = false
-			h.repairer.fn = func(context.Context, string, core.VerifyOutcome) (core.RepairOutcome, error) {
+			h.repairer.fn = func(context.Context, string) (core.RepairOutcome, error) {
 				return core.RepairOutcome{}, err
 			}
 		},
