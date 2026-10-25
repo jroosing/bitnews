@@ -133,11 +133,9 @@ func (s *Server) answerRow(w http.ResponseWriter, r *http.Request, id core.ID) {
 		return
 	}
 	for _, sec := range v.Sections {
-		for _, row := range sec.Rows {
-			if core.ID(row.ID) == id {
-				pv := s.newView(r, "Queue")
-				pv.Page = row
-				s.renderFragment(w, r, http.StatusOK, "queue.html", "queue_row_fragment", pv)
+		for i := range sec.Rows {
+			if core.ID(sec.Rows[i].ID) == id {
+				s.renderComponent(w, r, http.StatusOK, QueueRow(&sec.Rows[i]))
 				return
 			}
 		}

@@ -234,7 +234,7 @@ func TestHostileNamesStayInertInLiveCells(t *testing.T) {
 	}
 }
 
-func TestMultilineFragmentsKeepEveryLineInTheDataField(t *testing.T) {
+func TestLiveFragmentsParseWholeFromTheDataField(t *testing.T) {
 	q := newQueueEnv(t)
 	d := q.add(core.Download{State: core.StateFetching, TotalBytes: 10})
 	s := q.openStream(t, "?rows=1")
@@ -244,7 +244,6 @@ func TestMultilineFragmentsKeepEveryLineInTheDataField(t *testing.T) {
 	q.flush()
 
 	data := s.until("live").Data
-	assert.Contains(t, data, "\n", "the template output spans lines")
 	assert.NotNil(t, byID(parseSnippet(t, data), "dl-"+string(d.ID)+"-eta"), "and still parses whole")
 }
 

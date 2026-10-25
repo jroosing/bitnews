@@ -1,0 +1,420 @@
+package web
+
+import (
+	"strconv"
+
+	"github.com/jroosing/bitnews/internal/core"
+)
+
+// QueueLists is the whole Queue page body, swapped as one piece after a
+// resync, a reconnect or an action that changes the order or the set of
+// rows. The live stream (/ui/events) tells it to refetch itself with the
+// "sse:refresh" event, and an HX-Trigger of "queue-refresh" from an action
+// does the same.
+templ QueueLists(q *queueView) {
+	<div id="queue-lists" class="space-y-6" hx-get="/queue/fragment" hx-trigger="sse:refresh, queue-refresh from:body">
+		for i := range q.Sections {
+			@QueueSection(&q.Sections[i])
+		}
+		if q.More > 0 {
+			<p class="text-sm text-fg-muted">{ strconv.Itoa(q.More) } more downloads are not shown here.</p>
+		}
+	</div>
+}
+
+// QueueSection is one Queue as a card. The table carries max-md:block because
+// Tailwind's own .table utility (display: table) outranks the component
+// layer, so the responsive card layout needs the variant.
+templ QueueSection(sec *queueSection) {
+	<section class="card" aria-labelledby={ "queue-" + sec.Kind + "-title" } data-queue={ sec.Kind }>
+		<header class="card-header flex-wrap">
+			<div class="min-w-0">
+				<h2 id={ "queue-" + sec.Kind + "-title" } class="flex items-baseline gap-2 text-base">
+					{ sec.Title }
+					<span class="text-sm font-normal text-fg-subtle tabular-nums" aria-label={ strconv.Itoa(len(sec.Rows)) + " in the queue" }>{ strconv.Itoa(len(sec.Rows)) }</span>
+				</h2>
+				<p class="mt-0.5 text-sm text-fg-muted">{ sec.Subtitle }</p>
+			</div>
+			if sec.Controls {
+				<div class="flex flex-wrap items-center gap-2">
+					if sec.Port.Known {
+						@TorrentPort(sec.Port)
+					}
+					@QueueLimit(sec)
+					if sec.Paused {
+						<form method="post" action={ templ.SafeURL("/queues/" + sec.Kind + "/resume") } { Hx{Post: "/queues/" + sec.Kind + "/resume", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }>
+							@CSRFField(sec.CSRF)
+							<button type="submit" class="btn btn-primary btn-sm">
+								@Icon(IconPlay, "size-4")
+								Resume queue
+							</button>
+						</form>
+					} else {
+						<form method="post" action={ templ.SafeURL("/queues/" + sec.Kind + "/pause") } { Hx{Post: "/queues/" + sec.Kind + "/pause", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }>
+							@CSRFField(sec.CSRF)
+							<button type="submit" class="btn btn-secondary btn-sm">
+								@Icon(IconPause, "size-4")
+								Pause queue
+							</button>
+						</form>
+					}
+				</div>
+			}
+		</header>
+		if sec.Paused {
+			<div class="px-5 py-4">
+				@Alert(AlertProps{Variant: AlertWarn, Title: sec.PauseTitle, Body: sec.PauseText})
+			</div>
+		}
+		if sec.Unavailable {
+			<div class="px-5 py-4">
+				@Alert(AlertProps{Variant: AlertInfo, Title: sec.Title + " are turned off", Body: "This instance runs without them. Nothing can be added here."})
+			</div>
+		}
+		if len(sec.Rows) > 0 {
+			<table class="table table-responsive max-md:block">
+				<caption class="sr-only">{ sec.Title } downloads in the queue</caption>
+				<thead>
+					<tr>
+						<th scope="col">Name</th>
+						<th scope="col">Status</th>
+						<th scope="col">Progress</th>
+						<th scope="col">Speed</th>
+						<th scope="col">ETA</th>
+						<th scope="col"><span class="sr-only">Actions</span></th>
+					</tr>
+				</thead>
+				<tbody id={ "queue-rows-" + sec.Kind }>
+					for i := range sec.Rows {
+						@QueueRow(&sec.Rows[i])
+					}
+				</tbody>
+			</table>
+		} else if !sec.Unavailable {
+			if sec.Kind == "usenet" {
+				@EmptyState(EmptyProps{Icon: IconInbox, Title: "No Usenet downloads", Body: "NZBs added by you, or sent by Sonarr and Radarr, will show up here with live progress."})
+			} else {
+				@EmptyState(EmptyProps{Icon: IconInbox, Title: "No torrents", Body: "Torrents you add, or that a media manager sends, will show up here while they download."})
+			}
+		}
+		<span id={ "queue-rows-" + sec.Kind + "-end" } hidden></span>
+	</section>
+}
+
+// TorrentPort is the listen port badge and its info popover.
+templ TorrentPort(p portView) {
+	<div x-data="popover" class="relative flex items-center gap-1" @keydown.escape="close" @click.outside="closeQuiet">
+		<span id="torrent-port" data-state={ p.State } role="status" class={ "badge " + portBadgeClass(p) }>{ p.Label }</span>
+		<button type="button" x-ref="button" @click="toggle" class="btn btn-ghost btn-sm px-1.5" aria-haspopup="dialog" :aria-expanded="open" aria-controls="torrent-port-info">
+			@Icon(IconInfo, "size-4")
+			<span class="sr-only">About the listen port</span>
+		</button>
+		<div id="torrent-port-info" x-ref="panel" x-show="open" x-cloak class="menu-panel w-80 space-y-2 p-4 text-sm" role="dialog" aria-label="Listen port">
+			<p class="font-medium text-fg">{ p.Label }</p>
+			<p class="text-fg-muted">{ p.Detail }</p>
+			<p class="text-fg-muted">{ p.Help() }</p>
+		</div>
+	</div>
+}
+
+func portBadgeClass(p portView) string {
+	if p.State == "open" {
+		return "badge-ready"
+	}
+	return "badge-paused"
+}
+
+// QueueLimit is the speed-limit popover of a Queue (runtime only).
+templ QueueLimit(sec *queueSection) {
+	<div x-data="popover" class="relative" @keydown.escape="close" @click.outside="closeQuiet">
+		<button type="button" x-ref="button" @click="toggle" class="btn btn-secondary btn-sm" aria-haspopup="dialog" :aria-expanded="open">
+			@Icon(IconArrowDown, "size-4")
+			<span>{ sec.LimitDown }</span>
+			if sec.HasUpLimit {
+				@Icon(IconArrowUp, "size-4")
+				<span>{ sec.LimitUp }</span>
+			}
+			<span class="sr-only">Speed limit, change</span>
+		</button>
+		<div x-ref="panel" x-show="open" x-cloak class="menu-panel w-72 p-4" role="dialog" aria-label={ sec.Title + " speed limit" }>
+			<form method="post" action={ templ.SafeURL("/queues/" + sec.Kind + "/speed") } { Hx{Post: "/queues/" + sec.Kind + "/speed", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... } class="space-y-3">
+				@CSRFField(sec.CSRF)
+				<p class="text-sm font-medium text-fg">Speed limit</p>
+				@Field(FieldProps{ID: "limit-" + sec.Kind + "-down", Name: "down_kbps", Label: "Download (KB/s)", Type: FieldNumber, Inputmode: "numeric", Value: strconv.FormatInt(sec.LimitDownKB, 10)})
+				if sec.HasUpLimit {
+					@Field(FieldProps{ID: "limit-" + sec.Kind + "-up", Name: "up_kbps", Label: "Upload (KB/s)", Type: FieldNumber, Inputmode: "numeric", Value: strconv.FormatInt(sec.LimitUpKB, 10)})
+				}
+				<p class="help">0 means no limit. The limit applies until bitnews restarts.</p>
+				<div class="flex justify-end gap-2">
+					<button type="button" class="btn btn-secondary btn-sm" @click="close">Cancel</button>
+					<button type="submit" class="btn btn-primary btn-sm">Apply</button>
+				</div>
+			</form>
+		</div>
+	</div>
+}
+
+// QueueRow is one Download of the queue as a table row (a card below 768
+// px). The cells that change while a Download runs are separate elements
+// with stable ids (QueueStatus, QueueProgress, QueueSpeed, QueueETA): the
+// live stream replaces just those with out-of-band swaps (QueueLive), so an
+// open menu is not closed every second. Download names are hostile input:
+// they only ever appear as escaped text or attribute values, never in
+// hx-vals or an Alpine expression.
+templ QueueRow(r *queueRowCtx) {
+	<tr id={ "dl-" + r.ID } data-state={ string(r.State) }>
+		<td data-label="" class="md:w-[32%] md:max-w-0">
+			<div class="min-w-0 flex-1 text-left">
+				<p class="truncate font-medium text-fg" title={ r.Name }>{ r.Name }</p>
+				<div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
+					if r.Category != "" {
+						<span class="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 ring-1 ring-line">
+							@Icon(IconFolder, "size-3.5")
+							<span class="sr-only">Category </span>
+							{ r.Category }
+						</span>
+					}
+					if r.Priority == core.DownloadPriorityForce {
+						<span class="inline-flex items-center gap-1 font-medium text-warn-fg">
+							@Icon(IconBolt, "size-3.5")
+							<span class="sr-only">Priority </span>
+							Force
+						</span>
+					} else if r.Priority == core.DownloadPriorityHigh {
+						<span class="inline-flex items-center gap-1 font-medium text-info-fg">
+							@Icon(IconArrowUp, "size-3.5")
+							<span class="sr-only">Priority </span>
+							High
+						</span>
+					} else if r.Priority == core.DownloadPriorityLow {
+						<span class="inline-flex items-center gap-1 text-fg-subtle">
+							@Icon(IconArrowDown, "size-3.5")
+							<span class="sr-only">Priority </span>
+							Low
+						</span>
+					}
+				</div>
+			</div>
+		</td>
+		<td data-label="Status">
+			@QueueStatus(r)
+		</td>
+		<td data-label="Progress">
+			@QueueProgress(r)
+		</td>
+		<td data-label="Speed">
+			@QueueSpeed(r)
+		</td>
+		<td data-label="ETA">
+			@QueueETA(r)
+		</td>
+		<td data-label="" class="md:w-px">
+			@QueueActions(r)
+		</td>
+	</tr>
+}
+
+templ QueueStatus(r *queueRowCtx) {
+	<div
+		id={ "dl-" + r.ID + "-status" }
+		if r.OOB {
+			hx-swap-oob="true"
+		}
+	>
+		@Badge(BadgeState(r.Badge), r.Status)
+	</div>
+}
+
+func (r *queueRowCtx) progressClass() string {
+	c := "progress min-w-0 flex-1"
+	if r.Variant != "" {
+		c += " progress-" + r.Variant
+	}
+	return c
+}
+
+templ QueueProgress(r *queueRowCtx) {
+	<div
+		id={ "dl-" + r.ID + "-progress" }
+		if r.OOB {
+			hx-swap-oob="true"
+		}
+		class="w-full max-w-64 md:w-52"
+	>
+		if r.Metadata {
+			<p class="text-sm text-fg-muted">Fetching metadata</p>
+		} else {
+			<div class="flex items-center gap-3">
+				<progress class={ r.progressClass() } value={ strconv.Itoa(r.Percent) } max="100" aria-label={ "Progress of " + r.ShortName }></progress>
+				<span class="w-10 shrink-0 text-right text-xs text-fg-muted tabular-nums">{ strconv.Itoa(r.Percent) }%</span>
+			</div>
+			if r.HasTotal {
+				<p class="mt-1 text-right text-xs text-fg-muted tabular-nums md:text-left">{ r.Done } / { r.Total }</p>
+			}
+		}
+	</div>
+}
+
+templ QueueSpeed(r *queueRowCtx) {
+	<div
+		id={ "dl-" + r.ID + "-speed" }
+		if r.OOB {
+			hx-swap-oob="true"
+		}
+		class="tabular-nums"
+	>
+		<div class="flex flex-wrap items-center justify-end gap-x-3 md:justify-start">
+			<span class="inline-flex items-center gap-1 whitespace-nowrap">
+				@Icon(IconArrowDown, "size-3.5 text-info-fg")
+				<span class="sr-only">Download </span>
+				{ r.Rate }
+			</span>
+			if r.Torrent {
+				<span class="inline-flex items-center gap-1 whitespace-nowrap">
+					@Icon(IconArrowUp, "size-3.5 text-ok-fg")
+					<span class="sr-only">Upload </span>
+					{ r.UpRate }
+				</span>
+			}
+		</div>
+		if r.ShowSwarm {
+			<p class="text-xs text-fg-muted">{ strconv.Itoa(r.Peers) } peers · ratio { r.Ratio }</p>
+		}
+	</div>
+}
+
+templ QueueETA(r *queueRowCtx) {
+	<div
+		id={ "dl-" + r.ID + "-eta" }
+		if r.OOB {
+			hx-swap-oob="true"
+		}
+		class="whitespace-nowrap tabular-nums text-fg-muted"
+	>{ r.ETA }</div>
+}
+
+// QueueLive is the cells above as out-of-band swaps (OOB set).
+templ QueueLive(r *queueRowCtx) {
+	@QueueStatus(r)
+	@QueueProgress(r)
+	@QueueSpeed(r)
+	@QueueETA(r)
+}
+
+templ QueueActions(r *queueRowCtx) {
+	<div class="flex items-center justify-end gap-1">
+		if r.CanPause {
+			<form method="post" action={ templ.SafeURL("/queue/" + r.ID + "/pause") } { Hx{Post: "/queue/" + r.ID + "/pause", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }>
+				@CSRFField(r.CSRF)
+				<button type="submit" class="btn btn-ghost btn-icon btn-sm" aria-label={ "Pause " + r.ShortName } title="Pause">
+					@Icon(IconPause, "size-4")
+				</button>
+			</form>
+		} else if r.CanResume {
+			<form method="post" action={ templ.SafeURL("/queue/" + r.ID + "/resume") } { Hx{Post: "/queue/" + r.ID + "/resume", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }>
+				@CSRFField(r.CSRF)
+				<button type="submit" class="btn btn-ghost btn-icon btn-sm" aria-label={ "Resume " + r.ShortName } title="Resume">
+					@Icon(IconPlay, "size-4")
+				</button>
+			</form>
+		}
+		<div x-data="menu" class="relative" @keydown.escape="close" @click.outside="closeQuiet">
+			<button type="button" x-ref="button" @click="toggle" @keydown="onButtonKey" class="btn btn-ghost btn-icon btn-sm" aria-haspopup="menu" :aria-expanded="open" aria-label={ "More actions for " + r.ShortName } title="More actions">
+				@Icon(IconMore, "size-4")
+			</button>
+			<div x-ref="panel" x-show="open" x-cloak x-transition.opacity.duration.100ms class="menu-panel max-h-96 overflow-y-auto text-left" role="menu" aria-label={ "Actions for " + r.ShortName } @keydown="onPanelKey" @click="closeQuiet">
+				<p class="menu-label">Priority</p>
+				@QueueChoice(queueChoice{ID: r.ID, Action: "priority", Key: "priority", Value: "force", Label: "Force", Radio: true, Checked: r.Priority == core.DownloadPriorityForce, Target: "closest tr"})
+				@QueueChoice(queueChoice{ID: r.ID, Action: "priority", Key: "priority", Value: "high", Label: "High", Radio: true, Checked: r.Priority == core.DownloadPriorityHigh, Target: "closest tr"})
+				@QueueChoice(queueChoice{ID: r.ID, Action: "priority", Key: "priority", Value: "normal", Label: "Normal", Radio: true, Checked: r.Priority == core.DownloadPriorityNormal, Target: "closest tr"})
+				@QueueChoice(queueChoice{ID: r.ID, Action: "priority", Key: "priority", Value: "low", Label: "Low", Radio: true, Checked: r.Priority == core.DownloadPriorityLow, Target: "closest tr"})
+				if r.CanMove {
+					<div class="menu-sep"></div>
+					<p class="menu-label">Position</p>
+					if !r.First {
+						@QueueChoice(queueChoice{ID: r.ID, Action: "move", Key: "to", Value: "top", Label: "Move to top", Target: "#queue-lists"})
+						@QueueChoice(queueChoice{ID: r.ID, Action: "move", Key: "to", Value: "up", Label: "Move up", Target: "#queue-lists"})
+					}
+					if !r.Last {
+						@QueueChoice(queueChoice{ID: r.ID, Action: "move", Key: "to", Value: "down", Label: "Move down", Target: "#queue-lists"})
+						@QueueChoice(queueChoice{ID: r.ID, Action: "move", Key: "to", Value: "bottom", Label: "Move to bottom", Target: "#queue-lists"})
+					}
+				}
+				if len(r.Cats) > 0 {
+					<div class="menu-sep"></div>
+					<p class="menu-label">Category</p>
+					@QueueChoice(queueChoice{ID: r.ID, Action: "category", Key: "category_id", Value: "none", Label: "No category", Radio: true, Checked: r.CategoryID == "", Target: "closest tr"})
+					for _, c := range r.Cats {
+						@QueueChoice(queueChoice{ID: r.ID, Action: "category", Key: "category_id", Value: c.ID, Label: c.Name, Radio: true, Checked: c.ID == r.CategoryID, Target: "closest tr"})
+					}
+				}
+				<div class="menu-sep"></div>
+				<button
+					type="button"
+					role="menuitem"
+					class="menu-item"
+					{ Hx{Post: "/queue/" + r.ID + "/remove", Vals: map[string]string{"delete_data": "false"}, Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }
+					hx-confirm={ "Remove " + r.ShortName + " from bitnews? Files already downloaded stay on disk." }
+					data-confirm-label="Remove"
+					data-confirm-tone="danger"
+				>
+					@Icon(IconClose, "size-5 text-fg-subtle")
+					Remove, keep files
+				</button>
+				<button
+					type="button"
+					role="menuitem"
+					class="menu-item text-bad-fg"
+					{ Hx{Post: "/queue/" + r.ID + "/remove", Vals: map[string]string{"delete_data": "true"}, Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }
+					hx-confirm={ "Remove " + r.ShortName + " and delete its files? This cannot be undone." }
+					data-confirm-label="Delete files"
+					data-confirm-tone="danger"
+				>
+					@Icon(IconTrash, "size-5")
+					Remove and delete files
+				</button>
+			</div>
+		</div>
+	</div>
+}
+
+// queueChoice is one menu entry that posts a single value for a row. Key and
+// Value are the form field (both validated by Hx), Radio entries show a
+// check when Checked.
+type queueChoice struct {
+	ID      string // the Download
+	Action  string // path segment
+	Key     string
+	Value   string
+	Label   string
+	Radio   bool
+	Checked bool
+	Target  string
+}
+
+func (c queueChoice) role() string {
+	if c.Radio {
+		return "menuitemradio"
+	}
+	return "menuitem"
+}
+
+// QueueChoice is one menu entry that posts a single value for the row.
+templ QueueChoice(c queueChoice) {
+	<button
+		type="button"
+		role={ c.role() }
+		if c.Radio {
+			aria-checked={ strconv.FormatBool(c.Checked) }
+		}
+		class="menu-item"
+		{ Hx{Post: "/queue/" + c.ID + "/" + c.Action, Vals: map[string]string{c.Key: c.Value}, Target: c.Target, Swap: "outerHTML"}.MustAttrs()... }
+	>
+		<span class="flex-1">{ c.Label }</span>
+		if c.Radio && c.Checked {
+			<span class="text-accent-text">
+				@Icon(IconCheck, "size-4")
+			</span>
+		}
+	</button>
+}

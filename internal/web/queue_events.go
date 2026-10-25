@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/a-h/templ"
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 )
@@ -257,7 +258,7 @@ func (s *Server) flushLive(ctx context.Context, b *batch, rows bool, last *liveS
 	}
 	st := s.currentStatus(ctx)
 	if st != *last {
-		out, err := s.tpl.execute("queue.html", "live_status_oob", st)
+		out, err := renderCtx(ctx, LiveStatusOOB(st))
 		if err != nil {
 			s.Logger.Error("live status render failed", "err", err)
 			return true
@@ -268,6 +269,13 @@ func (s *Server) flushLive(ctx context.Context, b *batch, rows bool, last *liveS
 		*last = st
 	}
 	return true
+}
+
+// renderCtx renders a component for the stream, which has a context but no
+// request per frame. Like renderBytes, an invalid Hx is returned as an error.
+func renderCtx(ctx context.Context, c templ.Component) ([]byte, error) {
+	r := (&http.Request{}).WithContext(ctx)
+	return renderBytes(r, c)
 }
 
 // removedFragments deletes rows out of band.
@@ -314,7 +322,7 @@ func (s *Server) liveCells(ctx context.Context, b batch) string {
 				d.TotalBytes = p.TotalBytes
 			}
 		}
-		out, err := s.tpl.execute("queue.html", "queue_live", queueRowCtx{queueRow: newQueueRow(s.View.Of(ctx, d), ""), OOB: true})
+		out, err := renderCtx(ctx, QueueLive(&queueRowCtx{queueRow: newQueueRow(s.View.Of(ctx, d), ""), OOB: true}))
 		if err != nil {
 			s.Logger.Error("live row render failed", "err", err)
 			continue

@@ -1,9 +1,0 @@
-{{define "subtitle"}}<p class="mt-1 text-sm text-fg-muted">Everything that is waiting to download, downloading or being processed right now.</p>{{end}}
-
-{{define "content"}}
-{{template "queue_lists" .Page}}
-{{end}}
-
-{{/* Fragments that htmx swaps in (see queue.go). */}}
-{{define "queue_fragment"}}{{template "queue_lists" .Page}}{{end}}
-{{define "queue_row_fragment"}}{{template "queue_row" .Page}}{{end}}

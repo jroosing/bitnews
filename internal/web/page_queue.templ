@@ -1,0 +1,20 @@
+package web
+
+// queuePage builds the Queue page for pages.go from what queueData returned.
+func queuePage(v *View, data any) templ.Component {
+	q, _ := data.(*queueView)
+	return QueuePage(v, q)
+}
+
+// queueSubtitle is the line under the page heading.
+templ queueSubtitle() {
+	<p class="mt-1 text-sm text-fg-muted">Everything that is waiting to download, downloading or being processed right now.</p>
+}
+
+// QueuePage is the Queue page. The lists inside are also served alone as a
+// fragment (see queue.go).
+templ QueuePage(v *View, q *queueView) {
+	@AppLayout(v, queueSubtitle(), nil) {
+		@QueueLists(q)
+	}
+}

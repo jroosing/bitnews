@@ -344,7 +344,5 @@ func (s *Server) renderQueueLists(w http.ResponseWriter, r *http.Request, status
 		s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not load the queue. Details are in the server log.")
 		return
 	}
-	v := s.newView(r, "Queue")
-	v.Page = data
-	s.renderFragment(w, r, status, "queue.html", "queue_fragment", v)
+	s.renderComponent(w, r, status, QueueLists(data))
 }
