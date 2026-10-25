@@ -1,0 +1,283 @@
+package web
+
+import "strconv"
+
+// serversSubtitle is the section description under the page heading.
+templ serversSubtitle(description string) {
+	<p class="mt-1 text-sm text-fg-muted">{ description }</p>
+}
+
+// SettingsServersPage is the Usenet servers section: the list card and the
+// add / edit dialog it fills.
+templ SettingsServersPage(v *View, p settingsPage, d serversPageData) {
+	@AppLayout(v, serversSubtitle(p.Section.Description), nil) {
+		@SettingsLayout(p.Nav) {
+			<div x-data="serverDialog" @dialog-close.window="hide" @htmx:after-swap="onSwap">
+				@ServersList(d.List)
+				<dialog x-ref="dlg" id="server-dialog" class="modal max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto" aria-labelledby="server-dialog-title" @click="onBackdrop" @close="onClose">
+					<div id="server-dialog-body" x-ref="body"></div>
+				</dialog>
+			</div>
+		}
+	}
+}
+
+// ServersList is the card with the table of servers. It is also the htmx
+// fragment that replaces #servers-list.
+templ ServersList(v serversView) {
+	<section id="servers-list" class="card" aria-labelledby="servers-title">
+		<header class="card-header">
+			<div>
+				<h2 id="servers-title" class="text-base">Usenet servers</h2>
+				<p class="mt-0.5 text-sm text-fg-muted">Your Usenet providers. All connections use TLS and certificates are always checked.</p>
+			</div>
+			@Button(ButtonProps{Label: "Add server", Icon: IconPlus, Hx: Hx{Get: "/settings/servers/new", Target: "#server-dialog-body", Swap: "innerHTML"}})
+		</header>
+		if len(v.Items) > 0 {
+			@TableShell("Usenet servers, in the order they are tried", "rounded-none border-0 shadow-none") {
+				<thead>
+					<tr>
+						<th scope="col">Server</th>
+						<th scope="col">Priority</th>
+						<th scope="col">Enabled</th>
+						<th scope="col"><span class="sr-only">Actions</span></th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, r := range v.Items {
+						@ServerRow(r)
+					}
+				</tbody>
+			}
+			<p class="border-t border-line px-5 py-3 text-xs text-fg-muted">
+				@Icon(IconInfo, "mr-1.5 inline size-4 align-text-bottom")
+				<strong class="font-medium text-fg">Server priority:</strong>
+				{ " lower numbers are tried first. Servers with the same number share the load. Use a higher number for a block account that should only fill the gaps the others leave." }
+			</p>
+		} else {
+			<div class="flex flex-col items-center px-6 py-12 text-center">
+				<span class="flex size-12 items-center justify-center rounded-full bg-surface-2 text-fg-subtle">
+					@Icon(IconServer, "size-6")
+				</span>
+				<h3 class="mt-4 text-base">No Usenet servers yet</h3>
+				<p class="mt-1 max-w-md text-sm text-fg-muted">
+					{ "Add the server your Usenet provider gave you to start downloading NZBs. You can add several: " }
+					<strong class="font-medium text-fg">lower priority numbers are tried first</strong>
+					{ ", and servers with the same number share the load. Use higher numbers for block accounts that should only fill gaps." }
+				</p>
+				<div class="mt-5">
+					@Button(ButtonProps{Label: "Add your first server", Icon: IconPlus, Hx: Hx{Get: "/settings/servers/new", Target: "#server-dialog-body", Swap: "innerHTML"}})
+				</div>
+			</div>
+		}
+	</section>
+}
+
+// ServerRow is one server in the table.
+templ ServerRow(r serverRow) {
+	<tr id={ "server-" + r.ID }>
+		<td data-label="" class="w-full min-w-0">
+			<div class="min-w-0 text-left">
+				<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+					<span class={ "font-medium break-words", templ.KV("text-fg", r.Enabled), templ.KV("text-fg-muted", !r.Enabled) }>{ r.Name }</span>
+					<span class="inline-flex items-center gap-1 rounded-full bg-ok-soft px-2 py-0.5 text-xs font-medium text-ok-fg">
+						@Icon(IconLock, "size-3")
+						TLS only
+					</span>
+					if r.PasswordUnavailable {
+						<span class="badge badge-paused">Password unavailable</span>
+					}
+				</div>
+				<p class="mt-0.5 font-mono text-xs break-all text-fg-muted">{ r.Host }:{ strconv.Itoa(r.Port) }</p>
+				<p class="mt-0.5 text-xs text-fg-muted">{ r.limitsText() }</p>
+				if r.PasswordUnavailable {
+					<div class="mt-2">
+						@Button(ButtonProps{Label: "Re-enter password", Icon: IconKey, Variant: ButtonSecondary, Size: ButtonSmall, Hx: Hx{Get: "/settings/servers/" + r.ID + "/edit?reenter=1", Target: "#server-dialog-body", Swap: "innerHTML"}})
+					</div>
+				}
+				<div id={ "server-test-" + r.ID } aria-live="polite" class="mt-2 empty:hidden"></div>
+			</div>
+		</td>
+		<td data-label="Priority">
+			<div class="flex items-center gap-1">
+				<span class="w-6 text-right font-medium tabular-nums text-fg" title="Server priority">{ strconv.Itoa(r.Priority) }</span>
+				@Button(ButtonProps{Label: "Try " + r.Name + " earlier", Icon: IconArrowUp, IconOnly: true, Variant: ButtonGhost, Size: ButtonSmall, Disabled: r.First, Hx: Hx{Post: "/settings/servers/" + r.ID + "/move/up", Target: "#servers-list", Swap: "outerHTML"}})
+				@Button(ButtonProps{Label: "Try " + r.Name + " later", Icon: IconArrowDown, IconOnly: true, Variant: ButtonGhost, Size: ButtonSmall, Disabled: r.Last, Hx: Hx{Post: "/settings/servers/" + r.ID + "/move/down", Target: "#servers-list", Swap: "outerHTML"}})
+			</div>
+		</td>
+		<td data-label="Enabled">
+			<input
+				id={ "server-enabled-" + r.ID }
+				name="enabled"
+				value="on"
+				type="checkbox"
+				role="switch"
+				class="switch"
+				checked?={ r.Enabled }
+				aria-label={ "Enabled: " + r.Name }
+				{ Hx{Patch: "/settings/servers/" + r.ID, Trigger: "change", Target: "#servers-list", Swap: "outerHTML"}.MustAttrs()... }
+				data-revert-on-error
+			/>
+		</td>
+		<td data-label="" class="whitespace-nowrap md:w-px">
+			<div class="flex justify-end gap-1">
+				@Button(ButtonProps{Label: "Test", Icon: IconBolt, Variant: ButtonSecondary, Size: ButtonSmall, Loading: true, Hx: Hx{Post: "/settings/servers/" + r.ID + "/test", Target: "#server-test-" + r.ID, Swap: "innerHTML"}})
+				@Button(ButtonProps{Label: "Edit", Variant: ButtonGhost, Size: ButtonSmall, Hx: Hx{Get: "/settings/servers/" + r.ID + "/edit", Target: "#server-dialog-body", Swap: "innerHTML"}})
+				<button
+					type="button"
+					class="btn btn-ghost btn-sm btn-icon"
+					aria-label={ "Delete " + r.Name }
+					{ Hx{Delete: "/settings/servers/" + r.ID, Target: "#servers-list", Swap: "outerHTML", Confirm: "Delete the server " + r.Name + "? Downloads in progress keep going on your other servers."}.MustAttrs()... }
+					data-confirm-tone="danger"
+					data-confirm-label="Delete"
+				>
+					@Icon(IconTrash, "size-4 shrink-0")
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+// ServerForm is the body of the add / edit dialog. The password is never
+// rendered: the field has no value attribute, ever.
+templ ServerForm(v serverFormView) {
+	<form
+		id="server-form"
+		method="post"
+		action={ templ.SafeURL(v.action()) }
+		{ Hx{Post: v.action(), Target: "#server-dialog-body", Swap: "innerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
+		x-data="serverForm"
+		@input="clearResult"
+		class="p-6"
+		novalidate
+	>
+		@CSRFField(v.CSRF)
+		if v.ID != "" {
+			<input type="hidden" name="server_id" value={ v.ID }/>
+		}
+		<h2 id="server-dialog-title" class="text-lg">
+			if v.ID != "" {
+				Edit server
+			} else {
+				Add a Usenet server
+			}
+		</h2>
+		<p class="mt-1.5 flex items-center gap-1.5 text-sm text-fg-muted">
+			@Icon(IconLock, "size-4 shrink-0")
+			Connections always use TLS and the certificate is always checked.
+		</p>
+		<div class="mt-4 space-y-4">
+			if v.PasswordUnavailable {
+				@Alert(AlertProps{Variant: AlertWarn, Title: "The stored password cannot be read", Body: "This can happen after restoring a backup on another install. Enter the password again to use this server."})
+			}
+			if v.Error != "" {
+				@Alert(AlertProps{Variant: AlertDanger, Body: v.Error, ID: "server-form-error"})
+			}
+			@Field(FieldProps{ID: "server-name", Name: "name", Label: "Name", Value: v.Name, Error: v.Errors["name"], Help: "A label for you, such as the provider's name.", Required: true, Autofocus: !v.PasswordUnavailable, Autocomplete: "off", MaxLength: 64})
+			<fieldset class="min-w-0">
+				<legend class="mb-2 text-sm font-semibold text-fg">Connection</legend>
+				<div class="grid gap-4 sm:grid-cols-6">
+					@Field(FieldProps{ID: "server-host", Name: "host", Label: "Host", Value: v.Host, Error: v.Errors["host"], Help: "For example news.example.com", Required: true, Raw: true, Autocomplete: "off", Class: "sm:col-span-4"})
+					@Field(FieldProps{ID: "server-port", Name: "port", Label: "Port", Value: v.Port, Error: v.Errors["port"], Type: FieldNumber, Inputmode: "numeric", Required: true, Class: "sm:col-span-2"})
+				</div>
+			</fieldset>
+			<fieldset class="min-w-0">
+				<legend class="mb-2 text-sm font-semibold text-fg">Login</legend>
+				<div class="grid gap-4 sm:grid-cols-2">
+					@Field(FieldProps{ID: "server-username", Name: "username", Label: "User name", Value: v.Username, Error: v.Errors["username"], Optional: true, Raw: true, Autocomplete: "off"})
+					@Field(FieldProps{ID: "server-password", Name: "password", Label: "Password", Type: FieldPassword, Error: v.Errors["password"], Optional: !v.PasswordUnavailable, Raw: true, Autocomplete: "new-password", Autofocus: v.Errors["password"] != "", Placeholder: v.passwordPlaceholder(), Help: v.passwordHelp()})
+				</div>
+			</fieldset>
+			<fieldset class="min-w-0">
+				<legend class="mb-2 text-sm font-semibold text-fg">Limits</legend>
+				<div class="grid gap-4 sm:grid-cols-3">
+					@Field(FieldProps{ID: "server-connections", Name: "max_connections", Label: "Connections", Value: v.MaxConnections, Error: v.Errors["max_connections"], Type: FieldNumber, Inputmode: "numeric", Required: true, Help: "1 to 100"})
+					@Field(FieldProps{ID: "server-retention", Name: "retention_days", Label: "Retention (days)", Value: v.RetentionDays, Error: v.Errors["retention_days"], Type: FieldNumber, Inputmode: "numeric", Help: "0 means unlimited"})
+					@Field(FieldProps{ID: "server-priority", Name: "priority", Label: "Priority", Value: v.Priority, Error: v.Errors["priority"], Type: FieldNumber, Inputmode: "numeric", Help: "Lower is tried first"})
+				</div>
+			</fieldset>
+			<div class="rounded-lg border border-line bg-surface-2 px-4 py-3">
+				@SwitchField(CheckProps{ID: "server-enabled", Name: "enabled", Label: "Enabled", Help: "A disabled server keeps its settings but is not used.", Checked: v.Enabled})
+			</div>
+			<div id="server-test-result" x-ref="result" aria-live="polite" class="empty:hidden"></div>
+		</div>
+		<div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+			@Button(ButtonProps{Label: "Test connection", Icon: IconBolt, Variant: ButtonSecondary, Loading: true, Hx: Hx{Post: "/settings/servers/test", Target: "#server-test-result", Swap: "innerHTML"}})
+			<div class="flex items-center gap-2">
+				<button type="button" class="btn btn-secondary" @click="hide">Cancel</button>
+				<button type="submit" class="btn btn-primary">
+					<span class="btn-spinner" aria-hidden="true"></span>
+					if v.ID != "" {
+						Save server
+					} else {
+						Add server
+					}
+				</button>
+			</div>
+		</div>
+	</form>
+}
+
+// ProbeResult is a connection test result: the full alert in the dialog, or
+// the compact line inside a table row.
+templ ProbeResult(v probeView) {
+	if v.Compact {
+		<p class={ "flex items-start gap-1.5 text-xs", templ.KV("text-ok-fg", v.OK), templ.KV("text-bad-fg", !v.OK) } role="status">
+			if v.OK {
+				@Icon(IconCheckCircle, "mt-px size-4 shrink-0")
+			} else {
+				@Icon(IconError, "mt-px size-4 shrink-0")
+			}
+			<span>
+				<strong class="font-semibold">{ v.Title + "." }</strong>
+				if v.OK {
+					{ " " + v.Timing }
+				} else {
+					{ " " + v.Body }
+				}
+			</span>
+		</p>
+	} else {
+		<div class={ "alert", v.alertClass() } role={ v.role() } data-probe={ v.probe() }>
+			switch {
+				case v.OK:
+					@Icon(IconCheckCircle, "mt-0.5 size-5 shrink-0")
+				case len(v.Steps) > 0:
+					@Icon(IconError, "mt-0.5 size-5 shrink-0")
+				default:
+					@Icon(IconWarning, "mt-0.5 size-5 shrink-0")
+			}
+			<div class="min-w-0">
+				<p class="alert-title">{ v.Title }</p>
+				<p class="mt-0.5">
+					if v.OK {
+						{ v.Timing }
+					} else {
+						{ v.Body }
+					}
+				</p>
+				if v.Detail != "" {
+					<p class="mt-1 text-xs opacity-80">{ "Server said: " + v.Detail }</p>
+				}
+				if len(v.Steps) > 0 {
+					<ol class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label="Connection steps">
+						for _, st := range v.Steps {
+							<li class={ "inline-flex items-center gap-1", templ.KV("opacity-60", st.State == probeSkipped) }>
+								switch st.State {
+									case probeOK:
+										@Icon(IconCheck, "size-3.5")
+									case probeFail:
+										@Icon(IconClose, "size-3.5")
+									default:
+										<span class="inline-block w-3.5 text-center" aria-hidden="true">-</span>
+								}
+								<span>{ st.Label }</span>
+								<span class="sr-only">{ ": " + st.srText() }</span>
+							</li>
+						}
+					</ol>
+				}
+			</div>
+		</div>
+	}
+}

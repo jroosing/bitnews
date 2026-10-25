@@ -74,7 +74,7 @@ func (s *Server) getAccess(w http.ResponseWriter, r *http.Request) {
 		s.redirect(w, r, "/settings/security")
 		return
 	}
-	s.renderSettingsPart(w, http.StatusOK, settingsSecurityPage, "access_card", s.accessViewFor(r))
+	s.renderComponent(w, r, http.StatusOK, SecurityAccessCard(s.accessViewFor(r)))
 }
 
 func (s *Server) getHosts(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +82,7 @@ func (s *Server) getHosts(w http.ResponseWriter, r *http.Request) {
 		s.redirect(w, r, "/settings/security")
 		return
 	}
-	s.renderSettingsPart(w, http.StatusOK, settingsSecurityPage, "hosts_card", s.hostsViewFor(r))
+	s.renderComponent(w, r, http.StatusOK, SecurityHostsCard(s.hostsViewFor(r)))
 }
 
 // Messages next to the fields.
@@ -230,7 +230,7 @@ func (s *Server) accessConfirm(r *http.Request, disable, newlyOff bool, nets, ne
 }
 
 func (s *Server) respondAccess(w http.ResponseWriter, r *http.Request, status int, v accessView) {
-	s.respondSecurityCard(w, r, status, "access_card", v, func(d *securityPageData) { d.Access = v })
+	s.respondSecurityCard(w, r, status, SecurityAccessCard(v), func(d *securityPageData) { d.Access = v })
 }
 
 // ---- allowed hosts and trusted proxies ------------------------------------
@@ -391,5 +391,5 @@ func (s *Server) hostsConfirm(r *http.Request, hosts, proxies, newProxies []stri
 }
 
 func (s *Server) respondHosts(w http.ResponseWriter, r *http.Request, status int, v hostsView) {
-	s.respondSecurityCard(w, r, status, "hosts_card", v, func(d *securityPageData) { d.Hosts = v })
+	s.respondSecurityCard(w, r, status, SecurityHostsCard(v), func(d *securityPageData) { d.Hosts = v })
 }

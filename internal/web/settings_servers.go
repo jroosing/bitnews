@@ -7,11 +7,17 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
-const settingsServersPage = "settings_servers.html"
+// settingsServersComponent is the Component of the Usenet servers section.
+func settingsServersComponent(v *View, p settingsPage) templ.Component {
+	d, _ := p.Data.(serversPageData)
+	return SettingsServersPage(v, p, d)
+}
 
 // serversPageData is the .Page.Data of the Usenet servers section.
 type serversPageData struct {
@@ -56,6 +62,34 @@ type serverFormView struct {
 	Error string
 }
 
+// action is where the dialog form posts: the server, or the collection when
+// adding.
+func (v serverFormView) action() string {
+	if v.ID != "" {
+		return "/settings/servers/" + v.ID
+	}
+	return "/settings/servers"
+}
+
+func (v serverFormView) passwordPlaceholder() string {
+	if v.HasPassword && !v.PasswordUnavailable {
+		return "Leave empty to keep it"
+	}
+	return ""
+}
+
+func (v serverFormView) passwordHelp() string {
+	switch {
+	case v.PasswordUnavailable:
+		return "The old password is lost, so type it again."
+	case v.HasPassword:
+		return "Write-only. Leave empty to keep the stored password."
+	case v.Error != "":
+		return "For safety the password is not kept: type it again."
+	}
+	return "Stored encrypted and never shown again."
+}
+
 func settingsServersData(s *Server, r *http.Request) (any, error) {
 	if s.Servers == nil {
 		return serversPageData{}, nil
@@ -85,6 +119,15 @@ func (s *Server) serverRowOf(csrf string, srv core.Server, first, last bool) ser
 		MaxConnections: srv.MaxConnections, RetentionDays: srv.RetentionDays, Retention: retentionText(srv.RetentionDays),
 		Priority: srv.Priority, Enabled: srv.Enabled, PasswordUnavailable: srv.PasswordUnavailable, First: first, Last: last,
 	}
+}
+
+// limitsText is the connections and retention line of a row.
+func (r serverRow) limitsText() string {
+	conns := strconv.Itoa(r.MaxConnections) + " connection"
+	if r.MaxConnections != 1 {
+		conns += "s"
+	}
+	return conns + " · Retention: " + r.Retention
 }
 
 func retentionText(days int) string {
@@ -230,11 +273,11 @@ var serverCodeFields = map[string]struct{ field, msg string }{
 
 // ---- the dialog -----------------------------------------------------------
 
-func (s *Server) renderServerForm(w http.ResponseWriter, status int, v serverFormView) {
+func (s *Server) renderServerForm(w http.ResponseWriter, r *http.Request, status int, v serverFormView) {
 	if v.Errors == nil {
 		v.Errors = map[string]string{}
 	}
-	s.renderSettingsPart(w, status, settingsServersPage, "server_form", v)
+	s.renderComponent(w, r, status, ServerForm(v))
 }
 
 func (s *Server) getServerNew(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +293,7 @@ func (s *Server) getServerNew(w http.ResponseWriter, r *http.Request) {
 	for _, srv := range servers {
 		priority = max(priority, srv.Priority+1)
 	}
-	s.renderServerForm(w, http.StatusOK, serverFormView{
+	s.renderServerForm(w, r, http.StatusOK, serverFormView{
 		CSRF: settingsCSRF(r), Port: strconv.Itoa(core.DefaultServerPort), MaxConnections: "8",
 		RetentionDays: "0", Priority: strconv.Itoa(priority), Enabled: true,
 	})
@@ -269,7 +312,7 @@ func (s *Server) getServerEdit(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("reenter") == "1" && srv.PasswordUnavailable {
 		v.Errors = map[string]string{"password": "Enter the password again."}
 	}
-	s.renderServerForm(w, http.StatusOK, v)
+	s.renderServerForm(w, r, http.StatusOK, v)
 }
 
 func serverFormViewOf(csrf string, srv core.Server) serverFormView {
@@ -296,7 +339,7 @@ func (s *Server) serverSaved(w http.ResponseWriter, r *http.Request, message str
 	w.Header().Set("HX-Retarget", "#servers-list")
 	w.Header().Set("HX-Reswap", "outerHTML")
 	settingsTrigger(w, "success", message, map[string]any{"dialog-close": true})
-	s.renderSettingsPart(w, http.StatusOK, settingsServersPage, "servers_list", v)
+	s.renderComponent(w, r, http.StatusOK, ServersList(v))
 }
 
 // serverRejected answers a form that did not pass.
@@ -313,7 +356,7 @@ func (s *Server) serverRejected(w http.ResponseWriter, r *http.Request, v server
 		s.renderError(w, r, http.StatusUnprocessableEntity, "The server was not saved", msg)
 		return
 	}
-	s.renderServerForm(w, http.StatusUnprocessableEntity, v)
+	s.renderServerForm(w, r, http.StatusUnprocessableEntity, v)
 }
 
 func (s *Server) postServerCreate(w http.ResponseWriter, r *http.Request) {
@@ -422,7 +465,7 @@ func (s *Server) respondServersList(w http.ResponseWriter, r *http.Request, mess
 	if message != "" {
 		settingsTrigger(w, "success", message, nil)
 	}
-	s.renderSettingsPart(w, http.StatusOK, settingsServersPage, "servers_list", v)
+	s.renderComponent(w, r, http.StatusOK, ServersList(v))
 }
 
 func (s *Server) deleteServer(w http.ResponseWriter, r *http.Request) {
