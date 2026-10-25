@@ -76,8 +76,8 @@ func TestMovePriorities(t *testing.T) {
 	}
 }
 
-func TestEverySettingsSectionHasATemplate(t *testing.T) {
+func TestEverySettingsSectionHasAView(t *testing.T) {
 	for _, sec := range settingsSections() {
-		assert.NotEmpty(t, sec.Template, sec.Slug)
+		assert.True(t, sec.Template != "" || sec.Component != nil, sec.Slug)
 	}
 }
