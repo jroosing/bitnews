@@ -11,7 +11,7 @@ TOOLS_BIN := $(CURDIR)/bin/tools
 
 # image-push builds the linux/amd64 image and pushes it to ghcr.io
 # from this machine, tagged $(VERSION) and latest. Log in first (docs/deploy.md).
-.PHONY: image-push tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check
+.PHONY: image-push tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check generate generate-check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/bitnews ./cmd/bitnews
@@ -73,11 +73,11 @@ fuzz-smoke: tools
 		done; \
 	done
 
-check: fmt-check fix-check lint test e2e vuln
+check: fmt-check fix-check generate-check lint test e2e vuln
 
 # The web UI stylesheet. internal/web/assets/static/app.css is generated and
 # committed, so `go build` and CI need no Tailwind step. Run `make css` after
-# changing a template, internal/web/src/app.css or internal/web/assets/static/js.
+# changing a .templ file, internal/web/src/app.css or internal/web/assets/static/js.
 # The standalone CLI (no node) is downloaded and checksum-verified into
 # bin/tools/ by scripts/get-tailwind.sh.
 WEB_CSS_SRC := internal/web/src/app.css
@@ -96,3 +96,18 @@ css-check:
 		$$tw -i $(WEB_CSS_SRC) -o $$tmp --minify >/dev/null 2>&1 && \
 		if cmp -s $$tmp $(WEB_CSS_OUT); then rm -f $$tmp; echo "css up to date"; \
 		else rm -f $$tmp; echo "$(WEB_CSS_OUT) is out of date (run 'make css')"; exit 1; fi
+
+# The web UI views (ADR-0011). internal/web/*_templ.go is generated from the
+# .templ files and committed, so `go build` and CI need no generate step. The
+# generator is pinned through the tool directive in go.mod. Run `make generate`
+# after changing a .templ file.
+generate:
+	go tool templ generate -path internal/web
+
+# Fails when a committed *_templ.go is out of date (it leaves the regenerated
+# files in place). Part of `check`, not of CI.
+generate-check:
+	@sum() { find internal/web -name '*_templ.go' | sort | xargs cat 2>/dev/null | cksum; }; \
+	before=$$(sum); go tool templ generate -path internal/web >/dev/null || exit 1; after=$$(sum); \
+	if [ "$$before" = "$$after" ]; then echo "templ up to date"; \
+	else echo "*_templ.go is out of date (run 'make generate')"; exit 1; fi

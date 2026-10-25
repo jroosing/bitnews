@@ -3,11 +3,13 @@ module github.com/jroosing/bitnews
 go 1.27.3
 
 tool (
+	github.com/a-h/templ/cmd/templ
 	golang.org/x/vuln/cmd/govulncheck
 	honnef.co/go/tools/cmd/staticcheck
 )
 
 require (
+	github.com/a-h/templ v0.3.1070
 	github.com/anacrolix/dht/v2 v2.23.0
 	github.com/anacrolix/torrent v1.61.0
 	github.com/anacrolix/utp v0.1.0
@@ -21,6 +23,7 @@ require (
 require (
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
 	github.com/RoaringBitmap/roaring v1.2.3 // indirect
+	github.com/a-h/parse v0.0.0-20250122154542-74294addb73e // indirect
 	github.com/alecthomas/atomic v0.1.0-alpha2 // indirect
 	github.com/anacrolix/btree v0.0.0-20251201064447-d86c3fa41bd8 // indirect
 	github.com/anacrolix/chansync v0.7.0 // indirect
@@ -36,15 +39,20 @@ require (
 	github.com/anacrolix/stm v0.5.0 // indirect
 	github.com/anacrolix/sync v0.5.5-0.20251119100342-d78dd1f686f1 // indirect
 	github.com/anacrolix/upnp v0.1.4 // indirect
+	github.com/andybalholm/brotli v1.2.6 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/benbjohnson/immutable v0.4.1-0.20221220213129-8932b999621d // indirect
 	github.com/bits-and-blooms/bitset v1.2.2 // indirect
 	github.com/bradfitz/iter v0.0.0-20191230175014-e8f45d346db8 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cli/browser v1.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
+	github.com/fatih/color v1.19.0 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-llsqlite/adapter v0.0.0-20230927005056-7f5ce7f0c916 // indirect
 	github.com/go-llsqlite/crawshaw v0.5.6-0.20250312230104-194977a03421 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -55,12 +63,14 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.3 // indirect
+	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/multiformats/go-multihash v0.2.3 // indirect
 	github.com/multiformats/go-varint v0.0.6 // indirect
+	github.com/natefinch/atomic v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pion/datachannel v1.5.9 // indirect
 	github.com/pion/dtls/v3 v3.1.4 // indirect

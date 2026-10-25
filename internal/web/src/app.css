@@ -17,6 +17,7 @@
 @source "../assets/templates";
 @source "../assets/static/js";
 @source "../*.go";
+@source "../*.templ";
 @source not "../*_test.go";
 
 /* Dark mode follows the OS unless the user picked a theme: theme.js sets

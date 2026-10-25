@@ -65,8 +65,19 @@ out="$root/internal/web/icons_gen.go"
 	echo
 	echo "package web"
 	echo
-	echo "// iconPaths maps an icon name to the inner markup of its 24x24 outline SVG."
-	echo "var iconPaths = map[string]string{"
+	echo "// IconName names one embedded icon. An unknown icon does not compile."
+	echo "type IconName string"
+	echo
+	echo "const ("
+	for spec in $ICONS; do
+		name="${spec%%=*}"
+		const="$(echo "$name" | awk -F- '{ for (i = 1; i <= NF; i++) printf "%s%s", toupper(substr($i, 1, 1)), substr($i, 2) }')"
+		printf '\tIcon%s IconName = "%s"\n' "$const" "$name"
+	done
+	echo ")"
+	echo
+	echo "// iconPaths maps an icon to the inner markup of its 24x24 outline SVG."
+	echo "var iconPaths = map[IconName]string{"
 	for spec in $ICONS; do
 		name="${spec%%=*}"
 		file="$work/package/24/outline/${spec#*=}.svg"

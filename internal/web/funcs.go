@@ -27,7 +27,7 @@ func templateFuncs(a *assets) template.FuncMap {
 // embedded icons. classes are written by template authors (never user
 // data); they are escaped anyway.
 func icon(name string, classes ...string) (template.HTML, error) {
-	inner, ok := iconPaths[name]
+	inner, ok := iconPaths[IconName(name)]
 	if !ok {
 		return "", fmt.Errorf("web: unknown icon %q", name)
 	}

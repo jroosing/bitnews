@@ -105,7 +105,7 @@ func styleguideData(*Server, *http.Request) (any, error) {
 		Options: []option{{"force", "Force"}, {"high", "High"}, {"normal", "Normal"}, {"low", "Low"}},
 	}
 	for name := range iconPaths {
-		g.Icons = append(g.Icons, name)
+		g.Icons = append(g.Icons, string(name))
 	}
 	slices.Sort(g.Icons)
 	return g, nil

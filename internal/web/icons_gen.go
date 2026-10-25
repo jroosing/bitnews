@@ -3,8 +3,52 @@
 
 package web
 
-// iconPaths maps an icon name to the inner markup of its 24x24 outline SVG.
-var iconPaths = map[string]string{
+// IconName names one embedded icon. An unknown icon does not compile.
+type IconName string
+
+const (
+	IconQueue        IconName = "queue"
+	IconUpload       IconName = "upload"
+	IconArrowDown    IconName = "arrow-down"
+	IconArrowUp      IconName = "arrow-up"
+	IconHistory      IconName = "history"
+	IconSettings     IconName = "settings"
+	IconMenu         IconName = "menu"
+	IconClose        IconName = "close"
+	IconSun          IconName = "sun"
+	IconMoon         IconName = "moon"
+	IconDesktop      IconName = "desktop"
+	IconSignOut      IconName = "sign-out"
+	IconUser         IconName = "user"
+	IconCheck        IconName = "check"
+	IconCheckCircle  IconName = "check-circle"
+	IconWarning      IconName = "warning"
+	IconInfo         IconName = "info"
+	IconError        IconName = "error"
+	IconChevronDown  IconName = "chevron-down"
+	IconChevronLeft  IconName = "chevron-left"
+	IconChevronRight IconName = "chevron-right"
+	IconPlus         IconName = "plus"
+	IconTrash        IconName = "trash"
+	IconPause        IconName = "pause"
+	IconPlay         IconName = "play"
+	IconCopy         IconName = "copy"
+	IconInbox        IconName = "inbox"
+	IconEye          IconName = "eye"
+	IconEyeSlash     IconName = "eye-slash"
+	IconLock         IconName = "lock"
+	IconKey          IconName = "key"
+	IconSearch       IconName = "search"
+	IconMore         IconName = "more"
+	IconRefresh      IconName = "refresh"
+	IconShield       IconName = "shield"
+	IconServer       IconName = "server"
+	IconFolder       IconName = "folder"
+	IconBolt         IconName = "bolt"
+)
+
+// iconPaths maps an icon to the inner markup of its 24x24 outline SVG.
+var iconPaths = map[IconName]string{
 	"queue":         `<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>`,
 	"upload":        `<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/>`,
 	"arrow-down":    `<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3"/>`,

@@ -53,7 +53,7 @@ func TemplateFuncs() template.FuncMap {
 func Icons() []string {
 	var out []string
 	for name := range iconPaths {
-		out = append(out, name)
+		out = append(out, string(name))
 	}
 	return out
 }
