@@ -98,6 +98,15 @@ docker compose logs bitnews        # setup token
 
 Open `http://<host>:9494`. The healthcheck is inherited from the image.
 
+**Another port.** The example reads `BITNEWS_PORT` (default `9494`) for both the published port and `BITNEWS_LISTEN`, so one value moves the UI, the API and the Sonarr/Radarr adapters. Put it in a `.env` file next to the compose file:
+
+```sh
+echo BITNEWS_PORT=8080 > .env
+docker compose up -d
+```
+
+Point Sonarr, Radarr and Prowlarr at the new port. The healthcheck follows `BITNEWS_LISTEN` by itself. To keep 9494 inside the container and only change the host side, leave `BITNEWS_PORT` alone and edit the mapping to `"8080:9494"`.
+
 ### Torrent port
 
 The torrent engine listens on the port of Settings, Torrent network (default `51413`) or, when you set `BITNEWS_TORRENT_PORT`, on that port: the settings page then shows it read-only. A port changed in the settings or through `POST /api/v1/torrent/port` is used right away, without a restart. It listens for TCP and uTP (UDP) and, with DHT on, uses the same UDP port. bitnews does **no UPnP or NAT-PMP port mapping**, ever. Peers can only reach you if you forward that port yourself (router: TCP and UDP to the host running bitnews). Without a forwarded port torrents still download and seed over the connections bitnews opens itself, only more slowly and to fewer peers.
@@ -129,7 +138,7 @@ Providers such as ProtonVPN hand out a forwarded port that changes when the VPN 
       VPN_PORT_FORWARDING_UP_COMMAND: >-
         /bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do
         wget -qO- --header="X-Api-Key: YOUR_API_KEY" --header="Content-Type: application/json"
-        --post-data="{\"port\":{{PORTS}}}" http://127.0.0.1:9494/api/v1/torrent/port && exit 0;
+        --post-data="{\"port\":{{PORTS}}}" http://127.0.0.1:${BITNEWS_PORT:-9494}/api/v1/torrent/port && exit 0;
         sleep 3; done; exit 1'
 ```
 
