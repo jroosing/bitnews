@@ -1,0 +1,117 @@
+package web
+
+// HistoryRow is one finished Download as a table row (a card below 768 px).
+// Names, paths and failure details are hostile input: they only appear as
+// escaped text or attribute values, never in hx-vals or an Alpine expression.
+templ HistoryRow(r historyRow) {
+	<tr id={ "download-" + r.ID } data-state={ r.State }>
+		<td data-label="" class="md:w-[40%] md:max-w-0">
+			<div class="flex min-w-0 items-start gap-3 text-left">
+				<span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-fg-subtle" title={ r.KindLabel }>
+					@Icon(IconName(r.KindIcon), "size-4")
+					<span class="sr-only">{ r.KindLabel }</span>
+				</span>
+				<div class="min-w-0 flex-1">
+					<a href={ templ.SafeURL("/downloads/" + r.ID) } class="block break-words font-medium text-fg hover:text-accent-text">{ r.Name }</a>
+					if r.Failed {
+						<p class="mt-1 text-sm">
+							<span class="font-medium text-bad-fg">{ r.Reason }</span>
+							if r.Detail != "" {
+								<span class="break-words text-fg-muted">{ " – " + r.Detail }</span>
+							}
+						</p>
+					} else if r.OutputPath != "" {
+						<div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-fg-muted">
+							@Icon(IconFolder, "size-3.5 shrink-0")
+							<span class="truncate font-mono" title={ r.OutputPath }>{ r.OutputPath }</span>
+							<span x-data="clipboard" x-cloak class="shrink-0">
+								<button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy={ r.OutputPath } @click="copy" aria-label={ "Copy the output path of " + r.ShortName } title="Copy path">
+									<span x-show="!copied">
+										@Icon(IconCopy, "size-4")
+									</span>
+									<span x-show="copied" x-cloak class="text-ok-fg">
+										@Icon(IconCheck, "size-4")
+									</span>
+								</button>
+							</span>
+						</div>
+					}
+				</div>
+			</div>
+		</td>
+		<td data-label="Status">
+			@Badge(BadgeState(r.Badge), r.BadgeLabel)
+		</td>
+		<td
+			data-label="Category"
+			if r.Category == "" {
+				class="max-md:hidden"
+			}
+		>
+			if r.Category != "" {
+				<span class="inline-flex max-w-40 items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-xs text-fg-muted ring-1 ring-line">
+					<span class="sr-only">{ "Category " }</span>
+					<span class="truncate">{ r.Category }</span>
+				</span>
+			} else {
+				<span class="text-fg-subtle" aria-label="No category">&ndash;</span>
+			}
+		</td>
+		<td data-label="Size" class="num whitespace-nowrap text-fg-muted">{ r.Size }</td>
+		<td data-label={ r.WhenLabel } class="whitespace-nowrap text-fg-muted">
+			if r.When.Valid {
+				<time datetime={ r.When.ISO } title={ r.When.Abs }>{ r.When.Rel }</time>
+			}
+		</td>
+		<td data-label="" class="md:w-px">
+			<div x-data="menu" class="relative flex w-full justify-end md:w-auto" @keydown.escape="close" @click.outside="closeQuiet">
+				<button type="button" x-ref="button" @click="toggle" @keydown="onButtonKey" class="btn btn-ghost btn-icon btn-sm" aria-haspopup="menu" :aria-expanded="open" aria-label={ "Actions for " + r.ShortName } title="Actions">
+					@Icon(IconMore, "size-4")
+				</button>
+				<div x-ref="panel" x-show="open" x-cloak x-transition.opacity.duration.100ms class="menu-panel text-left" role="menu" aria-label={ "Actions for " + r.ShortName } @keydown="onPanelKey" @click="closeQuiet">
+					<a role="menuitem" class="menu-item" href={ templ.SafeURL("/downloads/" + r.ID) }>
+						@Icon(IconInfo, "size-5 text-fg-subtle")
+						{ "View details" }
+					</a>
+					<div class="menu-sep"></div>
+					<button
+						type="button"
+						role="menuitem"
+						class="menu-item"
+						{ Hx{
+							Post:    "/downloads/" + r.ID + "/delete",
+							Vals:    map[string]string{"delete_data": "0", "from": "history"},
+							Target:  "closest tr",
+							Swap:    "outerHTML",
+							Confirm: "Remove " + r.ShortName + " from the history? Its files stay on disk.",
+						}.MustAttrs()... }
+						data-confirm-label="Remove"
+						data-confirm-tone="danger"
+					>
+						@Icon(IconClose, "size-5 text-fg-subtle")
+						{ "Remove from history" }
+					</button>
+					if r.Ready {
+						<button
+							type="button"
+							role="menuitem"
+							class="menu-item text-bad-fg"
+							{ Hx{
+								Post:    "/downloads/" + r.ID + "/delete",
+								Vals:    map[string]string{"delete_data": "1", "from": "history"},
+								Target:  "closest tr",
+								Swap:    "outerHTML",
+								Confirm: "Remove " + r.ShortName + " and delete its files? This cannot be undone.",
+							}.MustAttrs()... }
+							data-confirm-label="Delete files"
+							data-confirm-tone="danger"
+						>
+							@Icon(IconTrash, "size-5")
+							{ "Remove and delete files" }
+						</button>
+					}
+				</div>
+			</div>
+		</td>
+	</tr>
+}

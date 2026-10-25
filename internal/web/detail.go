@@ -91,7 +91,7 @@ type shareForm struct {
 	RatioError, MinutesError string
 }
 
-// detailPage is what detail.html and its live fragment render.
+// detailPage is what DetailPage and its live fragment render.
 type detailPage struct {
 	ID         string
 	Name       string
@@ -160,7 +160,7 @@ func (s *Server) renderDetail(w http.ResponseWriter, r *http.Request, status int
 	v := s.newView(r, histClean(page.Name, 80))
 	page.CSRF = v.CSRF
 	v.Page = page
-	s.render(w, r, status, "detail.html", "layout_app", v)
+	s.renderComponent(w, r, status, DetailPage(v, page))
 }
 
 // getDetailLive is the polled part of the page: the status, progress and
@@ -179,9 +179,7 @@ func (s *Server) getDetailLive(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, core.ErrNotFound) {
 		// Removed while the page was open: an ordinary answer (not an error
 		// toast) that ends the polling.
-		v := s.newView(r, "")
-		v.Page = detailPage{ID: id, Removed: true}
-		s.renderFragment(w, r, http.StatusOK, "detail.html", "detail_live", v)
+		s.renderComponent(w, r, http.StatusOK, DetailLive(detailPage{ID: id, Removed: true}))
 		return
 	}
 	if err != nil {
@@ -195,10 +193,7 @@ func (s *Server) getDetailLive(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not load this download. Details are in the server log.")
 		return
 	}
-	v := s.newView(r, "")
-	page.CSRF = v.CSRF
-	v.Page = page
-	s.renderFragment(w, r, http.StatusOK, "detail.html", "detail_live", v)
+	s.renderComponent(w, r, http.StatusOK, DetailLive(page))
 }
 
 // detailServices answers 503 when the Download service is missing.
@@ -564,10 +559,8 @@ func (s *Server) shareFormAgain(w http.ResponseWriter, r *http.Request, d core.D
 }
 
 func (s *Server) renderShareCard(w http.ResponseWriter, r *http.Request, status int, page detailPage) {
-	v := s.newView(r, "")
 	if p, ok := auth.FromContext(r.Context()); ok {
 		page.CSRF = p.CSRFToken()
 	}
-	v.Page = page
-	s.renderFragment(w, r, status, "detail.html", "share_card", v)
+	s.renderComponent(w, r, status, ShareCard(page))
 }

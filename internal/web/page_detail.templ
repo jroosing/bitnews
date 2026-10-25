@@ -1,0 +1,524 @@
+package web
+
+import "strconv"
+
+// detailLiveHx is the polling wiring of the live fragment: it carries the
+// trigger only while the Download is not terminal, so the polling ends with
+// the first terminal answer.
+func detailLiveHx(p detailPage) Hx {
+	if p.Terminal {
+		return Hx{}
+	}
+	return Hx{Get: p.LiveHref, Trigger: "every 3s", Swap: "outerHTML"}
+}
+
+func detailProgressVariant(p detailPage) ProgressVariant {
+	switch {
+	case p.Failed:
+		return ProgressBad
+	case p.Ready:
+		return ProgressOK
+	}
+	return ProgressDefault
+}
+
+func detailStateLine(p detailPage) string {
+	if p.Stage != "" {
+		return p.StateText + ": " + p.Stage
+	}
+	return p.StateText
+}
+
+func detailProgressText(p detailPage) string {
+	if p.Ready {
+		return p.Size
+	}
+	return p.Done + " of " + p.Size
+}
+
+func detailFileCountText(n int) string {
+	if n == 1 {
+		return "1 file in this torrent."
+	}
+	return strconv.Itoa(n) + " files in this torrent."
+}
+
+func detailBackHref(p detailPage) string {
+	if p.Terminal {
+		return "/history"
+	}
+	return "/queue"
+}
+
+func detailBackLabel(p detailPage) string {
+	if p.Terminal {
+		return "History"
+	}
+	return "Queue"
+}
+
+func detailCustomFlag(f shareForm) string {
+	if f.Custom {
+		return "1"
+	}
+	return ""
+}
+
+templ detailSubtitle(p detailPage) {
+	<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+		<span class="inline-flex items-center gap-1.5">
+			@Icon(IconName(p.KindIcon), "size-4")
+			{ p.KindLabel }
+		</span>
+		if p.Category != "" {
+			<span class="inline-flex items-center gap-1.5">
+				@Icon(IconFolder, "size-4")
+				<span class="sr-only">{ "Category " }</span>
+				{ p.Category }
+			</span>
+		}
+		if p.Added.Valid {
+			<span>
+				{ "Added " }
+				<time datetime={ p.Added.ISO } title={ p.Added.Abs }>{ p.Added.Rel }</time>
+			</span>
+		}
+	</p>
+}
+
+templ detailActions(p detailPage) {
+	<a href={ templ.SafeURL(detailBackHref(p)) } class="btn btn-secondary">
+		@Icon(IconChevronLeft, "size-4")
+		{ detailBackLabel(p) }
+	</a>
+}
+
+// DetailPage is the whole detail page of one Download.
+templ DetailPage(v *View, p detailPage) {
+	@AppLayout(v, detailSubtitle(p), detailActions(p)) {
+		<div x-data="tabs" class="space-y-6">
+			<div class="flex gap-6 overflow-x-auto border-b border-line" role="tablist" aria-label="Download sections">
+				<button type="button" role="tab" id="tab-overview" class="tab" data-tab="overview" aria-controls="panel-overview" :aria-selected="isActive('overview')" @click="select">Overview</button>
+				if p.Torrent != nil {
+					<button type="button" role="tab" id="tab-files" class="tab" data-tab="files" aria-controls="panel-files" :aria-selected="isActive('files')" @click="select">
+						{ "Files" }
+						if p.Torrent.FileCount != 0 {
+							{ " " }
+							<span class="text-fg-subtle tabular-nums">{ strconv.Itoa(p.Torrent.FileCount) }</span>
+						}
+					</button>
+				}
+				<button type="button" role="tab" id="tab-details" class="tab" data-tab="details" aria-controls="panel-details" :aria-selected="isActive('details')" @click="select">Details</button>
+			</div>
+			<div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" x-show="isActive('overview')" class="space-y-6">
+				@DetailLive(p)
+				if p.Torrent != nil {
+					@ShareCard(p)
+				}
+				@detailRemove(p)
+			</div>
+			if p.Torrent != nil {
+				<div role="tabpanel" id="panel-files" aria-labelledby="tab-files" x-show="isActive('files')" x-cloak>
+					@detailFiles(p.Torrent)
+				</div>
+			}
+			<div role="tabpanel" id="panel-details" aria-labelledby="tab-details" x-show="isActive('details')" x-cloak>
+				@detailDetails(p)
+			</div>
+		</div>
+	}
+}
+
+// detailStat is a stat tile.
+templ detailStat(label, value, note string) {
+	<div class="card card-body">
+		<dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">{ label }</dt>
+		<dd class="mt-1.5 text-lg font-semibold tabular-nums break-words text-fg">{ value }</dd>
+		if note != "" {
+			<dd class="mt-0.5 text-sm text-fg-muted">{ note }</dd>
+		}
+	</div>
+}
+
+// DetailLive is the part of the page htmx refreshes every 3 seconds while the
+// Download is not Ready or Failed. It polls itself and carries the trigger
+// only then, so the polling ends with the first terminal answer.
+templ DetailLive(p detailPage) {
+	if p.Removed {
+		<div id="detail-live">
+			@Alert(AlertProps{Variant: AlertInfo, Title: "This download was removed", Body: "It is no longer in bitnews."})
+			<p class="mt-4"><a href="/history" class="btn btn-secondary">Go to the history</a></p>
+		</div>
+	} else {
+		<div id="detail-live" class="space-y-6" { detailLiveHx(p).MustAttrs()... }>
+			if p.Failed {
+				<section class="rounded-xl border border-line bg-bad-soft p-5 text-bad-fg" aria-labelledby="failure-title" role="alert">
+					<div class="flex items-start gap-3">
+						@Icon(IconError, "mt-0.5 size-6 shrink-0")
+						<div class="min-w-0 space-y-3">
+							<div>
+								<h2 id="failure-title" class="text-base font-semibold">{ "Failed: " + p.Failure.Title }</h2>
+								<p class="mt-1 text-sm">{ p.Failure.Text }</p>
+							</div>
+							<p class="text-sm">
+								<span class="font-semibold">{ "What you can do: " }</span>
+								{ p.Failure.Hint }
+							</p>
+							if p.FailureDetail != "" {
+								<p class="break-words rounded-lg bg-surface/60 px-3 py-2 font-mono text-xs text-fg">
+									<span class="sr-only">{ "Detail: " }</span>
+									{ p.FailureDetail }
+								</p>
+							}
+						</div>
+					</div>
+				</section>
+			}
+			<dl class="grid grid-cols-2 gap-4 xl:grid-cols-4">
+				<div class="card card-body">
+					<dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Status</dt>
+					<dd class="mt-2">
+						@Badge(BadgeState(p.Badge), p.BadgeLabel)
+					</dd>
+					<dd class="mt-1.5 text-sm text-fg-muted">{ detailStateLine(p) }</dd>
+				</div>
+				<div class="card card-body col-span-2 sm:col-span-1">
+					<dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Progress</dt>
+					<dd class="mt-2">
+						@Progress(ProgressProps{Value: p.Percent, Label: "Download progress", Show: true, Variant: detailProgressVariant(p)})
+					</dd>
+					<dd class="mt-1.5 text-sm text-fg-muted tabular-nums">
+						{ detailProgressText(p) }
+						if p.ETA != "" {
+							<span id="detail-eta">{ ", " + p.ETA + " left" }</span>
+						}
+					</dd>
+				</div>
+				@detailStat("Size", p.Size, "")
+				if p.Speed != "" {
+					@detailStat("Speed", p.Speed, "")
+				} else if p.Paused {
+					@detailStat("Priority", p.Priority, "Paused")
+				} else {
+					@detailStat("Priority", p.Priority, "")
+				}
+			</dl>
+			if p.OutputPath != "" {
+				<section class="card card-body" aria-labelledby="output-title">
+					<h2 id="output-title" class="text-sm font-semibold">Output folder</h2>
+					<div class="mt-2 flex flex-wrap items-center gap-3">
+						<code class="min-w-0 flex-1 break-all rounded-lg bg-surface-2 px-3 py-2 font-mono text-sm">{ p.OutputPath }</code>
+						@CopyButton(p.OutputPath)
+					</div>
+				</section>
+			}
+			if p.Report != nil {
+				<section class="card" aria-labelledby="report-title">
+					<header class="card-header"><div><h2 id="report-title" class="text-base">Articles</h2><p class="mt-0.5 text-sm text-fg-muted">What the Usenet servers had of this release.</p></div></header>
+					if p.Report.Clean {
+						<p class="card-body flex items-center gap-2 text-sm text-ok-fg">
+							@Icon(IconCheckCircle, "size-5")
+							{ "Every article arrived intact." }
+						</p>
+					} else {
+						<dl class="card-body grid gap-4 sm:grid-cols-3">
+							<div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Missing articles</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{ strconv.Itoa(p.Report.MissingArticles) }</dd><dd class="text-sm text-fg-muted">{ p.Report.MissingBytes }</dd></div>
+							<div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Damaged articles</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{ strconv.Itoa(p.Report.DamagedArticles) }</dd><dd class="text-sm text-fg-muted">{ p.Report.DamagedBytes }</dd></div>
+							<div><dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Missing files</dt><dd class="mt-1 text-lg font-semibold tabular-nums">{ strconv.Itoa(p.Report.MissingFiles) }</dd><dd class="text-sm text-fg-muted">no article arrived</dd></div>
+						</dl>
+					}
+				</section>
+			}
+			if p.Torrent != nil {
+				<section class="card" aria-labelledby="swarm-title">
+					<header class="card-header">
+						<div>
+							<h2 id="swarm-title" class="text-base">Swarm</h2>
+							<p class="mt-0.5 text-sm text-fg-muted">
+								if p.Torrent.Registered {
+									{ "Live numbers from the torrent engine." }
+								} else {
+									{ "The torrent engine does not have this torrent right now." }
+								}
+							</p>
+						</div>
+						if p.Torrent.Private {
+							<span class="badge badge-paused" title="Private torrent: no DHT, PEX or local peer discovery">Private</span>
+						}
+					</header>
+					<dl class="card-body grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+						<div>
+							<dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Peers and seeds</dt>
+							<dd class="mt-1 text-lg font-semibold tabular-nums">
+								{ strconv.Itoa(p.Torrent.Peers) }
+								<span class="text-sm font-normal text-fg-muted">{ " peers" }</span>
+								{ " · " + strconv.Itoa(p.Torrent.Seeds) }
+								<span class="text-sm font-normal text-fg-muted">{ " seeds" }</span>
+							</dd>
+						</div>
+						<div>
+							<dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Rates</dt>
+							<dd class="mt-1 text-lg font-semibold tabular-nums">
+								{ p.Torrent.DownRate }
+								<span class="text-sm font-normal text-fg-muted">{ " down" }</span>
+								<br/>
+								{ p.Torrent.UpRate }
+								<span class="text-sm font-normal text-fg-muted">{ " up" }</span>
+							</dd>
+						</div>
+						<div>
+							<dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Uploaded</dt>
+							<dd class="mt-1 text-lg font-semibold tabular-nums">{ p.Torrent.Uploaded }</dd>
+							<dd class="text-sm text-fg-muted">{ "ratio " + p.Torrent.Ratio }</dd>
+						</div>
+						<div>
+							<dt class="text-xs font-medium tracking-wide text-fg-subtle uppercase">Seeding time</dt>
+							<dd class="mt-1 text-lg font-semibold tabular-nums">{ p.Torrent.SeedingTime }</dd>
+							if p.Torrent.LimitPaused {
+								<dd class="text-sm text-warn-fg">Paused: share limit reached</dd>
+							}
+						</div>
+					</dl>
+				</section>
+			} else if p.TorrentsUnavailable {
+				@Alert(AlertProps{Variant: AlertInfo, Title: "No torrent details", Body: "The torrent engine did not report anything about this torrent."})
+			}
+		</div>
+	}
+}
+
+// ShareCard is the Share Limit form of a torrent. htmx replaces it as a
+// whole.
+templ ShareCard(p detailPage) {
+	if p.Torrent != nil {
+		<section id="share-card" class="card" aria-labelledby="share-title" x-data="shareLimit" data-custom={ detailCustomFlag(p.Torrent.Form) }>
+			<header class="card-header">
+				<div>
+					<h2 id="share-title" class="text-base">Share limit</h2>
+					<p class="mt-0.5 text-sm text-fg-muted">{ p.Torrent.LimitSummary }</p>
+				</div>
+			</header>
+			<form
+				method="post"
+				action={ templ.SafeURL("/downloads/" + p.ID + "/share-limit") }
+				{ Hx{Post: "/downloads/" + p.ID + "/share-limit", Target: "#share-card", Swap: "outerHTML"}.MustAttrs()... }
+				class="card-body space-y-4"
+			>
+				@CSRFField(p.CSRF)
+				if p.Torrent.Form.Error != "" {
+					<div class="alert alert-danger" role="alert">
+						@Icon(IconError, "mt-0.5 size-5 shrink-0")
+						<p>{ p.Torrent.Form.Error }</p>
+					</div>
+				}
+				<fieldset class="space-y-3">
+					<legend class="label">When should seeding stop?</legend>
+					<div class="flex items-start gap-3">
+						<input id="share-mode-default" type="radio" name="mode" value="default" class="radio mt-0.5" checked?={ !p.Torrent.Form.Custom } @change="useDefault"/>
+						<label for="share-mode-default" class="text-sm"><span class="font-medium text-fg">Use the global default</span><span class="block text-xs text-fg-muted">Set in the torrent settings.</span></label>
+					</div>
+					<div class="flex items-start gap-3">
+						<input id="share-mode-custom" type="radio" name="mode" value="custom" class="radio mt-0.5" checked?={ p.Torrent.Form.Custom } @change="useCustom"/>
+						<label for="share-mode-custom" class="text-sm"><span class="font-medium text-fg">Set a limit for this torrent</span><span class="block text-xs text-fg-muted">Seeding stops at whichever limit you set is reached first. Leave one empty for no limit.</span></label>
+					</div>
+				</fieldset>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<div>
+						<label for="share-ratio" class="label">Ratio</label>
+						<input
+							id="share-ratio"
+							name="ratio"
+							type="text"
+							inputmode="decimal"
+							autocomplete="off"
+							class="input"
+							value={ p.Torrent.Form.Ratio }
+							placeholder="No limit"
+							:disabled="isDefault"
+							if p.Torrent.Form.RatioError != "" {
+								aria-invalid="true"
+								aria-describedby="share-ratio-error"
+							}
+						/>
+						if p.Torrent.Form.RatioError != "" {
+							<p id="share-ratio-error" class="field-error">
+								@Icon(IconError, "mt-px size-4 shrink-0")
+								<span>{ p.Torrent.Form.RatioError }</span>
+							</p>
+						}
+					</div>
+					<div>
+						<label for="share-minutes" class="label">Seeding time in minutes</label>
+						<input
+							id="share-minutes"
+							name="minutes"
+							type="text"
+							inputmode="numeric"
+							autocomplete="off"
+							class="input"
+							value={ p.Torrent.Form.Minutes }
+							placeholder="No limit"
+							:disabled="isDefault"
+							if p.Torrent.Form.MinutesError != "" {
+								aria-invalid="true"
+								aria-describedby="share-minutes-error"
+							}
+						/>
+						if p.Torrent.Form.MinutesError != "" {
+							<p id="share-minutes-error" class="field-error">
+								@Icon(IconError, "mt-px size-4 shrink-0")
+								<span>{ p.Torrent.Form.MinutesError }</span>
+							</p>
+						}
+					</div>
+				</div>
+				<div class="flex justify-end"><button type="submit" class="btn btn-primary"><span class="btn-spinner" aria-hidden="true"></span>Save share limit</button></div>
+			</form>
+		</section>
+	}
+}
+
+templ detailRemove(p detailPage) {
+	<section class="card" aria-labelledby="remove-title">
+		<header class="card-header">
+			<div>
+				<h2 id="remove-title" class="text-base">Remove</h2>
+				<p class="mt-0.5 text-sm text-fg-muted">
+					if p.Terminal {
+						{ "Take this download out of the history." }
+					} else {
+						{ "Cancel this download and take it out of bitnews." }
+					}
+				</p>
+			</div>
+		</header>
+		<div class="card-body flex flex-wrap gap-3">
+			<form
+				method="post"
+				action={ templ.SafeURL("/downloads/" + p.ID + "/delete") }
+				{ Hx{Post: "/downloads/" + p.ID + "/delete", Confirm: "Remove this download from bitnews? Files already downloaded stay on disk."}.MustAttrs()... }
+				data-confirm-label="Remove"
+				data-confirm-tone="danger"
+			>
+				@CSRFField(p.CSRF)
+				<input type="hidden" name="delete_data" value="0"/>
+				<input type="hidden" name="from" value="detail"/>
+				<button type="submit" class="btn btn-secondary">
+					<span class="btn-spinner" aria-hidden="true"></span>
+					@Icon(IconClose, "size-4")
+					if p.Terminal {
+						{ "Remove from history" }
+					} else {
+						{ "Remove, keep files" }
+					}
+				</button>
+			</form>
+			<form
+				method="post"
+				action={ templ.SafeURL("/downloads/" + p.ID + "/delete") }
+				{ Hx{Post: "/downloads/" + p.ID + "/delete", Confirm: "Remove this download and delete its files? This cannot be undone."}.MustAttrs()... }
+				data-confirm-label="Delete files"
+				data-confirm-tone="danger"
+			>
+				@CSRFField(p.CSRF)
+				<input type="hidden" name="delete_data" value="1"/>
+				<input type="hidden" name="from" value="detail"/>
+				<button type="submit" class="btn btn-danger">
+					<span class="btn-spinner" aria-hidden="true"></span>
+					@Icon(IconTrash, "size-4")
+					{ "Remove and delete files" }
+				</button>
+			</form>
+		</div>
+	</section>
+}
+
+templ detailFiles(t *detailTorrent) {
+	<section class="card" aria-labelledby="files-title">
+		<header class="card-header">
+			<div>
+				<h2 id="files-title" class="text-base">Files</h2>
+				<p class="mt-0.5 text-sm text-fg-muted">{ detailFileCountText(t.FileCount) }</p>
+			</div>
+		</header>
+		if len(t.ShowFiles) > 0 {
+			<table class="table">
+				<caption class="sr-only">Files in this torrent</caption>
+				<thead><tr><th scope="col">Path</th><th scope="col" class="num">Size</th></tr></thead>
+				<tbody>
+					for _, f := range t.ShowFiles {
+						<tr><td class="break-all font-mono text-xs">{ f.Path }</td><td class="num whitespace-nowrap text-fg-muted">{ f.Size }</td></tr>
+					}
+				</tbody>
+			</table>
+			if t.MoreFiles != 0 {
+				<p class="border-t border-line px-5 py-3 text-sm text-fg-muted">{ "and " + strconv.Itoa(t.MoreFiles) + " more files." }</p>
+			}
+		} else {
+			@EmptyState(EmptyProps{Icon: IconInbox, Title: "No file list yet", Body: "The list appears once the torrent's metadata has arrived."})
+		}
+	</section>
+}
+
+templ detailDetails(p detailPage) {
+	<section class="card" aria-labelledby="details-title">
+		<header class="card-header">
+			<div>
+				<h2 id="details-title" class="text-base">Details</h2>
+				<p class="mt-0.5 text-sm text-fg-muted">Identifiers and raw values, for support and scripts.</p>
+			</div>
+		</header>
+		<dl class="divide-y divide-line text-sm">
+			@detailRow("Download ID", p.ID, true)
+			@detailRow("Type", p.KindLabel, false)
+			@detailRow("State", p.State, false)
+			if p.Torrent != nil {
+				@detailRow("Info hash", p.Torrent.InfoHash, true)
+			}
+			if p.CategoryID != "" {
+				@detailRow("Category ID", p.CategoryID, true)
+			}
+			@detailRow("Priority", p.Priority, false)
+			@detailRow("Queue position", strconv.Itoa(p.Position), false)
+			if p.FailureCode != "" {
+				@detailRow("Failure reason", p.FailureCode, false)
+			}
+			if p.Added.Valid {
+				@detailRow("Added", p.Added.Abs, false)
+			}
+			if p.Fetched.Valid {
+				@detailRow("Fetched", p.Fetched.Abs, false)
+			}
+			if p.ReadyAt.Valid {
+				@detailRow("Ready", p.ReadyAt.Abs, false)
+			}
+			if p.Updated.Valid {
+				@detailRow("Last change", p.Updated.Abs, false)
+			}
+			if p.OutputPath != "" {
+				@detailRow("Output folder", p.OutputPath, true)
+			}
+		</dl>
+	</section>
+}
+
+templ detailRow(label, value string, canCopy bool) {
+	<div class="grid gap-1 px-5 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+		<dt class="text-fg-muted">{ label }</dt>
+		<dd class="flex min-w-0 items-center gap-2">
+			<span class="min-w-0 break-all font-mono text-xs text-fg">{ value }</span>
+			if canCopy {
+				<span x-data="clipboard" x-cloak class="shrink-0">
+					<button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy={ value } @click="copy" aria-label={ "Copy " + label } title="Copy">
+						<span x-show="!copied">
+							@Icon(IconCopy, "size-4")
+						</span>
+						<span x-show="copied" x-cloak class="text-ok-fg">
+							@Icon(IconCheck, "size-4")
+						</span>
+					</button>
+				</span>
+			}
+		</dd>
+	</div>
+}

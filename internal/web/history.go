@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/store"
@@ -146,7 +148,7 @@ type historyRow struct {
 	Detail string
 }
 
-// historyPage is what history.html renders.
+// historyPage is what HistoryPage renders.
 type historyPage struct {
 	Filter    historyFilter
 	StateOpts []option
@@ -165,6 +167,11 @@ type historyPage struct {
 	EmptyTitle, EmptyBody string
 	Truncated             bool
 	Unavailable           bool
+}
+
+// historyComponent is the Component function of the History page.
+func historyComponent(v *View, data any) templ.Component {
+	return HistoryPage(v, data.(historyPage))
 }
 
 // historyData is the Data function of the History page.

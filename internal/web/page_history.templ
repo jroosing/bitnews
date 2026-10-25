@@ -1,0 +1,103 @@
+package web
+
+import "strconv"
+
+// historySummary is the "Showing 1 to 25 of 40 downloads" line.
+func historySummary(p historyPage) string {
+	noun := "downloads"
+	if p.Total == 1 {
+		noun = "download"
+	}
+	s := "Showing " + strconv.Itoa(p.First) + " to " + strconv.Itoa(p.Last) + " of " + strconv.Itoa(p.Total) + " " + noun
+	if p.Truncated {
+		s += " (the oldest are left out)"
+	}
+	return s
+}
+
+templ historySubtitle() {
+	<p class="mt-1 text-sm text-fg-muted">Downloads that are ready or have failed, newest first.</p>
+}
+
+// HistoryPage is the History page: filter bar and the list of finished
+// Downloads.
+templ HistoryPage(v *View, p historyPage) {
+	@AppLayout(v, historySubtitle(), nil) {
+		if p.Unavailable {
+			@Alert(AlertProps{Variant: AlertWarn, Title: "The history is not available", Body: "The download service is not running."})
+		} else {
+			<form
+				id="history-filters"
+				method="get"
+				action="/history"
+				class="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,15rem))_auto] lg:items-end"
+				hx-get="/history"
+				hx-trigger="change, submit"
+				hx-target="#history-results"
+				hx-select="#history-results"
+				hx-select-oob="#history-clear"
+				hx-swap="outerHTML"
+				hx-push-url="true"
+			>
+				@SelectField(SelectProps{ID: "history-state", Name: "state", Label: "Status", Options: p.StateOpts, Selected: p.Filter.State})
+				@SelectField(SelectProps{ID: "history-kind", Name: "kind", Label: "Type", Options: p.KindOpts, Selected: p.Filter.Kind})
+				@SelectField(SelectProps{ID: "history-category", Name: "category", Label: "Category", Options: p.CatOpts, Selected: p.Filter.Category})
+				<div id="history-clear" class="flex items-center gap-2">
+					<noscript><button type="submit" class="btn btn-secondary">Apply filters</button></noscript>
+					if p.Filter.Active() {
+						<a href="/history" class="btn btn-ghost">Clear filters</a>
+					}
+				</div>
+			</form>
+			<div id="history-results" aria-live="polite">
+				if len(p.Rows) > 0 {
+					<section class="card" aria-label="Finished downloads">
+						<table class="table table-responsive">
+							<caption class="sr-only">Finished downloads, newest first</caption>
+							<thead>
+								<tr>
+									<th scope="col" class="rounded-tl-xl">Name</th>
+									<th scope="col">Status</th>
+									<th scope="col">Category</th>
+									<th scope="col" class="num">Size</th>
+									<th scope="col">When</th>
+									<th scope="col" class="rounded-tr-xl"><span class="sr-only">Actions</span></th>
+								</tr>
+							</thead>
+							<tbody id="history-rows">
+								for _, row := range p.Rows {
+									@HistoryRow(row)
+								}
+							</tbody>
+						</table>
+					</section>
+					<div id="history-more" class="mt-4 flex flex-wrap items-center justify-between gap-3">
+						<p class="text-sm text-fg-muted">{ historySummary(p) }</p>
+						<div class="flex gap-2">
+							if p.NewestHref != "" {
+								<a class="btn btn-secondary btn-sm" href={ templ.SafeURL(p.NewestHref) }>Back to newest</a>
+							}
+							if p.NextHref != "" {
+								<a
+									class="btn btn-secondary btn-sm"
+									href={ templ.SafeURL(p.NextHref) }
+									{ Hx{Get: p.AppendHref, Target: "#history-rows", Swap: "beforeend", Select: "#history-rows > *", SelectOOB: "#history-more", PushURL: "false"}.MustAttrs()... }
+								>
+									{ "Show older" }
+									@Icon(IconChevronDown, "size-4")
+								</a>
+							}
+						</div>
+					</div>
+				} else {
+					<section class="card" aria-label="Finished downloads">
+						@EmptyState(EmptyProps{Icon: IconHistory, Title: p.EmptyTitle, Body: p.EmptyBody})
+						if p.Filter.Active() {
+							<div class="flex justify-center pb-8"><a href="/history" class="btn btn-secondary">Clear filters</a></div>
+						}
+					</section>
+				}
+			</div>
+		}
+	}
+}
