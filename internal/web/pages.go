@@ -32,7 +32,7 @@ type Page struct {
 // builtinPages are the pages of the app shell, in navigation order.
 func builtinPages() []Page {
 	return []Page{
-		{Path: "/queue", Template: "queue.html", Title: "Queue", NavLabel: "Queue", NavIcon: "queue", Data: queueData},
+		{Path: "/queue", Component: queuePage, Title: "Queue", NavLabel: "Queue", NavIcon: "queue", Data: queueData},
 		{Path: "/history", Component: historyComponent, Title: "History", NavLabel: "History", NavIcon: "history", Data: historyData},
 		{Path: "/ui/styleguide", Component: styleguideComponent, Title: "Style guide", Data: styleguideData},
 	}
