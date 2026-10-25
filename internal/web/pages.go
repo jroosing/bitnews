@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+
+	"github.com/a-h/templ"
 )
 
 // Page is one full-page route behind the sign-in. To add a page, append a
@@ -12,8 +14,12 @@ import (
 type Page struct {
 	// Path is the GET route, e.g. "/queue".
 	Path string
-	// Template is the file below assets/templates/pages/.
+	// Template is the file below assets/templates/pages/. Ignored when
+	// Component is set.
 	Template string
+	// Component builds the page from the layout data and what Data
+	// returned (ADR-0011). It replaces Template.
+	Component func(v *View, data any) templ.Component
 	// Title is the page heading and the document title.
 	Title string
 	// NavLabel and NavIcon put the page into the sidebar; an empty NavLabel
@@ -47,6 +53,10 @@ func (s *Server) addPage(p Page) {
 				return
 			}
 			v.Page = data
+		}
+		if p.Component != nil {
+			s.renderComponent(w, r, http.StatusOK, p.Component(v, v.Page))
+			return
 		}
 		s.render(w, r, http.StatusOK, p.Template, "layout_app", v)
 	})
@@ -83,7 +93,7 @@ type styleguide struct {
 }
 
 // option is one entry of a select_field.
-type option struct{ Value, Label string }
+type option = SelectOption
 
 func styleguideData(*Server, *http.Request) (any, error) {
 	g := styleguide{

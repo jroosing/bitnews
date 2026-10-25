@@ -11,6 +11,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/auth"
 )
 
@@ -96,6 +98,8 @@ type View struct {
 	NavDesktop NavData
 	NavMobile  NavData
 	UserMenu   UserMenu
+
+	Head *headAssets // the hashed asset URLs of the document head
 }
 
 // NavData is what the "nav" partial renders.
@@ -122,7 +126,7 @@ type UserMenu struct {
 // newView builds the layout data for a request. The principal (if the
 // request went through UIAuth) decides the menu, banner and CSRF token.
 func (s *Server) newView(r *http.Request, title string) *View {
-	v := &View{Title: title, Path: r.URL.Path, Version: s.Version}
+	v := &View{Title: title, Path: r.URL.Path, Version: s.Version, Head: &s.head}
 	menu := UserMenu{}
 	if p, ok := auth.FromContext(r.Context()); ok {
 		v.CSRF = p.CSRFToken()
@@ -189,4 +193,40 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page
 // renderFragment writes one named template of a page, for htmx swaps.
 func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, status int, page, fragment string, v *View) {
 	s.render(w, r, status, page, fragment, v)
+}
+
+// renderComponent writes a templ component as a full response (a page or an
+// htmx fragment). Rendering happens into a buffer first, so a render error
+// (including an invalid Hx, which panics) becomes a clean 500.
+func (s *Server) renderComponent(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
+	out, err := renderBytes(r, c)
+	if err != nil {
+		s.Logger.Error("render failed", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	setHTMLHeaders(w)
+	w.WriteHeader(status)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(out)
+	}
+}
+
+// renderBytes renders a component to bytes. An hxError panic from
+// Hx.MustAttrs is returned as an error; any other panic is passed on.
+func renderBytes(r *http.Request, c templ.Component) (out []byte, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			he, ok := p.(hxError)
+			if !ok {
+				panic(p)
+			}
+			out, err = nil, he
+		}
+	}()
+	var buf bytes.Buffer
+	if err := c.Render(r.Context(), &buf); err != nil {
+		return nil, fmt.Errorf("web: render: %w", err)
+	}
+	return buf.Bytes(), nil
 }

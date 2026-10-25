@@ -1,0 +1,452 @@
+package web
+
+import "strconv"
+
+// A note on markup: templ drops the whitespace between tags that sit on
+// separate lines, so inline neighbours that need a gap carry an explicit one.
+
+// ---- badge
+
+// BadgeState is a download state pill.
+type BadgeState string
+
+const (
+	BadgeQueued      BadgeState = "queued"
+	BadgeDownloading BadgeState = "downloading"
+	BadgeProcessing  BadgeState = "processing"
+	BadgeReady       BadgeState = "ready"
+	BadgeFailed      BadgeState = "failed"
+	BadgePaused      BadgeState = "paused"
+)
+
+// Badge is a download state pill. label defaults to the state (the CSS
+// capitalises it).
+templ Badge(state BadgeState, label string) {
+	<span class={ "badge badge-" + string(state) }>
+		if label != "" {
+			{ label }
+		} else {
+			{ string(state) }
+		}
+	</span>
+}
+
+// ---- alert
+
+// AlertVariant picks the colour and icon of an Alert.
+type AlertVariant string
+
+const (
+	AlertInfo    AlertVariant = "info"
+	AlertSuccess AlertVariant = "success"
+	AlertWarn    AlertVariant = "warn"
+	AlertDanger  AlertVariant = "danger"
+)
+
+// AlertProps are the parameters of Alert. The LAN bypass banner uses the
+// alert look and cannot be dismissed: there is no close button on purpose.
+type AlertProps struct {
+	Variant AlertVariant // default AlertInfo
+	Title   string
+	Body    string
+	ID      string
+	Role    string // default "alert" for warn and danger, "status" otherwise
+}
+
+func (p AlertProps) variant() AlertVariant {
+	if p.Variant == "" {
+		return AlertInfo
+	}
+	return p.Variant
+}
+
+func (p AlertProps) role() string {
+	switch {
+	case p.Role != "":
+		return p.Role
+	case p.variant() == AlertWarn, p.variant() == AlertDanger:
+		return "alert"
+	}
+	return "status"
+}
+
+templ Alert(p AlertProps) {
+	<div
+		if p.ID != "" {
+			id={ p.ID }
+		}
+		class={ "alert alert-" + string(p.variant()) }
+		role={ p.role() }
+	>
+		switch p.variant() {
+			case AlertSuccess:
+				@Icon(IconCheckCircle, "mt-0.5 size-5 shrink-0")
+			case AlertWarn:
+				@Icon(IconWarning, "mt-0.5 size-5 shrink-0")
+			case AlertDanger:
+				@Icon(IconError, "mt-0.5 size-5 shrink-0")
+			default:
+				@Icon(IconInfo, "mt-0.5 size-5 shrink-0")
+		}
+		<div class="min-w-0">
+			if p.Title != "" {
+				<p class="alert-title">{ p.Title }</p>
+			}
+			if p.Body != "" {
+				<p>{ p.Body }</p>
+			}
+		</div>
+	</div>
+}
+
+// AuthBanner warns that LAN bypass skips sign-in. It renders nothing in
+// any other auth mode.
+templ AuthBanner(authMode string) {
+	if authMode == "bypass" {
+		<div class="border-b border-line bg-warn-soft px-4 py-2.5 text-warn-fg sm:px-6 lg:px-8" role="alert" data-auth-banner="bypass">
+			<div class="mx-auto flex max-w-7xl items-start gap-3 text-sm">
+				@Icon(IconShield, "mt-0.5 size-5 shrink-0")
+				<p><strong class="font-semibold">LAN bypass is on.</strong> Devices on your configured networks skip sign-in and have full control of bitnews. <a href="/settings/security" class="font-medium text-current underline">Review it in Settings</a>{ " if you did not expect this." }</p>
+			</div>
+		</div>
+	}
+}
+
+// ---- button
+
+type ButtonVariant string
+
+const (
+	ButtonPrimary   ButtonVariant = "primary"
+	ButtonSecondary ButtonVariant = "secondary"
+	ButtonDanger    ButtonVariant = "danger"
+	ButtonGhost     ButtonVariant = "ghost"
+)
+
+type ButtonSize string
+
+const (
+	ButtonDefault ButtonSize = ""
+	ButtonSmall   ButtonSize = "sm"
+	ButtonLarge   ButtonSize = "lg"
+)
+
+// ButtonProps are the parameters of Button. Everything is optional.
+type ButtonProps struct {
+	Label    string
+	Type     string        // "button" (default), "submit" or "reset"
+	Variant  ButtonVariant // default ButtonPrimary
+	Size     ButtonSize
+	Icon     IconName // none when empty
+	IconOnly bool     // Label becomes the aria-label
+	Loading  bool     // adds the htmx spinner
+	Block    bool
+	Disabled bool
+	Hx       Hx
+}
+
+func (p ButtonProps) typ() string {
+	if p.Type == "" {
+		return "button"
+	}
+	return p.Type
+}
+
+func (p ButtonProps) class() string {
+	v := p.Variant
+	if v == "" {
+		v = ButtonPrimary
+	}
+	c := "btn btn-" + string(v)
+	if p.Size != "" {
+		c += " btn-" + string(p.Size)
+	}
+	if p.Block {
+		c += " btn-block"
+	}
+	if p.IconOnly {
+		c += " btn-icon"
+	}
+	return c
+}
+
+templ Button(p ButtonProps) {
+	<button
+		type={ p.typ() }
+		class={ p.class() }
+		if p.IconOnly {
+			aria-label={ p.Label }
+		}
+		disabled?={ p.Disabled }
+		{ p.Hx.MustAttrs()... }
+	>
+		if p.Loading {
+			<span class="btn-spinner" aria-hidden="true"></span>
+		}
+		if p.Icon != "" {
+			@Icon(p.Icon, "size-4 shrink-0")
+		}
+		if !p.IconOnly {
+			{ p.Label }
+		}
+	</button>
+}
+
+// ---- progress
+
+type ProgressVariant string
+
+const (
+	ProgressDefault ProgressVariant = ""
+	ProgressOK      ProgressVariant = "ok"
+	ProgressWarn    ProgressVariant = "warn"
+	ProgressBad     ProgressVariant = "bad"
+)
+
+// ProgressProps are the parameters of Progress: a native <progress> (no
+// inline width).
+type ProgressProps struct {
+	Value   int
+	Max     int // default 100
+	Label   string // the accessible name, required
+	Variant ProgressVariant
+	Show    bool // render the percentage text next to it
+}
+
+func (p ProgressProps) max() int {
+	if p.Max == 0 {
+		return 100
+	}
+	return p.Max
+}
+
+func (p ProgressProps) class() string {
+	c := "progress min-w-0 flex-1"
+	if p.Variant != "" {
+		c += " progress-" + string(p.Variant)
+	}
+	return c
+}
+
+templ Progress(p ProgressProps) {
+	<div class="flex w-full items-center gap-3">
+		<progress class={ p.class() } value={ strconv.Itoa(p.Value) } max={ strconv.Itoa(p.max()) } aria-label={ p.Label }></progress>
+		if p.Show {
+			<span class="w-10 shrink-0 text-right text-xs text-fg-muted tabular-nums">{ strconv.Itoa(p.Value) }%</span>
+		}
+	</div>
+}
+
+// ---- card, table, modal
+
+// CardProps are the parameters of Card.
+type CardProps struct {
+	Title    string
+	Subtitle string
+	Class    string
+	NoPad    bool // skip the .card-body wrapper, e.g. for a table
+}
+
+templ Card(p CardProps) {
+	<section class={ "card", p.Class }>
+		if p.Title != "" {
+			<header class="card-header">
+				<div>
+					<h2 class="text-base">{ p.Title }</h2>
+					if p.Subtitle != "" {
+						<p class="mt-0.5 text-sm text-fg-muted">{ p.Subtitle }</p>
+					}
+				</div>
+			</header>
+		}
+		if p.NoPad {
+			<div>
+				{ children... }
+			</div>
+		} else {
+			<div class="card-body">
+				{ children... }
+			</div>
+		}
+	</section>
+}
+
+// TableShell is the card-like table shell. It collapses to a card list below
+// 768 px (.table-responsive): give every <td> a data-label. caption is
+// visually hidden and required.
+templ TableShell(caption, class string) {
+	<div class={ "table-shell", class }>
+		<table class="table table-responsive">
+			<caption class="sr-only">{ caption }</caption>
+			{ children... }
+		</table>
+	</div>
+}
+
+// ModalProps are the parameters of Modal.
+type ModalProps struct {
+	ID          string
+	Title       string
+	Description string
+}
+
+// Modal is a native <dialog>. Wrap the trigger and the dialog in one
+// x-data="modal" element; buttons inside close it with @click="hide".
+templ Modal(p ModalProps) {
+	<dialog
+		x-ref="dlg"
+		id={ p.ID }
+		class="modal"
+		aria-labelledby={ p.ID + "-title" }
+		if p.Description != "" {
+			aria-describedby={ p.ID + "-desc" }
+		}
+		@click="onBackdrop"
+	>
+		<div class="p-6">
+			<h2 id={ p.ID + "-title" } class="text-lg">{ p.Title }</h2>
+			if p.Description != "" {
+				<p id={ p.ID + "-desc" } class="mt-1.5 text-sm text-fg-muted">{ p.Description }</p>
+			}
+			<div class="mt-5">
+				{ children... }
+			</div>
+		</div>
+	</dialog>
+}
+
+// ConfirmDialog is the one global dialog behind hx-confirm (see app.js).
+templ ConfirmDialog() {
+	<dialog x-data="confirmDialog" x-ref="dlg" id="confirm-dialog" class="modal" aria-labelledby="confirm-title" @close="onClose" @click="onBackdrop">
+		<div class="p-6">
+			<h2 id="confirm-title" class="text-lg">Are you sure?</h2>
+			<p class="mt-1.5 text-sm text-fg-muted" x-text="message"></p>
+			<div class="mt-6 flex justify-end gap-2">
+				<button type="button" class="btn btn-secondary" @click="cancel">Cancel</button>
+				<button type="button" class="btn" :class="acceptClass" @click="accept" x-text="label"></button>
+			</div>
+		</div>
+	</dialog>
+}
+
+// ToastRegion is the aria-live region the toast store (app.js) renders into.
+// Trigger a toast from the server with the response header
+//
+//	HX-Trigger: {"toast":{"level":"success","message":"Saved"}}
+//
+// Levels: success, info, warn, danger.
+templ ToastRegion() {
+	<div x-data="toastRegion" class="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-end gap-3 p-4 sm:p-6" aria-live="polite" aria-atomic="false">
+		<template x-for="t in items" :key="t.id">
+			<div class="toast max-w-sm" :role="t.role">
+				<span class="toast-icon text-ok-fg" x-show="t.isSuccess">
+					@Icon(IconCheckCircle, "size-5")
+				</span>
+				<span class="toast-icon text-info-fg" x-show="t.isInfo">
+					@Icon(IconInfo, "size-5")
+				</span>
+				<span class="toast-icon text-warn-fg" x-show="t.isWarn">
+					@Icon(IconWarning, "size-5")
+				</span>
+				<span class="toast-icon text-bad-fg" x-show="t.isDanger">
+					@Icon(IconError, "size-5")
+				</span>
+				<p class="min-w-0 flex-1 break-words text-fg" x-text="t.message"></p>
+				<button type="button" class="-m-1 rounded-md p-1 text-fg-subtle hover:text-fg" :data-id="t.id" @click="dismiss" aria-label="Dismiss notification">
+					@Icon(IconClose, "size-4")
+				</button>
+			</div>
+		</template>
+	</div>
+}
+
+// ---- small pieces
+
+// CopyButton copies text to the clipboard (hidden without JS).
+templ CopyButton(text string) {
+	<span x-data="clipboard" x-cloak>
+		<button type="button" class="btn btn-secondary btn-sm" data-copy={ text } @click="copy">
+			<span x-show="!copied" class="inline-flex items-center gap-1.5">
+				@Icon(IconCopy, "size-4")
+				Copy
+			</span>
+			<span x-show="copied" x-cloak class="inline-flex items-center gap-1.5 text-ok-fg">
+				@Icon(IconCheck, "size-4")
+				Copied
+			</span>
+		</button>
+	</span>
+}
+
+// CSRFField is the hidden field plain form posts use. csrf is the session's
+// CSRF token (View.CSRF); empty renders nothing.
+templ CSRFField(csrf string) {
+	if csrf != "" {
+		<input type="hidden" name="_csrf" value={ csrf }/>
+	}
+}
+
+// EmptyProps are the parameters of EmptyState.
+type EmptyProps struct {
+	Icon        IconName // default IconInbox
+	Title       string
+	Body        string
+	ActionLabel string // with ActionHref, a secondary button
+	ActionHref  string
+}
+
+templ EmptyState(p EmptyProps) {
+	<div class="flex flex-col items-center px-6 py-12 text-center">
+		<span class="flex size-12 items-center justify-center rounded-full bg-surface-2 text-fg-subtle">
+			if p.Icon != "" {
+				@Icon(p.Icon, "size-6")
+			} else {
+				@Icon(IconInbox, "size-6")
+			}
+		</span>
+		<h3 class="mt-4 text-base">{ p.Title }</h3>
+		if p.Body != "" {
+			<p class="mt-1 max-w-sm text-sm text-fg-muted">{ p.Body }</p>
+		}
+		if p.ActionLabel != "" && p.ActionHref != "" {
+			<a href={ templ.SafeURL(p.ActionHref) } class="btn btn-secondary mt-5">{ p.ActionLabel }</a>
+		}
+	</div>
+}
+
+// PaginationProps are the parameters of Pagination. An empty href disables
+// that side.
+type PaginationProps struct {
+	PrevHref, NextHref string
+	Summary            string // e.g. "Showing 25 downloads"
+}
+
+templ Pagination(p PaginationProps) {
+	<nav class="flex items-center justify-between gap-4" aria-label="Pagination">
+		<p class="text-sm text-fg-muted">{ p.Summary }</p>
+		<div class="flex gap-2">
+			if p.PrevHref != "" {
+				<a class="btn btn-secondary btn-sm" href={ templ.SafeURL(p.PrevHref) } rel="prev">
+					@Icon(IconChevronLeft, "size-4")
+					Previous
+				</a>
+			} else {
+				<span class="btn btn-secondary btn-sm" aria-disabled="true">
+					@Icon(IconChevronLeft, "size-4")
+					Previous
+				</span>
+			}
+			if p.NextHref != "" {
+				<a class="btn btn-secondary btn-sm" href={ templ.SafeURL(p.NextHref) } rel="next">
+					Next
+					@Icon(IconChevronRight, "size-4")
+				</a>
+			} else {
+				<span class="btn btn-secondary btn-sm" aria-disabled="true">
+					Next
+					@Icon(IconChevronRight, "size-4")
+				</span>
+			}
+		</div>
+	</nav>
+}

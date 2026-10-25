@@ -1,0 +1,462 @@
+package web
+
+import "strconv"
+
+// ---- field
+
+// FieldType is the input type of a Field.
+type FieldType string
+
+const (
+	FieldText     FieldType = "text"
+	FieldNumber   FieldType = "number"
+	FieldPassword FieldType = "password" // adds a show/hide toggle (Alpine "reveal"; hidden without JS)
+)
+
+// FieldProps are the parameters of Field: a labelled text-like input with
+// help and error text.
+type FieldProps struct {
+	ID           string
+	Name         string // default ID
+	Label        string
+	Type         FieldType // default FieldText
+	Value        string
+	Help         string
+	Error        string
+	Placeholder  string
+	Autocomplete string
+	Inputmode    string
+	MinLength    int
+	MaxLength    int
+	Required     bool
+	Optional     bool // adds "(optional)" to the label
+	Autofocus    bool
+	Raw          bool // no autocapitalize/spellcheck
+	Disabled     bool
+	Class        string
+	// Browse adds a button that opens the folder picker for the field; the
+	// page needs the FolderDialog (the settings layout has it).
+	Browse bool
+}
+
+func (p FieldProps) name() string {
+	if p.Name == "" {
+		return p.ID
+	}
+	return p.Name
+}
+
+func (p FieldProps) typ() string {
+	if p.Type == "" {
+		return string(FieldText)
+	}
+	return string(p.Type)
+}
+
+// describedBy lists the ids of the help and error text, for aria-describedby.
+func describedBy(id string, help, err bool) string {
+	switch {
+	case help && err:
+		return id + "-help " + id + "-error"
+	case help:
+		return id + "-help"
+	case err:
+		return id + "-error"
+	}
+	return ""
+}
+
+templ Field(p FieldProps) {
+	<div
+		if p.Class != "" {
+			class={ p.Class }
+		}
+	>
+		<label for={ p.ID } class="label">
+			{ p.Label }
+			if p.Optional {
+				<span class="font-normal text-fg-subtle">{ " (optional)" }</span>
+			}
+		</label>
+		switch {
+			case p.Type == FieldPassword:
+				<div x-data="reveal" class="relative">
+					@fieldInput(p, "input pr-11", true)
+					<button type="button" x-cloak class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-fg-subtle hover:text-fg" @click="toggle" :aria-label="label" aria-label="Show password">
+						<span x-show="!shown">
+							@Icon(IconEye, "size-5")
+						</span>
+						<span x-show="shown" x-cloak>
+							@Icon(IconEyeSlash, "size-5")
+						</span>
+					</button>
+				</div>
+			case p.Browse:
+				<div class="flex gap-2">
+					@fieldInput(p, "input min-w-0 flex-1", false)
+					<button type="button" x-data="folderButton" x-cloak @click="open" data-folder-input={ p.ID } class="btn btn-secondary shrink-0" aria-label={ "Browse folders for " + p.Label } disabled?={ p.Disabled }>
+						@Icon(IconFolder, "size-4")
+						<span class="max-sm:sr-only">Browse</span>
+					</button>
+				</div>
+			default:
+				@fieldInput(p, "input", false)
+		}
+		if p.Help != "" {
+			<p id={ p.ID + "-help" } class="help">{ p.Help }</p>
+		}
+		if p.Error != "" {
+			<p id={ p.ID + "-error" } class="field-error">
+				@Icon(IconError, "mt-px size-4 shrink-0")
+				<span>{ p.Error }</span>
+			</p>
+		}
+	</div>
+}
+
+templ fieldInput(p FieldProps, class string, reveal bool) {
+	<input
+		id={ p.ID }
+		name={ p.name() }
+		type={ p.typ() }
+		class={ class }
+		if reveal {
+			:type="inputType"
+		}
+		if p.Value != "" {
+			value={ p.Value }
+		}
+		if p.Placeholder != "" {
+			placeholder={ p.Placeholder }
+		}
+		if p.Autocomplete != "" {
+			autocomplete={ p.Autocomplete }
+		}
+		if p.Inputmode != "" {
+			inputmode={ p.Inputmode }
+		}
+		if p.MinLength > 0 {
+			minlength={ strconv.Itoa(p.MinLength) }
+		}
+		if p.MaxLength > 0 {
+			maxlength={ strconv.Itoa(p.MaxLength) }
+		}
+		if p.Raw {
+			autocapitalize="none"
+			autocorrect="off"
+			spellcheck="false"
+		}
+		required?={ p.Required }
+		autofocus?={ p.Autofocus }
+		disabled?={ p.Disabled }
+		if p.Error != "" {
+			aria-invalid="true"
+		}
+		if d := describedBy(p.ID, p.Help != "", p.Error != ""); d != "" {
+			aria-describedby={ d }
+		}
+	/>
+}
+
+// ---- select, checkbox, switch
+
+// SelectProps are the parameters of SelectField.
+type SelectProps struct {
+	ID       string
+	Name     string // default ID
+	Label    string
+	Options  []SelectOption
+	Selected string // the value of the selected option
+	Help     string
+	Error    string
+	Required bool
+	Disabled bool
+}
+
+func (p SelectProps) name() string {
+	if p.Name == "" {
+		return p.ID
+	}
+	return p.Name
+}
+
+templ SelectField(p SelectProps) {
+	<div>
+		<label for={ p.ID } class="label">{ p.Label }</label>
+		<div class="relative">
+			<select
+				id={ p.ID }
+				name={ p.name() }
+				class="select"
+				required?={ p.Required }
+				disabled?={ p.Disabled }
+				if p.Error != "" {
+					aria-invalid="true"
+				}
+				if d := describedBy(p.ID, p.Help != "", p.Error != ""); d != "" {
+					aria-describedby={ d }
+				}
+			>
+				for _, o := range p.Options {
+					<option value={ o.Value } selected?={ o.Value == p.Selected }>{ o.Label }</option>
+				}
+			</select>
+			<span class="pointer-events-none absolute inset-y-0 right-0 flex w-9 items-center justify-center text-fg-subtle">
+				@Icon(IconChevronDown, "size-4")
+			</span>
+		</div>
+		if p.Help != "" {
+			<p id={ p.ID + "-help" } class="help">{ p.Help }</p>
+		}
+		if p.Error != "" {
+			<p id={ p.ID + "-error" } class="field-error">
+				@Icon(IconError, "mt-px size-4 shrink-0")
+				<span>{ p.Error }</span>
+			</p>
+		}
+	</div>
+}
+
+// CheckProps are the parameters of CheckboxField and SwitchField.
+type CheckProps struct {
+	ID       string
+	Name     string // default ID
+	Label    string
+	Help     string
+	Value    string // default "on"
+	Checked  bool
+	Disabled bool
+}
+
+func (p CheckProps) name() string {
+	if p.Name == "" {
+		return p.ID
+	}
+	return p.Name
+}
+
+func (p CheckProps) value() string {
+	if p.Value == "" {
+		return "on"
+	}
+	return p.Value
+}
+
+templ CheckboxField(p CheckProps) {
+	<div class="flex items-start gap-3">
+		<input
+			id={ p.ID }
+			name={ p.name() }
+			type="checkbox"
+			value={ p.value() }
+			class="checkbox mt-0.5"
+			checked?={ p.Checked }
+			disabled?={ p.Disabled }
+			if p.Help != "" {
+				aria-describedby={ p.ID + "-help" }
+			}
+		/>
+		<div>
+			<label for={ p.ID } class="text-sm font-medium text-fg">{ p.Label }</label>
+			if p.Help != "" {
+				<p id={ p.ID + "-help" } class="text-xs text-fg-muted">{ p.Help }</p>
+			}
+		</div>
+	</div>
+}
+
+templ SwitchField(p CheckProps) {
+	<div class="flex items-start justify-between gap-4">
+		<div>
+			<label for={ p.ID } class="text-sm font-medium text-fg">{ p.Label }</label>
+			if p.Help != "" {
+				<p id={ p.ID + "-help" } class="text-xs text-fg-muted">{ p.Help }</p>
+			}
+		</div>
+		<input
+			id={ p.ID }
+			name={ p.name() }
+			type="checkbox"
+			role="switch"
+			value={ p.value() }
+			class="switch"
+			checked?={ p.Checked }
+			disabled?={ p.Disabled }
+			if p.Help != "" {
+				aria-describedby={ p.ID + "-help" }
+			}
+		/>
+	</div>
+}
+
+// ---- settings frame
+
+// SettingsLayout is the frame of every settings section: the section
+// navigation (a scrollable pill bar below 768 px, a sticky sidebar from there
+// up) and a column for the cards, plus the folder picker dialog.
+templ SettingsLayout(nav []settingsNavItem) {
+	<div class="md:grid md:grid-cols-[13rem_minmax(0,1fr)] md:items-start md:gap-8 lg:grid-cols-[14.5rem_minmax(0,1fr)]">
+		<nav aria-label="Settings sections" x-data="settingsNav" class="relative -mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:-mx-6 sm:px-6 md:sticky md:top-20 md:mx-0 md:mb-0 md:flex-col md:gap-1 md:overflow-visible md:px-0 md:pb-0">
+			for _, n := range nav {
+				<a
+					href={ templ.SafeURL(n.Path) }
+					class="settings-link"
+					if n.Active {
+						aria-current="page"
+					}
+				>
+					@Icon(IconName(n.Icon), "size-5 shrink-0")
+					<span>{ n.Title }</span>
+				</a>
+			}
+		</nav>
+		<div class="min-w-0 space-y-6">
+			{ children... }
+		</div>
+	</div>
+	@FolderDialog()
+}
+
+// SettingsFormProps are the parameters of SettingsForm.
+type SettingsFormProps struct {
+	ID       string
+	Action   string
+	Title    string
+	Subtitle string
+	CSRF     string
+	Error    string // a problem that belongs to no field
+	Saved    bool   // plain-POST success note
+	Dirty    bool   // start in the unsaved state, after a failed save, so Save stays enabled
+	Label    string // the Save button; default "Save changes"
+}
+
+func (p SettingsFormProps) label() string {
+	if p.Label == "" {
+		return "Save changes"
+	}
+	return p.Label
+}
+
+// SettingsForm is the settings form pattern: a card whose body is one
+// <form>. Save posts it with htmx and the answer replaces the whole card
+// (#<ID>-card), so errors, warnings and the clean state all come from the
+// server. Without JavaScript it is a plain POST that renders the page again.
+// The Alpine "settingsForm" component keeps Save disabled until a field
+// changes and shows "Unsaved changes".
+templ SettingsForm(p SettingsFormProps) {
+	<section id={ p.ID + "-card" } class="card" aria-labelledby={ p.ID + "-title" }>
+		<header class="card-header">
+			<div>
+				<h2 id={ p.ID + "-title" } class="text-base">{ p.Title }</h2>
+				if p.Subtitle != "" {
+					<p class="mt-0.5 text-sm text-fg-muted">{ p.Subtitle }</p>
+				}
+			</div>
+		</header>
+		<form
+			id={ p.ID }
+			method="post"
+			action={ templ.SafeURL(p.Action) }
+			{ Hx{Post: p.Action, Target: "#" + p.ID + "-card", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
+			x-data="settingsForm"
+			@input="touch"
+			@change="touch"
+			if p.Dirty {
+				data-dirty="true"
+			}
+			novalidate
+		>
+			@CSRFField(p.CSRF)
+			<div class="card-body space-y-6">
+				if p.Saved {
+					@Alert(AlertProps{Variant: AlertSuccess, Title: "Saved", Body: "Your changes were saved."})
+				}
+				if p.Error != "" {
+					@Alert(AlertProps{Variant: AlertDanger, Title: "Could not save", Body: p.Error, ID: p.ID + "-error"})
+				}
+				{ children... }
+			</div>
+			<footer class="card-footer">
+				<p x-show="dirty" x-cloak class="mr-auto text-xs text-fg-muted" role="status">Unsaved changes</p>
+				<button type="submit" class="btn btn-primary" :disabled="!dirty">
+					<span class="btn-spinner" aria-hidden="true"></span>
+					{ p.label() }
+				</button>
+			</footer>
+		</form>
+	</section>
+}
+
+// ---- folder picker
+
+// FolderDialog is the folder picker of the settings pages, one per page (the
+// settings layout draws it). A field with Browse opens it through the Alpine
+// "folderButton"; "folderDialog" loads FolderList from GET /settings/folders
+// into the body and writes the chosen path back.
+templ FolderDialog() {
+	<dialog x-data="folderDialog" x-ref="dlg" id="folder-dialog" class="modal w-full max-w-lg" aria-labelledby="folder-dialog-title" aria-describedby="folder-dialog-desc" @click="onBackdrop">
+		<div class="p-6">
+			<h2 id="folder-dialog-title" class="text-lg">Choose a folder</h2>
+			<p id="folder-dialog-desc" class="mt-1.5 text-sm text-fg-muted">Folders on the machine bitnews runs on. In Docker these are the paths inside the container, such as /data.</p>
+			<div id="folder-dialog-body" x-ref="body" class="mt-4" aria-live="polite"></div>
+			<div class="mt-6 flex justify-end">
+				<button type="button" class="btn btn-secondary" @click="hide">Cancel</button>
+			</div>
+		</div>
+	</dialog>
+}
+
+// FolderList is one folder of the picker: the fragment GET /settings/folders
+// renders.
+templ FolderList(v folderListView) {
+	<div id="folder-list" data-path={ v.Path } class="space-y-3">
+		<nav aria-label="Folder path" class="flex flex-wrap items-center gap-x-1 gap-y-1 text-sm">
+			for i, c := range v.Crumbs {
+				if i > 1 {
+					<span class="text-fg-subtle" aria-hidden="true">/</span>
+				}
+				<button type="button" class="rounded px-1 font-medium text-fg hover:bg-surface-2" { Hx{Get: c.Href, Target: "#folder-dialog-body"}.MustAttrs()... }>{ c.Name }</button>
+			}
+		</nav>
+		if v.Error != "" {
+			<p class="field-error">
+				@Icon(IconError, "mt-px size-4 shrink-0")
+				<span>{ v.Error }</span>
+			</p>
+		}
+		<ul class="max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+			if v.Up != "" {
+				<li>
+					<button type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-fg-muted hover:bg-surface-2" { Hx{Get: v.Up, Target: "#folder-dialog-body"}.MustAttrs()... }>
+						@Icon(IconArrowUp, "size-4 shrink-0")
+						<span>Up one level</span>
+					</button>
+				</li>
+			}
+			for _, d := range v.Dirs {
+				<li>
+					<button type="button" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2" data-folder={ d.Path } { Hx{Get: d.Href, Target: "#folder-dialog-body"}.MustAttrs()... }>
+						@Icon(IconFolder, "size-4 shrink-0 text-fg-subtle")
+						<span class="min-w-0 truncate">{ d.Name }</span>
+						if !d.Writable {
+							<span class="badge badge-queued ml-auto shrink-0">Read-only</span>
+						}
+					</button>
+				</li>
+			}
+			if len(v.Dirs) == 0 {
+				<li class="px-3 py-2 text-sm text-fg-muted">No folders in here.</li>
+			}
+		</ul>
+		if v.Truncated {
+			<p class="help">Only the first { strconv.Itoa(v.Limit) } folders are shown. Type the path in the field for one further down.</p>
+		}
+		<div class="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+			<code class="min-w-0 truncate rounded bg-surface-2 px-1.5 py-0.5 text-xs" title={ v.Path }>{ v.Path }</code>
+			<button type="button" id="folder-use" class="btn btn-primary btn-sm" data-path={ v.Path } @click="choose">Use this folder</button>
+		</div>
+		if !v.Writable {
+			<p class="help">bitnews cannot write in this folder as it runs now. Downloads need a folder it can write to.</p>
+		}
+	</div>
+}

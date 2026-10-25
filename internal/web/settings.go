@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/auth"
 	"github.com/jroosing/bitnews/internal/core"
@@ -31,8 +33,12 @@ type SettingsSection struct {
 	Description string
 	// Order sorts the navigation; the first section is where /settings leads.
 	Order int
-	// Template is the file below assets/templates/pages/.
+	// Template is the file below assets/templates/pages/. Ignored when
+	// Component is set.
 	Template string
+	// Component builds the section page inside the settings frame
+	// (ADR-0011). It replaces Template.
+	Component func(v *View, p settingsPage) templ.Component
 	// Data returns the section's own data, which the template sees as
 	// .Page.Data. Optional.
 	Data func(s *Server, r *http.Request) (any, error)
@@ -94,6 +100,15 @@ func settingsPageFor(secs []SettingsSection, sec SettingsSection, data any) sett
 	return settingsPage{Section: nav[slices.IndexFunc(nav, func(n settingsNavItem) bool { return n.Slug == sec.Slug })], Nav: nav, Data: data}
 }
 
+// settingsComponent adapts a section's Component to the Page one; it is nil
+// while the section still uses a template.
+func settingsComponent(sec SettingsSection) func(*View, any) templ.Component {
+	if sec.Component == nil {
+		return nil
+	}
+	return func(v *View, data any) templ.Component { return sec.Component(v, data.(settingsPage)) }
+}
+
 // registerSettings adds the settings shell: /settings (a redirect to the
 // first section), a page per section and the section's own routes.
 func (s *Server) registerSettings() {
@@ -107,6 +122,7 @@ func (s *Server) registerSettings() {
 	for _, sec := range secs {
 		s.addPage(Page{
 			Path: "/settings/" + sec.Slug, Template: sec.Template, Title: sec.Title,
+			Component: settingsComponent(sec),
 			Data: func(s *Server, r *http.Request) (any, error) {
 				var data any
 				if sec.Data != nil {
@@ -144,6 +160,10 @@ func (s *Server) renderSettingsPage(w http.ResponseWriter, r *http.Request, stat
 	}
 	v := s.newView(r, sec.Title)
 	v.Page = settingsPageFor(settingsSections(), sec, data)
+	if sec.Component != nil {
+		s.renderComponent(w, r, status, sec.Component(v, v.Page.(settingsPage)))
+		return
+	}
 	s.render(w, r, status, sec.Template, "layout_app", v)
 }
 

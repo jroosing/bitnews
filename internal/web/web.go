@@ -62,6 +62,7 @@ type Deps struct {
 type Server struct {
 	Deps
 	assets *assets
+	head   headAssets
 	tpl    *templates
 	mux    *http.ServeMux
 	csrf   func(http.Handler) http.Handler
@@ -96,6 +97,10 @@ func New(deps Deps) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	head, err := newHeadAssets(a)
+	if err != nil {
+		return nil, err
+	}
 	tfs, err := subFS("assets/templates")
 	if err != nil {
 		return nil, err
@@ -105,7 +110,7 @@ func New(deps Deps) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		Deps: deps, assets: a, tpl: tpl, mux: http.NewServeMux(),
+		Deps: deps, assets: a, head: head, tpl: tpl, mux: http.NewServeMux(),
 		csrf:   auth.CSRF(deps.Settings.Current),
 		routes: map[string][]string{},
 		// SO_BINDTODEVICE is Linux only (docs/network-binding.md).
