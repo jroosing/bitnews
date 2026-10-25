@@ -75,7 +75,5 @@ func (s *Server) getFolders(w http.ResponseWriter, r *http.Request) {
 	for _, d := range dirs {
 		v.Dirs = append(v.Dirs, folderEntry{Name: d.Name, Path: d.Path, Href: folderHref(d.Path), Writable: d.Writable})
 	}
-	view := s.newView(r, "")
-	view.Page = v
-	s.renderFragment(w, r, http.StatusOK, settingsPathsPage, "folder_list", view)
+	s.renderComponent(w, r, http.StatusOK, FolderList(v))
 }

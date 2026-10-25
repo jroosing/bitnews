@@ -106,10 +106,7 @@ func (s *Server) getAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderAddForm(w http.ResponseWriter, r *http.Request, status int, f addForm) {
-	v := s.newView(r, "")
-	v.Page = f
-	// The form is a component, which every page's template set has.
-	s.renderFragment(w, r, status, "history.html", "add_form", v)
+	s.renderComponent(w, r, status, AddForm(f))
 }
 
 // addInput is what the form posted.
