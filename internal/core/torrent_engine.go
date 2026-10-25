@@ -201,3 +201,14 @@ type ListenPortStatus struct {
 
 // Open reports whether a peer has connected in on the current port.
 func (s ListenPortStatus) Open() bool { return !s.LastIncoming.IsZero() }
+
+// KindListenPortChanged is the EventKind of ListenPortChanged.
+const KindListenPortChanged EventKind = "listen_port_changed"
+
+// ListenPortChanged says the torrent engine now listens on Port.
+type ListenPortChanged struct {
+	Port int
+}
+
+// Kind implements Event.
+func (ListenPortChanged) Kind() EventKind { return KindListenPortChanged }

@@ -228,7 +228,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 			return nil, err
 		}
 	}
-	tport := &torrentPort{settings: settings, override: deps.Torrent.Port, log: log}
+	tport := &torrentPort{settings: settings, override: deps.Torrent.Port, log: log, events: bus}
 	if lp, ok := engine.(listenPorter); ok {
 		tport.engine = lp
 	}

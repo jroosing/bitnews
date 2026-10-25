@@ -69,7 +69,48 @@ func (m *memSettings) Change(_ context.Context, f func(*core.Settings) error) er
 func newPort(override int) (*torrentPort, *fakePortEngine, *memSettings) {
 	eng := &fakePortEngine{port: core.DefaultTorrentPort, taken: map[int]bool{}}
 	s := &memSettings{s: core.DefaultSettings()}
-	return &torrentPort{engine: eng, settings: s, override: override, log: slog.New(slog.DiscardHandler)}, eng, s
+	return &torrentPort{engine: eng, settings: s, override: override, log: slog.New(slog.DiscardHandler), events: &portEvents{}}, eng, s
+}
+
+// portEvents records what torrentPort publishes.
+type portEvents struct {
+	mu  sync.Mutex
+	got []core.Event
+}
+
+func (e *portEvents) Publish(ev core.Event) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.got = append(e.got, ev)
+}
+
+func published(p *torrentPort) []core.Event {
+	e := p.events.(*portEvents)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]core.Event(nil), e.got...)
+}
+
+func TestAMovedPortIsAnnounced(t *testing.T) {
+	p, _, s := newPort(0)
+
+	_, err := p.SetListenPort(context.Background(), 45678)
+	require.NoError(t, err)
+	s.s.Torrent.ListenPort = 50000
+	p.apply()
+	p.apply()
+
+	assert.Equal(t, []core.Event{core.ListenPortChanged{Port: 45678}, core.ListenPortChanged{Port: 50000}}, published(p))
+}
+
+func TestAPortThatCannotBeOpenedIsNotAnnounced(t *testing.T) {
+	p, eng, _ := newPort(0)
+	eng.taken[45678] = true
+
+	_, err := p.SetListenPort(context.Background(), 45678)
+
+	require.Error(t, err)
+	assert.Empty(t, published(p))
 }
 
 func TestSetListenPortMovesTheEngineAndStoresThePort(t *testing.T) {

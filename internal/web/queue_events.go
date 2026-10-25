@@ -118,7 +118,8 @@ func (b *batch) note(ev core.Event) {
 			return
 		}
 		b.staged[e.ID] = struct{}{}
-	case core.DownloadAdded, core.DownloadUpdated, core.Fetched, core.Ready, core.Failed, core.QueuePaused, core.QueueResumed:
+	case core.DownloadAdded, core.DownloadUpdated, core.Fetched, core.Ready, core.Failed, core.QueuePaused, core.QueueResumed,
+		core.ListenPortChanged: // the torrent queue shows the port
 		b.refresh = true
 	case core.Removed:
 		b.refresh = true

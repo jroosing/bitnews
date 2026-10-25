@@ -173,6 +173,15 @@ func (c *webConfig) TorrentPortOverride() int { return c.portOverride }
 
 func (c *webConfig) ListenPort() (core.ListenPortStatus, bool) { return c.port.ListenPortStatus() }
 
+// ApplyListenPort moves the engine to the saved port now, so the page that
+// saved it shows the new port. The SettingsChanged watcher would do the same
+// a moment later; moving twice is a no-op.
+func (c *webConfig) ApplyListenPort() {
+	if c.port != nil {
+		c.port.apply()
+	}
+}
+
 func (c *webConfig) Binding(kind core.SourceKind) web.BindingStatus {
 	var b core.ProtocolBinding
 	switch kind {

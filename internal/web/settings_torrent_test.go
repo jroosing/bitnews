@@ -38,7 +38,6 @@ func TestTorrentPageShowsTheConnectionSettings(t *testing.T) {
 	for _, id := range []string{"dht", "pex"} {
 		assert.True(t, hasAttr(byID(doc, id), "checked"), id)
 	}
-	assert.False(t, hasAttr(byID(doc, "lsd"), "checked"))
 	sel := byID(doc, "mse")
 	require.NotNil(t, sel)
 	opts := findAll(sel, func(n *html.Node) bool { return n.Data == "option" })
@@ -57,7 +56,6 @@ func TestTorrentPageShowsTheConnectionSettings(t *testing.T) {
 	assert.Equal(t, "6881", attr(byID(doc, "listen-port"), "value"))
 	assert.False(t, hasAttr(byID(doc, "dht"), "checked"))
 	assert.True(t, hasAttr(byID(doc, "pex"), "checked"))
-	assert.True(t, hasAttr(byID(doc, "lsd"), "checked"))
 }
 
 func TestSavingTheConnectionChangesOnlyTheTorrentSettings(t *testing.T) {
@@ -73,7 +71,7 @@ func TestSavingTheConnectionChangesOnlyTheTorrentSettings(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	after := e.settings.Current()
-	assert.Equal(t, core.TorrentSettings{ListenPort: 6881, DisableDHT: true, LSD: true, MSE: core.MSERequire}, after.Torrent)
+	assert.Equal(t, core.TorrentSettings{ListenPort: 6881, DisableDHT: true, MSE: core.MSERequire}, after.Torrent, "lsd has no switch: a posted value is ignored")
 	before.Torrent = after.Torrent
 	assert.Equal(t, before, after)
 	level, msg := settingsToastOf(t, rec)

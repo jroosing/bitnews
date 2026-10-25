@@ -35,6 +35,9 @@ type ConfigSource interface {
 	// ListenPort is the torrent engine's live listen port and whether a peer
 	// has connected in on it; ok is false when torrents are off.
 	ListenPort() (st core.ListenPortStatus, ok bool)
+	// ApplyListenPort moves the torrent engine to the saved listen port
+	// right away.
+	ApplyListenPort()
 }
 
 // BindingStatus is the live state of one protocol's network binding.
@@ -89,6 +92,9 @@ type settingsCard struct {
 	restartNote string
 	// invalid replaces the card's note when fields need fixing.
 	invalid string
+	// afterSave runs after a successful save, before the card is drawn
+	// again, for settings that apply live and that the card shows.
+	afterSave func(s *Server)
 	// page builds the whole section page around the card views, for a
 	// section that shows more than cards. Nil means the views are the data.
 	page func(s *Server, r *http.Request, views cardViews) (any, error)
@@ -168,6 +174,9 @@ func (s *Server) postCard(cards []*settingsCard, c *settingsCard) http.HandlerFu
 			}
 			s.respondCard(w, r, http.StatusUnprocessableEntity, cards, c, s.finishCard(c, v, cur))
 			return
+		}
+		if c.afterSave != nil {
+			c.afterSave(s)
 		}
 		v := cardView{CSRF: settingsCSRF(r), V: c.values(next), E: map[string]string{}}
 		view := s.finishCard(c, v, next)

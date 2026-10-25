@@ -198,6 +198,7 @@ data: { …Download… }
   | `failed` | `{"id","reason","detail"}` |
   | `removed` | `{"id"}` |
   | `settings_changed` | `{}` (fetch `/settings`) |
+  | `listen_port_changed` | `{"port"}`: the torrent engine now listens on that port |
   | `servers_changed` | `{}` (fetch `/servers`) |
   | `postprocess_stage` | `{"id","stage"}`, stage is `verifying`, `repairing`, `unpacking` or `finishing` |
   | `usenet_queue_paused`, `torrent_queue_paused` | `{"reason","detail"}`, reason is `user`, `disk_full` or `bind_unavailable`; sent when a reason is added |

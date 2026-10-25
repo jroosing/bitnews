@@ -176,6 +176,16 @@ type fakeConfig struct {
 	portOverride int
 	// port is the live listen port status; nil means torrents are off.
 	port *core.ListenPortStatus
+	// settings, when set, is what ApplyListenPort moves the port to.
+	settings func() core.Settings
+	applied  int
+}
+
+func (f *fakeConfig) ApplyListenPort() {
+	f.applied++
+	if f.port != nil && f.settings != nil {
+		f.port.Port = f.settings().Torrent.EffectivePort()
+	}
 }
 
 func (f *fakeConfig) ListenPort() (core.ListenPortStatus, bool) {

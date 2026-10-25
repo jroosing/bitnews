@@ -57,3 +57,27 @@ func TestTheTorrentSettingsShowThePortStatus(t *testing.T) {
 	assert.Contains(t, text(line), "45678")
 	assert.Contains(t, text(byID(doc, "connection-card")), "only needed for seeding")
 }
+
+func TestSavingANewListenPortShowsItAtOnce(t *testing.T) {
+	st := core.ListenPortStatus{Port: 51413, Since: time.Now()}
+	cfg := &fakeConfig{started: core.DefaultSettings(), port: &st}
+	e, b := settingsSignedIn(t, withConfig(cfg))
+	cfg.settings = e.settings.Current
+
+	rec := b.settingsPost("/settings/torrent", connectionForm("6881", true, true, false, "prefer"))
+
+	require.Equal(t, 1, cfg.applied, "the new port is applied before the card is drawn")
+	line := byID(parseHTML(t, rec.Body.String()), "torrent-port-status")
+	require.NotNil(t, line)
+	assert.Contains(t, text(line), "6881")
+	assert.NotContains(t, text(line), "51413")
+}
+
+func TestTheTorrentSettingsHaveNoLocalPeerDiscoverySwitch(t *testing.T) {
+	_, b := settingsSignedIn(t, withConfig(&fakeConfig{started: core.DefaultSettings()}))
+
+	doc := parseHTML(t, b.get("/settings/torrent").Body.String())
+
+	assert.Nil(t, byID(doc, "lsd"))
+	assert.NotContains(t, text(doc), "Local peer discovery")
+}

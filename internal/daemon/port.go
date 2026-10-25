@@ -33,6 +33,8 @@ type torrentPort struct {
 	settings portSettings
 	override int // BITNEWS_TORRENT_PORT, or 0
 	log      *slog.Logger
+	// events hears core.ListenPortChanged after every move.
+	events interface{ Publish(core.Event) }
 
 	mu sync.Mutex // serialises moves
 }
@@ -69,7 +71,7 @@ func (p *torrentPort) SetListenPort(ctx context.Context, port int) (core.ListenP
 		}
 		return core.ListenPortStatus{}, err
 	}
-	p.log.Info("torrent listen port set", "port", port)
+	p.moved(port)
 	return p.engine.ListenPortStatus(), nil
 }
 
@@ -97,7 +99,16 @@ func (p *torrentPort) apply() {
 		p.log.Warn("torrent listen port not changed", "port", want, "error", err.Error())
 		return
 	}
-	p.log.Info("torrent listen port set", "port", want)
+	p.moved(want)
+}
+
+// moved logs and announces that the engine listens on port now, so the UI
+// shows the new port.
+func (p *torrentPort) moved(port int) {
+	p.log.Info("torrent listen port set", "port", port)
+	if p.events != nil {
+		p.events.Publish(core.ListenPortChanged{Port: port})
+	}
 }
 
 func (p *torrentPort) run(ctx context.Context, bus *core.Bus) {

@@ -194,6 +194,17 @@ func TestRunnerQueueEventsRefreshTheLists(t *testing.T) {
 	}
 }
 
+func TestAListenPortChangeRefreshesTheLists(t *testing.T) {
+	q := newQueueEnv(t)
+	s := q.openStream(t, "?rows=1")
+	s.until("status")
+
+	q.bus.Publish(core.ListenPortChanged{Port: 45678})
+	q.flush()
+
+	assert.Equal(t, "refresh", s.until("refresh").Name, "the port badge shows the new port")
+}
+
 func TestStreamWithoutRowsOnlyCarriesTheStatus(t *testing.T) {
 	q := newQueueEnv(t)
 	d := q.add(core.Download{State: core.StateFetching})

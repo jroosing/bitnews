@@ -37,7 +37,6 @@
     <div class="space-y-4">
       {{template "switch_field" dict "ID" "dht" "Name" "dht" "Label" "DHT" "Help" "Find peers through the distributed network, not only through trackers." "Checked" (index .V "dht")}}
       {{template "switch_field" dict "ID" "pex" "Name" "pex" "Label" "Peer exchange" "Help" "Peers tell each other about more peers." "Checked" (index .V "pex")}}
-      {{template "switch_field" dict "ID" "lsd" "Name" "lsd" "Label" "Local peer discovery" "Help" "Find peers on your own network. The torrent engine does not support this yet, so it has no effect for now." "Checked" (index .V "lsd")}}
     </div>
   </fieldset>
 {{template "settings_form_end" dict "Label" "Save connection"}}

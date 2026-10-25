@@ -137,6 +137,10 @@ func eventPayload(ev core.Event) (name string, payload any, ok bool) {
 		return name, idPayload{e.ID}, true
 	case core.SettingsChanged, core.ServersChanged:
 		return name, struct{}{}, true
+	case core.ListenPortChanged:
+		return name, struct {
+			Port int `json:"port"`
+		}{e.Port}, true
 	case core.PostProcessStage:
 		return name, struct {
 			ID    core.ID    `json:"id"`

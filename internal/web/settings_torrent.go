@@ -64,12 +64,11 @@ func (s *Server) fixedPort() int {
 type torrentKey struct {
 	Port     int
 	DHT, PEX bool
-	LSD      bool
 	MSE      core.MSEPolicy
 }
 
 func torrentKeyOf(t core.TorrentSettings) torrentKey {
-	return torrentKey{t.EffectivePort(), t.DHTEnabled(), t.PEXEnabled(), t.LSD, t.EffectiveMSE()}
+	return torrentKey{t.EffectivePort(), t.DHTEnabled(), t.PEXEnabled(), t.EffectiveMSE()}
 }
 
 // torrentConnectionCard edits Settings.Torrent. The listen port moves live;
@@ -83,7 +82,7 @@ var torrentConnectionCard = &settingsCard{
 		t := s.Torrent
 		return map[string]string{
 			"listen_port": itoa(t.EffectivePort()),
-			"dht":         checked(t.DHTEnabled()), "pex": checked(t.PEXEnabled()), "lsd": checked(t.LSD),
+			"dht":         checked(t.DHTEnabled()), "pex": checked(t.PEXEnabled()),
 			"mse": string(t.EffectiveMSE()),
 		}
 	},
@@ -104,8 +103,10 @@ var torrentConnectionCard = &settingsCard{
 		if len(errs) > 0 {
 			return errs
 		}
+		// Local peer discovery has no switch: the engine cannot do it yet,
+		// so a stored value is kept as it is.
 		next.Torrent = core.TorrentSettings{
-			ListenPort: int(port), DisableDHT: !on(f, "dht"), DisablePEX: !on(f, "pex"), LSD: on(f, "lsd"), MSE: mse,
+			ListenPort: int(port), DisableDHT: !on(f, "dht"), DisablePEX: !on(f, "pex"), LSD: next.Torrent.LSD, MSE: mse,
 		}
 		return nil
 	},
@@ -117,6 +118,11 @@ var torrentConnectionCard = &settingsCard{
 			cv.V["listen_port"] = itoa(p)
 		}
 		return cv
+	},
+	afterSave: func(s *Server) {
+		if s.Config != nil {
+			s.Config.ApplyListenPort()
+		}
 	},
 	restart: func(_ *Server, started, saved core.Settings) bool {
 		a, b := torrentKeyOf(started.Torrent), torrentKeyOf(saved.Torrent)
