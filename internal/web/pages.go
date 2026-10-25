@@ -33,7 +33,7 @@ type Page struct {
 func builtinPages() []Page {
 	return []Page{
 		{Path: "/queue", Template: "queue.html", Title: "Queue", NavLabel: "Queue", NavIcon: "queue", Data: queueData},
-		{Path: "/history", Template: "history.html", Title: "History", NavLabel: "History", NavIcon: "history", Data: historyData},
+		{Path: "/history", Component: historyComponent, Title: "History", NavLabel: "History", NavIcon: "history", Data: historyData},
 		{Path: "/ui/styleguide", Component: styleguideComponent, Title: "Style guide", Data: styleguideData},
 	}
 }
