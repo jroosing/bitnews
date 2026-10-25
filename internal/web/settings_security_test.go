@@ -696,18 +696,15 @@ func addSecurityResponses(t *testing.T, e *env, b *browser, out map[string]*http
 
 func TestAuthBannerLinksToTheSecuritySettings(t *testing.T) {
 	e, _ := settingsSignedIn(t)
-	for name, mutate := range map[string]func(*core.Auth){
-		"disabled": func(a *core.Auth) { a.DisableAuth = true },
-		"bypass":   func(a *core.Auth) { a.LANBypassCIDRs = []string{"192.0.2.0/24"} },
-	} {
-		setAuth(t, e, func(a *core.Auth) { *a = core.Auth{AllowedHosts: []string{"example.com"}}; mutate(a) })
+	setAuth(t, e, func(a *core.Auth) {
+		*a = core.Auth{AllowedHosts: []string{"example.com"}, LANBypassCIDRs: []string{"192.0.2.0/24"}}
+	})
 
-		doc := parseHTML(t, e.browser().get("/queue").Body.String())
+	doc := parseHTML(t, e.browser().get("/queue", func(r *http.Request) { r.RemoteAddr = "192.0.2.7:4000" }).Body.String())
 
-		banner := find(doc, func(n *html.Node) bool { return hasAttr(n, "data-auth-banner") })
-		require.NotNil(t, banner, name)
-		link := find(banner, func(n *html.Node) bool { return n.Data == "a" })
-		require.NotNil(t, link, name)
-		assert.Equal(t, "/settings/security", attr(link, "href"), name)
-	}
+	banner := find(doc, func(n *html.Node) bool { return hasAttr(n, "data-auth-banner") })
+	require.NotNil(t, banner)
+	link := find(banner, func(n *html.Node) bool { return n.Data == "a" })
+	require.NotNil(t, link)
+	assert.Equal(t, "/settings/security", attr(link, "href"))
 }

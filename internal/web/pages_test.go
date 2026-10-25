@@ -155,9 +155,7 @@ func TestBannerAppearsOnlyWhenAuthIsBypassedOrDisabled(t *testing.T) {
 		for _, page := range appPages {
 			rec := e.browser().get(page)
 			require.Equal(t, http.StatusOK, rec.Code, page)
-			got := banner(rec)
-			assert.Contains(t, got, "disabled: Authentication is turned off", page)
-			assert.Contains(t, got, "Anyone who can reach this address")
+			assert.Empty(t, banner(rec), page)
 		}
 	})
 	t.Run("bypass", func(t *testing.T) {
@@ -172,9 +170,9 @@ func TestBannerAppearsOnlyWhenAuthIsBypassedOrDisabled(t *testing.T) {
 	t.Run("cannot be dismissed", func(t *testing.T) {
 		e := newEnv(t)
 		s := e.settings.Current()
-		s.Auth = core.Auth{DisableAuth: true, AllowedHosts: []string{"example.com"}}
+		s.Auth = core.Auth{LANBypassCIDRs: []string{"192.0.2.0/24"}, AllowedHosts: []string{"example.com"}}
 		require.NoError(t, e.settings.Update(context.Background(), s))
-		n := find(parseHTML(t, e.browser().get("/queue").Body.String()), func(n *html.Node) bool { return hasAttr(n, "data-auth-banner") })
+		n := find(parseHTML(t, e.browser().get("/queue", func(r *http.Request) { r.RemoteAddr = "192.0.2.7:4000" }).Body.String()), func(n *html.Node) bool { return hasAttr(n, "data-auth-banner") })
 		require.NotNil(t, n)
 		assert.Empty(t, findAll(n, func(n *html.Node) bool { return n.Data == "button" }), "no close button")
 	})

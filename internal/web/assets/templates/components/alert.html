@@ -1,7 +1,7 @@
 {{/*
   alert: Keys: Variant (info|success|warn|danger), Title, Body, Role
   (default: alert for warn/danger, status otherwise), ID.
-  The auth-mode banner uses it and cannot be dismissed: there is no close
+  The LAN bypass banner uses it and cannot be dismissed: there is no close
   button on purpose.
 */}}
 {{define "alert"}}
@@ -18,14 +18,7 @@
 {{end}}
 
 {{define "auth_banner"}}
-{{- if eq .AuthMode "disabled"}}
-<div class="border-b border-line bg-warn-soft px-4 py-2.5 text-warn-fg sm:px-6 lg:px-8" role="alert" data-auth-banner="disabled">
-  <div class="mx-auto flex max-w-7xl items-start gap-3 text-sm">
-    {{icon "shield" "mt-0.5 size-5 shrink-0"}}
-    <p><strong class="font-semibold">Authentication is turned off.</strong> Anyone who can reach this address can control bitnews and everything it downloads. <a href="/settings/security" class="font-medium text-current underline">Turn sign-in back on in Settings</a> unless a trusted proxy in front of bitnews handles it.</p>
-  </div>
-</div>
-{{- else if eq .AuthMode "bypass"}}
+{{- if eq .AuthMode "bypass"}}
 <div class="border-b border-line bg-warn-soft px-4 py-2.5 text-warn-fg sm:px-6 lg:px-8" role="alert" data-auth-banner="bypass">
   <div class="mx-auto flex max-w-7xl items-start gap-3 text-sm">
     {{icon "shield" "mt-0.5 size-5 shrink-0"}}

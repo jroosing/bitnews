@@ -85,3 +85,7 @@ make vuln        # govulncheck
 make fuzz-smoke  # every Fuzz* target for 10s
 make build       # static binary in bin/
 ```
+
+## License
+
+bitnews is free software under the [GNU General Public License v3.0](LICENSE), the same license as Sonarr and Radarr. 7-Zip and par2cmdline-turbo, which the image ships for post-processing, keep their own licenses and run as separate programs.

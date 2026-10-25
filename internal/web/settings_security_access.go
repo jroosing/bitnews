@@ -219,7 +219,9 @@ func (s *Server) accessConfirm(r *http.Request, disable, newlyOff bool, nets, ne
 	if ip := s.clientIP(r); covers(newNets, ip) {
 		c.Bullets = append(c.Bullets, "Your own device ("+ip.String()+") is in that range, so you will no longer be asked to sign in from here.")
 	}
-	c.Bullets = append(c.Bullets, "A warning banner stays on every page while this is on. You can switch it off again here.")
+	if len(nets) > 0 && !disable {
+		c.Bullets = append(c.Bullets, "A warning banner stays on every page while this is on. You can switch it off again here.")
+	}
 	c.Fields = []confirmField{{"lan_bypass", lines(nets)}, {"confirmed", "1"}}
 	if disable {
 		c.Fields = append(c.Fields, confirmField{"disable_auth", "on"})

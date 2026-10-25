@@ -30,7 +30,7 @@ By the end of M6, the daemon itself serves a browser UI built with htmx and serv
 - No inline scripts or styles (so no `style=""` attribute and no inline `<style>`; htmx indicator rules are in our CSS), no `hx-on` attributes, and Alpine's CSP build (no `unsafe-eval`).
 - htmx config: `htmx.config.allowEval = false`, `htmx.config.allowScriptTags = false` and `htmx.config.selfRequestsOnly = true`.
 - **CSRF:** the token from the session goes into a `<meta>` tag. A small first-party `app.js` (plus a tiny `theme.js` that applies the saved theme before first paint) adds `X-CSRF-Token` to every htmx request through `htmx:configRequest`. Plain form posts carry a hidden `_csrf` field, which a small wrapper in `internal/web` copies into the header before `auth.CSRF` runs.
-- **Auth banner:** when disable auth or LAN bypass is active (from M1-11), every page shows a persistent warning banner that can't be dismissed.
+- **Auth banner:** when LAN bypass is active (from M1-11), every page shows a persistent warning banner that can't be dismissed. With disable auth on there is no banner: Settings → Security carries the warnings.
 - All dynamic content is escaped by `html/template`. Download names are hostile input (they come from NZBs and torrents), so a test renders malicious names.
 
 ### Live updates
@@ -82,7 +82,7 @@ Semantic HTML, labels on every input, and keyboard-operable actions. The layout 
 **Acceptance criteria**
 - [ ] A headless browser test finds no CSP violations on an empty page.
 - [ ] htmx requests carry the CSRF header, and a request without it is rejected.
-- [ ] The banner shows when either auth option is on.
+- [ ] The banner shows when LAN bypass is on.
 
 ### M6-02: Login and setup pages
 - **Labels:** area:ui, area:auth, ready-for-agent

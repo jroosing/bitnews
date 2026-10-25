@@ -111,7 +111,7 @@ func bypassKind(s core.Auth, r *http.Request) (PrincipalKind, bool) {
 //	 "user": {"id": "...", "username": "..."} | null}
 //
 // The UI sends csrf_token as X-CSRF-Token on state-changing requests and
-// shows a permanent warning banner unless auth_mode is "session". Other
+// shows a permanent warning banner when auth_mode is "bypass". Other
 // principals (API keys) get 401: this is a UI route.
 func (a *UIAuth) SessionInfo() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
