@@ -236,9 +236,27 @@ The image's `HEALTHCHECK` runs `["/entrypoint.sh", "healthcheck"]`, which starts
 
 The `HEALTHCHECK` uses `--interval=30s --timeout=5s --start-period=20s --retries=3`. Inspect it with `docker inspect --format '{{.State.Health.Status}}' bitnews`. It always queries the loopback address, so keep `BITNEWS_LISTEN` on `0.0.0.0` or `127.0.0.1` inside the container.
 
+## Proxmox LXC
+
+`deploy/proxmox/` holds a [community-scripts](https://community-scripts.org) installer for a Proxmox VE host. The scripts are written but not published there yet (see `deploy/proxmox/README.md`). Once they are, one command on the Proxmox shell creates the container:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/bitnews.sh)"
+```
+
+(Use the address the community-scripts site shows for bitnews.) It creates an unprivileged Debian 13 LXC (2 cores, 2 GiB RAM, 8 GiB disk by default, all changeable in the advanced settings) and installs the release tarball from GitHub: `bitnews` plus the pinned `7zz` and `par2`, in `/opt/bitnews`. The script's update function installs the newest release; the database and master key stay.
+
+- **Login.** The script creates the admin account itself, so there is no setup screen. The username is `admin` and the password is in `/root/bitnews.creds` inside the container. Change it in the UI.
+- **Service.** `systemctl status bitnews`, logs with `journalctl -u bitnews`. It runs as the user `bitnews` (uid and gid 1000, so `101000` on the Proxmox host of an unprivileged container) with the settings of `/etc/bitnews/bitnews.env` ([bootstrap settings](#bootstrap-settings)). Config, database and master key are in `/var/lib/bitnews`: back that directory up as a whole ([The master key](#the-master-key)).
+- **Storage.** Downloads go to `/data` inside the container, in the [shared layout](#the-shared-data-layout). Mount your media storage over it (Proxmox: container, Resources, Add, Mount Point, path `/data`), and give `bitnews` write access: on the host `chown -R 101000:101000 <directory>` for an unprivileged container (or add the group, with `lxc.idmap`, that Sonarr and Radarr share). Mount the same storage at the same path in the Sonarr and Radarr containers so they can hardlink and need no remote path mapping.
+- **Torrent port.** Forward `51413` (TCP and UDP) from your router to the container's address. There is no UPnP.
+- **TLS.** Plain HTTP on port 9494: put a reverse proxy in front of it ([Reverse proxy and TLS](#reverse-proxy-and-tls)).
+
+The release tarball is built by `scripts/package-release.sh` and published by `.github/workflows/release.yml` when a version tag (`0.6.0`) is pushed. `deploy/proxmox/README.md` says how the scripts are submitted to community-scripts.
+
 ## Without Docker
 
-The binary is static and has no other files to install, so it also runs directly (`make build-all` builds `dist/bitnews-linux-amd64`). It needs two programs on `PATH`: `7zz` (7-Zip 23 or newer, for unpacking) and `par2` (par2cmdline or par2cmdline-turbo, for repair), and refuses to start without them. `scripts/get-postproc-tools.sh` downloads the pinned, checksum-verified static versions for Linux and macOS into `bin/tools/`. Set the [bootstrap settings](#bootstrap-settings) as flags or environment variables, run it as the user that owns your media (see [Identity and UMASK](#identity-and-umask)), and keep it behind a reverse proxy as described above. `bitnews healthcheck` works outside Docker too, with the same contract. Docker is the supported way to run it; there is no systemd unit.
+The binary is static and has no other files to install, so it also runs directly (`make build-all` builds `dist/bitnews-linux-amd64`). It needs two programs on `PATH`: `7zz` (7-Zip 23 or newer, for unpacking) and `par2` (par2cmdline or par2cmdline-turbo, for repair), and refuses to start without them. `scripts/get-postproc-tools.sh` downloads the pinned, checksum-verified static versions for Linux and macOS into `bin/tools/`. Set the [bootstrap settings](#bootstrap-settings) as flags or environment variables, run it as the user that owns your media (see [Identity and UMASK](#identity-and-umask)), and keep it behind a reverse proxy as described above. `bitnews healthcheck` works outside Docker too, with the same contract. Docker is the supported way to run it; for a Proxmox host there is the [LXC installer](#proxmox-lxc), whose systemd unit is a good starting point (`deploy/proxmox/install/bitnews-install.sh`).
 
 ## Hardening checklist
 
