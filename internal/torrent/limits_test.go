@@ -100,84 +100,33 @@ func seedWithLeech(t *testing.T, c content, clk *clock) *torrent.Engine {
 	return seeder
 }
 
-func TestShareLimitRatioReachedEmitsOnce(t *testing.T) {
+func TestStatsRatioCountsWhatWasUploaded(t *testing.T) {
 	t.Parallel()
 	c := makeContent(t, "Ratio", map[string]int{"f": 100_000})
-	clk := newClock()
-	seeder := seedWithLeech(t, c, clk)
+	seeder := seedWithLeech(t, c, newClock())
 
-	require.NoError(t, seeder.SetShareLimits(c.hash, core.ShareLimit{Ratio: 5, SeedingTime: -1}))
-	seeder.CheckShareLimits()
-	noEvent(t, seeder, core.TorrentShareLimitReached, c.hash, 100*time.Millisecond)
-
-	require.NoError(t, seeder.SetShareLimits(c.hash, core.ShareLimit{Ratio: 1, SeedingTime: -1}))
-	seeder.CheckShareLimits()
-	ev := waitEvent(t, seeder, core.TorrentShareLimitReached, c.hash)
-	assert.Equal(t, c.hash, ev.Hash)
-
-	seeder.CheckShareLimits()
-	noEvent(t, seeder, core.TorrentShareLimitReached, c.hash, 100*time.Millisecond) // reported once
-
-	st, _ := seeder.Stats(c.hash)
+	st, err := seeder.Stats(c.hash)
+	require.NoError(t, err)
 	assert.GreaterOrEqual(t, st.Ratio, 1.0)
-	assert.Equal(t, core.TorrentSeeding, st.State, "the engine only reports; the caller decides the action")
+	assert.Equal(t, core.TorrentSeeding, st.State)
 }
 
-func TestShareLimitSeedingTimeUsesTheClockAndOnlyCountsWhileSeeding(t *testing.T) {
+func TestStatsSeedingTimeUsesTheClockAndOnlyCountsWhileSeeding(t *testing.T) {
 	t.Parallel()
 	c := makeContent(t, "Time", map[string]int{"f": 10_000})
 	clk := newClock()
 	seeder := seed(t, c, func(cfg *torrent.Config) { cfg.Now = clk.Now })
-	require.NoError(t, seeder.SetShareLimits(c.hash, core.ShareLimit{Ratio: -1, SeedingTime: time.Hour}))
 
 	clk.Advance(59 * time.Minute)
-	seeder.CheckShareLimits()
-	noEvent(t, seeder, core.TorrentShareLimitReached, c.hash, 100*time.Millisecond)
 	st, _ := seeder.Stats(c.hash)
 	assert.Equal(t, 59*time.Minute, st.SeedingTime.Round(time.Second))
 
 	// A paused hour does not count.
 	require.NoError(t, seeder.Pause(c.hash))
 	clk.Advance(3 * time.Hour)
-	seeder.CheckShareLimits()
-	noEvent(t, seeder, core.TorrentShareLimitReached, c.hash, 100*time.Millisecond)
 	require.NoError(t, seeder.Resume(c.hash))
 
 	clk.Advance(2 * time.Minute)
-	seeder.CheckShareLimits()
-	waitEvent(t, seeder, core.TorrentShareLimitReached, c.hash)
 	st, _ = seeder.Stats(c.hash)
 	assert.Equal(t, 61*time.Minute, st.SeedingTime.Round(time.Second))
-}
-
-func TestShareLimitUnlimitedIsNeverReachedAndChangingTheLimitRearmsIt(t *testing.T) {
-	t.Parallel()
-	c := makeContent(t, "Unlimited", map[string]int{"f": 10_000})
-	clk := newClock()
-	seeder := seed(t, c, func(cfg *torrent.Config) { cfg.Now = clk.Now })
-
-	clk.Advance(1000 * time.Hour)
-	seeder.CheckShareLimits() // unlimited by default
-	require.NoError(t, seeder.SetShareLimits(c.hash, core.UnlimitedShareLimit()))
-	seeder.CheckShareLimits()
-	noEvent(t, seeder, core.TorrentShareLimitReached, c.hash, 100*time.Millisecond)
-
-	require.NoError(t, seeder.SetShareLimits(c.hash, core.ShareLimit{Ratio: -1, SeedingTime: time.Hour}))
-	seeder.CheckShareLimits()
-	waitEvent(t, seeder, core.TorrentShareLimitReached, c.hash)
-	require.NoError(t, seeder.SetShareLimits(c.hash, core.ShareLimit{Ratio: -1, SeedingTime: 2 * time.Hour}))
-	seeder.CheckShareLimits()
-	waitEvent(t, seeder, core.TorrentShareLimitReached, c.hash) // a new limit, a new report
-}
-
-func TestShareLimitTickerRunsOnItsOwn(t *testing.T) {
-	t.Parallel()
-	c := makeContent(t, "Ticker", map[string]int{"f": 10_000})
-	clk := newClock()
-	seeder := seed(t, c, func(cfg *torrent.Config) { cfg.Now = clk.Now; cfg.ShareLimitInterval = 20 * time.Millisecond })
-	require.NoError(t, seeder.SetShareLimits(c.hash, core.ShareLimit{Ratio: -1, SeedingTime: time.Minute}))
-
-	clk.Advance(2 * time.Minute)
-
-	waitEvent(t, seeder, core.TorrentShareLimitReached, c.hash)
 }

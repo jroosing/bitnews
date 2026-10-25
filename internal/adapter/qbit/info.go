@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/view"
 )
@@ -347,7 +348,7 @@ func (c *call) infos() ([]torrentInfo, bool) {
 func filterCategory(es []entry, name string, cats []core.Category) []entry {
 	var want core.ID
 	if name != "" {
-		cat, ok := findCategory(cats, name)
+		cat, ok := app.FindCategory(cats, name)
 		if !ok {
 			return nil
 		}

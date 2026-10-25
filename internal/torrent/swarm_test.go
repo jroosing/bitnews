@@ -135,7 +135,7 @@ type engineOpts func(*torrent.Config)
 func newEngine(t *testing.T, mods ...engineOpts) *torrent.Engine {
 	t.Helper()
 	logs := &syncBuffer{}
-	cfg := torrent.Config{BindAddr: "127.0.0.1", PieceStore: newMemStore(), ShareLimitInterval: time.Hour, DisableUTP: true,
+	cfg := torrent.Config{BindAddr: "127.0.0.1", PieceStore: newMemStore(), DisableUTP: true,
 		Logger: slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
 	for _, m := range mods {
 		m(&cfg)
@@ -321,9 +321,8 @@ func TestUnknownTorrentIsNotFound(t *testing.T) {
 	h[0] = 9
 	assert.ErrorIs(t, e.Pause(h), core.ErrNotFound)
 	assert.ErrorIs(t, e.Resume(h), core.ErrNotFound)
-	assert.ErrorIs(t, e.Remove(context.Background(), h, true), core.ErrNotFound)
+	assert.ErrorIs(t, e.Remove(context.Background(), h), core.ErrNotFound)
 	assert.ErrorIs(t, e.Relocate(context.Background(), h, t.TempDir()), core.ErrNotFound)
-	assert.ErrorIs(t, e.SetShareLimits(h, core.UnlimitedShareLimit()), core.ErrNotFound)
 	_, err := e.Stats(h)
 	assert.ErrorIs(t, err, core.ErrNotFound)
 }

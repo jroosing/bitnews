@@ -129,9 +129,9 @@ func countOf(s, sub string) int {
 }
 
 func TestCoreShareLimitMapsMinusOneToUnlimited(t *testing.T) {
-	assert.Equal(t, core.UnlimitedShareLimit(), coreShareLimit(-1, -1))
-	assert.Equal(t, core.ShareLimit{Ratio: 1.25, SeedingTime: 90 * time.Second}, coreShareLimit(1.25, 90))
-	assert.Equal(t, core.ShareLimit{Ratio: 0, SeedingTime: -1}, coreShareLimit(0, -1), "a ratio of zero is a limit that is reached at once")
+	assert.Equal(t, core.UnlimitedShareLimit(), shareLimit(-1, -1, time.Second))
+	assert.Equal(t, core.ShareLimit{Ratio: 1.25, SeedingTime: 90 * time.Second}, shareLimit(1.25, 90, time.Second))
+	assert.Equal(t, core.ShareLimit{Ratio: 0, SeedingTime: -1}, shareLimit(0, -1, time.Second), "a ratio of zero is a limit that is reached at once")
 }
 
 func TestQBitGlobalShareReportsTheSeedingDefaults(t *testing.T) {

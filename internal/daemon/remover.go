@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/fsutil"
@@ -126,10 +125,10 @@ func (r *dataRemover) removeInside(roots []string, target string, id core.ID) er
 			continue
 		}
 		root = filepath.Clean(root)
-		rel, err := filepath.Rel(root, target)
-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if !fsutil.Inside(root, target) {
 			continue
 		}
+		rel, _ := filepath.Rel(root, target) // cannot fail: Inside held
 		// Check the parent chain only: the last element may itself be a
 		// symlink, which is unlinked, not followed.
 		parent, err := fsutil.SafeJoin(root, filepath.Dir(rel))

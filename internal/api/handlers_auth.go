@@ -12,7 +12,7 @@ import (
 
 // login serves POST /api/v1/auth/login. The Origin check runs in front of it
 // (the CSRF middleware sees a request without a principal), and the login
-// rate limiter inside SessionService.Login.
+// rate limiter inside SessionService.Login (through UIAuth.SignIn).
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string      `json:"username"`
@@ -21,8 +21,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	trusted := auth.ParsePrefixes(s.Settings.Current().Auth.TrustedProxies)
-	token, err := s.Sessions.Login(r.Context(), req.Username, req.Password, auth.ClientIP(r, trusted))
+	token, user, err := s.UIAuth.SignIn(w, r, req.Username, req.Password)
 	if limited, ok := errors.AsType[*auth.RateLimitError](err); ok {
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(limited.RetryAfter.Seconds())))))
 		writeError(w, http.StatusTooManyRequests, "rate_limited", "too many failed login attempts: try again later")
@@ -36,12 +35,6 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	sess, user, err := s.Sessions.Authenticate(r.Context(), token)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	s.UIAuth.SetSessionCookie(w, r, token, sess.CreatedAt.Add(auth.SessionAbsoluteTimeout))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"auth_mode":  string(auth.PrincipalSession),
 		"csrf_token": auth.CSRFToken(token),

@@ -84,7 +84,7 @@ func (c *call) setCategory() {
 			c.appFail(err)
 			return
 		}
-		cat, found := findCategory(cats, name)
+		cat, found := app.FindCategory(cats, name)
 		if !found {
 			c.text(409, "Category name does not exist")
 			return

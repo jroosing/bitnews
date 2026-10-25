@@ -199,7 +199,7 @@ func (s *AddService) fetchAny(ctx context.Context, rawURL string) (FetchedSource
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		if loc := resp.Header.Get("Location"); len(loc) >= len("magnet:") && strings.EqualFold(loc[:len("magnet:")], "magnet:") {
+		if loc := resp.Header.Get("Location"); isMagnet(loc) {
 			st, err := s.stageMagnet(ctx, loc)
 			if err != nil {
 				return FetchedSource{}, err

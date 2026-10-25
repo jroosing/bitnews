@@ -66,7 +66,7 @@ func SafeJoin(root, rel string) (string, error) {
 		// A dangling or looping symlink: writing through it could land anywhere.
 		return "", fmt.Errorf("%w: cannot resolve %q: %v", ErrUnsafePath, anc, err)
 	}
-	if !within(realRoot, realAnc) {
+	if !Within(realRoot, realAnc) {
 		return "", fmt.Errorf("%w: %q resolves outside the root", ErrUnsafePath, anc)
 	}
 	return joined, nil
@@ -89,13 +89,4 @@ func deepestExisting(path string) (string, error) {
 		}
 		path = parent
 	}
-}
-
-// within reports whether path is dir or lies below it. Both must be clean.
-func within(dir, path string) bool {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

@@ -117,18 +117,18 @@ func (q *qbitTorrents) SetShareLimit(ctx context.Context, id core.ID, ratio floa
 	if useGlobal {
 		return q.run.ClearShareLimit(ctx, id)
 	}
-	return q.run.SetShareLimit(ctx, id, coreShareLimit(ratio, seedingSeconds))
+	return q.run.SetShareLimit(ctx, id, shareLimit(ratio, seedingSeconds, time.Second))
 }
 
-// coreShareLimit converts the adapter's limit (-1 unlimited, seconds) to
-// core's.
-func coreShareLimit(ratio float64, seedingSeconds int64) core.ShareLimit {
+// shareLimit converts an adapter's limit to core's: a negative ratio or
+// seeding time means no such limit, and seeding counts units.
+func shareLimit(ratio float64, seeding int64, unit time.Duration) core.ShareLimit {
 	l := core.UnlimitedShareLimit()
 	if ratio >= 0 {
 		l.Ratio = ratio
 	}
-	if seedingSeconds >= 0 {
-		l.SeedingTime = time.Duration(seedingSeconds) * time.Second
+	if seeding >= 0 {
+		l.SeedingTime = time.Duration(seeding) * unit
 	}
 	return l
 }
@@ -182,7 +182,7 @@ func (a *qbitAdder) addTorrent(ctx context.Context, req app.AddRequest, opts qbi
 	}
 	req.Only, req.CategoryID, req.Paused = core.SourceTorrent, opts.CategoryID, opts.Paused
 	if l := opts.ShareLimit; l != nil && !l.Global {
-		sl := coreShareLimit(l.Ratio, l.SeedingSeconds)
+		sl := shareLimit(l.Ratio, l.SeedingSeconds, time.Second)
 		req.ShareLimit = &sl
 	}
 	d, err := a.add.Add(ctx, req)

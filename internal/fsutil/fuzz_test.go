@@ -126,3 +126,33 @@ func FuzzSafeJoin(f *testing.F) {
 		}
 	})
 }
+
+func FuzzWithin(f *testing.F) {
+	for _, s := range [][2]string{
+		{"/a", "/a"}, {"/a", "/ab"}, {"/a", "/a/b"}, {"/a/", "/a/../b"}, {"/", "/x"},
+		{"a", "a/b"}, {"/a", "a"}, {"/a", "/a/..b"}, {"", ""}, {"/a\x00", "/a\x00/b"},
+	} {
+		f.Add(s[0], s[1])
+	}
+	f.Fuzz(func(t *testing.T, root, p string) {
+		w, in := fsutil.Within(root, p), fsutil.Inside(root, p)
+		if !w {
+			if in {
+				t.Fatalf("Inside(%q, %q) without Within", root, p)
+			}
+			return
+		}
+		cr, cp := filepath.Clean(root), filepath.Clean(p)
+		if in != (cr != cp) {
+			t.Fatalf("Within(%q, %q): Inside=%v, but clean paths equal=%v", root, p, in, cr == cp)
+		}
+		// Within means p is root or root plus a separator-bounded tail.
+		if cr != cp && cr != string(filepath.Separator) && cr != "." &&
+			!strings.HasPrefix(cp, cr+string(filepath.Separator)) {
+			t.Fatalf("Within(%q, %q) but %q is not below %q", root, p, cp, cr)
+		}
+		if filepath.IsAbs(root) != filepath.IsAbs(p) {
+			t.Fatalf("Within(%q, %q) mixes absolute and relative", root, p)
+		}
+	})
+}

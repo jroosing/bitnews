@@ -166,7 +166,7 @@ func (m *MemPieces) Delete(_ context.Context, h core.InfoHash) error {
 // no DHT, an in-memory piece store, and a random port.
 func Config() torrent.Config {
 	return torrent.Config{
-		BindAddr: "127.0.0.1", PieceStore: NewMemPieces(), ShareLimitInterval: time.Hour, DisableUTP: true,
+		BindAddr: "127.0.0.1", PieceStore: NewMemPieces(), DisableUTP: true,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }

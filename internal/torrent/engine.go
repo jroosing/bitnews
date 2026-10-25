@@ -102,11 +102,9 @@ type entry struct {
 	metaEmitted    bool
 	fetchedEmitted bool
 
-	limit         core.ShareLimit
-	limitNotified bool
-	uploadedBase  int64 // uploaded by earlier incarnations (see Relocate)
-	seedSince     time.Time
-	seedAccum     time.Duration
+	uploadedBase int64 // uploaded by earlier incarnations (see Relocate)
+	seedSince    time.Time
+	seedAccum    time.Duration
 
 	rate rateSample
 
@@ -173,12 +171,7 @@ func New(cfg Config) (*Engine, error) {
 		e.logger.Warn("torrent: local service discovery is not supported by anacrolix/torrent v1.61.0")
 	}
 
-	interval := cfg.ShareLimitInterval
-	if interval <= 0 {
-		interval = defaultShareLimitInterval
-	}
-	e.wg.Add(2)
-	go e.loop(interval, e.checkShareLimits)
+	e.wg.Add(1)
 	go e.loop(rateSampleEvery, e.sampleRates)
 	return e, nil
 }
@@ -278,7 +271,7 @@ func (e *Engine) Add(ctx context.Context, spec core.TorrentSpec) (core.InfoHash,
 		return h, fmt.Errorf("torrent: add %s: %w", h, core.ErrConflict)
 	}
 	ent := &entry{hash: h, magnet: magnet, dir: filepath.Clean(spec.StorageDir), paused: spec.Paused,
-		ready: make(chan struct{}), limit: core.UnlimitedShareLimit()}
+		ready: make(chan struct{})}
 	e.torrents[h] = ent // reserve the hash; removed again on failure
 	e.mu.Unlock()
 
@@ -682,18 +675,6 @@ func (e *Engine) AddPeers(h core.InfoHash, addrs ...string) error {
 	return nil
 }
 
-// SetShareLimits implements core.TorrentEngine.
-func (e *Engine) SetShareLimits(h core.InfoHash, l core.ShareLimit) error {
-	ent, err := e.lookup(h)
-	if err != nil {
-		return err
-	}
-	ent.mu.Lock()
-	ent.limit, ent.limitNotified = l, false
-	ent.mu.Unlock()
-	return nil
-}
-
 // SetRateLimits implements core.TorrentEngine.
 func (e *Engine) SetRateLimits(down, up int64) error {
 	e.mu.Lock()
@@ -708,7 +689,7 @@ func (e *Engine) SetRateLimits(down, up int64) error {
 }
 
 // Remove implements core.TorrentEngine.
-func (e *Engine) Remove(ctx context.Context, h core.InfoHash, deleteData bool) error {
+func (e *Engine) Remove(ctx context.Context, h core.InfoHash) error {
 	ent, err := e.lookup(h)
 	if err != nil {
 		return err
@@ -722,12 +703,8 @@ func (e *Engine) Remove(ctx context.Context, h core.InfoHash, deleteData bool) e
 
 	e.stopDHT(ent)
 	ent.mu.Lock()
-	t, dir, cancel := ent.t, ent.dir, ent.cancel
+	t, cancel := ent.t, ent.cancel
 	ent.mu.Unlock()
-	var info *metainfo.Info
-	if t != nil {
-		info = t.Info()
-	}
 	if cancel != nil {
 		cancel()
 	}
@@ -735,48 +712,7 @@ func (e *Engine) Remove(ctx context.Context, h core.InfoHash, deleteData bool) e
 		t.Drop()
 	}
 	e.private.Delete(h)
-	errs := []error{e.pieces.Forget(ctx, h)}
-	if deleteData && info != nil {
-		errs = append(errs, deleteFiles(dir, info))
-	}
-	return errors.Join(errs...)
-}
-
-// deleteFiles removes the torrent's own files below dir, then the
-// directories that are left empty, never dir itself and never anything the
-// torrent does not list.
-func deleteFiles(dir string, info *metainfo.Info) error {
-	rels, err := torrentPaths(dir, info)
-	if err != nil {
-		return err
-	}
-	var errs []error
-	for _, rel := range rels {
-		p, err := fsutil.SafeJoin(dir, rel)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-			errs = append(errs, err)
-			continue
-		}
-		for parent := filepath.Dir(p); parent != dir && isWithin(dir, parent); parent = filepath.Dir(parent) {
-			if os.Remove(parent) != nil { // not empty (or gone): stop climbing
-				break
-			}
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func isWithin(dir, p string) bool {
-	rel, err := filepath.Rel(dir, p)
-	return err == nil && rel != "." && rel != ".." && !hasDotDotPrefix(rel)
-}
-
-func hasDotDotPrefix(rel string) bool {
-	return len(rel) >= 3 && rel[:2] == ".." && os.IsPathSeparator(rel[2])
+	return e.pieces.Forget(ctx, h)
 }
 
 // Relocate implements core.TorrentEngine. It pauses the torrent, closes its
@@ -902,7 +838,7 @@ func dialablePeers(t *anacrolix.Torrent) []anacrolix.PeerInfo {
 	return out
 }
 
-// --- stats and share limits ----------------------------------------------
+// --- stats -------------------------------------------------------------
 
 // touchSeeding advances the seeding clock to now. The caller holds ent.mu.
 func (e *Engine) touchSeeding(ent *entry, now time.Time) {
@@ -1009,6 +945,7 @@ func (e *Engine) sampleRates() {
 			}
 			ent.rate.at, ent.rate.read, ent.rate.wrote = now, read, wrote
 			e.nudgeIfStalled(ent, st.ActivePeers, read+t.BytesCompleted())
+			e.touchSeeding(ent, e.now()) // keeps the seeding clock current between Stats calls
 		}
 		ent.mu.Unlock()
 	}
@@ -1043,42 +980,6 @@ func (e *Engine) nudgeIfStalled(ent *entry, activePeers int, progress int64) {
 		t.SetMaxEstablishedConns(old)
 		t.AddPeers(peers)
 	}
-}
-
-// checkShareLimits emits TorrentShareLimitReached, once per torrent and
-// limit setting, for seeding torrents that reached their Share Limit.
-func (e *Engine) checkShareLimits() {
-	e.mu.Lock()
-	all := make([]*entry, 0, len(e.torrents))
-	for _, ent := range e.torrents {
-		all = append(all, ent)
-	}
-	e.mu.Unlock()
-	for _, ent := range all {
-		if e.shareLimitReached(ent) {
-			e.emit(core.TorrentEvent{Kind: core.TorrentShareLimitReached, Hash: ent.hash})
-		}
-	}
-}
-
-func (e *Engine) shareLimitReached(ent *entry) bool {
-	now := e.now()
-	ent.mu.Lock()
-	defer ent.mu.Unlock()
-	e.touchSeeding(ent, now)
-	if ent.limitNotified || ent.seedSince.IsZero() {
-		return false // not seeding, or already reported
-	}
-	size := ent.t.Length()
-	if size <= 0 {
-		return false
-	}
-	uploaded := ent.uploadedBase + uploadedBytes(ent.t)
-	if !ent.limit.Reached(float64(uploaded)/float64(size), ent.seedingTime(now)) {
-		return false
-	}
-	ent.limitNotified = true
-	return true
 }
 
 // uploadedBytes is how much piece data t has sent since it was added.

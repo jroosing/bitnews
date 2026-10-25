@@ -17,17 +17,7 @@ type DetailSource interface {
 }
 
 // FetchReport is the state of a Usenet fetch's Articles.
-type FetchReport struct {
-	// MissingArticles no Server had, with their encoded size.
-	MissingArticles int
-	MissingBytes    int64
-	// DamagedArticles failed their CRC check; DamagedBytes is the decoded
-	// size of the damaged ranges.
-	DamagedArticles int
-	DamagedBytes    int64
-	// MissingFiles are files none of whose Articles arrived.
-	MissingFiles int
-}
+type FetchReport = core.FetchDetail
 
 // TorrentFile is one file of a torrent: a slash-separated path and its size.
 type TorrentFile struct {

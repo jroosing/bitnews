@@ -24,7 +24,6 @@ import (
 	"github.com/jroosing/bitnews/internal/postproc/finalize"
 	"github.com/jroosing/bitnews/internal/postproc/par2"
 	"github.com/jroosing/bitnews/internal/postproc/unpack"
-	"github.com/jroosing/bitnews/internal/queue"
 	"github.com/jroosing/bitnews/internal/store"
 	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
 	"github.com/jroosing/bitnews/internal/usenet/nntp"
@@ -254,7 +253,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		MinFree:  minFree,
 		Factory:  usenetFactory(deps.Factory, settings.Current),
 		Progress: store.NewUsenetProgressRepo(db),
-		Reports:  reports{repo: store.NewUsenetReportRepo(db)},
+		Reports:  store.NewUsenetReportRepo(db),
 		Volumes:  store.NewUsenetUndeferredRepo(db),
 		// A nil FreeSpace keeps the runner's statfs default.
 		FreeSpace: tune.FreeSpace,
@@ -358,7 +357,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
 		Adder: adder, AppKey: appKey, View: views,
 		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port, port: tport},
-		Detail: webDetail{run: run, reports: reports{repo: store.NewUsenetReportRepo(db)}},
+		Detail: webDetail{run: run},
 	})
 	if err != nil {
 		return nil, err
@@ -422,16 +421,9 @@ func networkSwitches(n core.NetworkSettings, usenet *runner.Runner, torrents *tr
 			Interval: tune.BindingInterval, Pause: k.onPause, Resume: k.onResume,
 		})})
 	}
-	add("usenet", n.Usenet, usenetKillswitch(usenet.Queue(), log))
+	add("usenet", n.Usenet, queueKillswitch("usenet", usenet.Queue(), log))
 	if torrents != nil {
-		add("torrent", n.Torrent, &bindingKillswitch{
-			name: "torrent", log: log,
-			pause: func(reason string) bool {
-				torrents.Queue().Pause(queue.ReasonBindUnavailable, reason)
-				return true
-			},
-			resume: func() { torrents.Queue().Resume(queue.ReasonBindUnavailable) },
-		})
+		add("torrent", n.Torrent, queueKillswitch("torrent", torrents.Queue(), log))
 	}
 	return out
 }
@@ -464,12 +456,9 @@ func newPostProcessor(
 	passwords := func(id core.ID) (core.Secret, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_, pw, err := sources.Get(ctx, id)
+		_, pw, err := sourceOf(ctx, sources, id, log)
 		switch {
 		case errors.Is(err, core.ErrNotFound):
-			return "", nil
-		case errors.Is(err, core.ErrSecretUnavailable):
-			log.Warn("download password cannot be decrypted", "id", id)
 			return "", nil
 		case err != nil:
 			return "", err

@@ -85,9 +85,9 @@ func cleanUsenet(ctx context.Context, dir, unpackedDir string) error {
 // inside dir (but not in the _unpack.tmp leftover) or entirely separate.
 func checkUnpackedDir(dir, unpackedDir string) error {
 	switch {
-	case unpackedDir == dir || inside(unpackedDir, dir):
+	case unpackedDir == dir || fsutil.Inside(unpackedDir, dir):
 		return fmt.Errorf("finalize: unpacked dir %q overlaps download dir %q", unpackedDir, dir)
-	case inside(dir, unpackedDir):
+	case fsutil.Inside(dir, unpackedDir):
 		rel, _ := filepath.Rel(dir, unpackedDir)
 		if first, _, _ := strings.Cut(filepath.ToSlash(rel), "/"); first == tmpDirName {
 			return fmt.Errorf("finalize: unpacked dir %q is inside %s", unpackedDir, tmpDirName)
@@ -105,12 +105,6 @@ func checkUnpackedDir(dir, unpackedDir string) error {
 		return fmt.Errorf("finalize: unpacked dir %q is not a directory", unpackedDir)
 	}
 	return nil
-}
-
-// inside reports whether path is strictly inside dir (both cleaned).
-func inside(dir, path string) bool {
-	rel, err := filepath.Rel(dir, path)
-	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // mergeUnpacked moves the entries of unpackedDir to the root of dir. An

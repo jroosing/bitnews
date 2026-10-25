@@ -23,14 +23,14 @@ func (idleProtocol) Start(context.Context, core.Download) error { return nil }
 func (idleProtocol) Stop(context.Context, core.ID)              {}
 func (idleProtocol) Abandon(context.Context, core.ID) error     { return nil }
 
-func TestUsenetKillswitchPausesTheQueueForTheBindingNotAsTheUser(t *testing.T) {
+func TestQueueKillswitchPausesTheQueueForTheBindingNotAsTheUser(t *testing.T) {
 	q, err := queue.New(queue.Config{
 		Source: core.SourceNZB, Downloads: struct{ core.DownloadRepo }{}, Bus: core.NewBus(),
 		Settings: func(context.Context) (core.Settings, error) { return core.DefaultSettings(), nil },
 		Protocol: idleProtocol{},
 	})
 	require.NoError(t, err)
-	k := usenetKillswitch(q, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	k := queueKillswitch("usenet", q, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	k.onPause("interface gone")
 

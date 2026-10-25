@@ -23,7 +23,7 @@ import (
 var (
 	_ runner.ProgressStore = (*store.UsenetProgressRepo)(nil)
 	_ runner.VolumeStore   = (*store.UsenetUndeferredRepo)(nil)
-	_ runner.ReportStore   = reports{}
+	_ runner.ReportStore   = (*store.UsenetReportRepo)(nil)
 	_ runner.ServerSource  = (*serverSource)(nil)
 	_ runner.NZBSource     = nzbSource{}
 	_ core.DeferredVolumes = (*runner.Runner)(nil)
@@ -141,14 +141,14 @@ func TestNZBSourceReturnsTheNZBPathEvenWhenThePasswordCannotBeDecrypted(t *testi
 	assert.Empty(t, pw.Reveal())
 }
 
-func TestReportAdapterRoundTripsAFetchDetail(t *testing.T) {
+func TestUsenetReportRepoRoundTripsAFetchDetail(t *testing.T) {
 	db, _ := openDB(t)
 	ctx := context.Background()
 	at := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	d := core.Download{ID: core.NewID(), Name: "x", SourceKind: core.SourceNZB, State: core.StateQueued,
 		Priority: core.DownloadPriorityNormal, AddedAt: at, UpdatedAt: at}
 	require.NoError(t, store.NewDownloadRepo(db).Create(ctx, d))
-	r := reports{repo: store.NewUsenetReportRepo(db)}
+	r := runner.ReportStore(store.NewUsenetReportRepo(db))
 	want := runner.FetchDetail{MissingArticles: 1, MissingBytes: 2, DamagedArticles: 3, DamagedBytes: 4, MissingFiles: 5}
 
 	_, err := r.LoadReport(ctx, d.ID)

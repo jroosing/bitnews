@@ -61,9 +61,6 @@ func (e *Engine) addPeerOnce(h core.InfoHash, addr string) error {
 	return nil
 }
 
-// CheckShareLimits runs one Share Limit check, as the ticker does.
-func (e *Engine) CheckShareLimits() { e.checkShareLimits() }
-
 // AnacrolixTorrent returns the anacrolix torrent behind h.
 func (e *Engine) AnacrolixTorrent(h core.InfoHash) *anacrolix.Torrent {
 	ent, err := e.lookup(h)

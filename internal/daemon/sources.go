@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/jroosing/bitnews/internal/core"
-	"github.com/jroosing/bitnews/internal/store"
 	"github.com/jroosing/bitnews/internal/usenet/runner"
 )
 
@@ -67,31 +66,17 @@ type nzbSource struct {
 // need it, and Unpack then fails with archive_password if the release has
 // one.
 func (n nzbSource) Source(ctx context.Context, id core.ID) (string, core.Secret, error) {
-	path, pw, err := n.repo.Get(ctx, id)
+	return sourceOf(ctx, n.repo, id, n.log)
+}
+
+// sourceOf returns the stored NZB path and archive password of a Download.
+// A password that cannot be decrypted is logged and returned empty, with the
+// path and no error.
+func sourceOf(ctx context.Context, repo core.DownloadSourceRepo, id core.ID, log *slog.Logger) (string, core.Secret, error) {
+	path, pw, err := repo.Get(ctx, id)
 	if errors.Is(err, core.ErrSecretUnavailable) {
-		n.log.Warn("download password cannot be decrypted", "id", id)
+		log.Warn("download password cannot be decrypted", "id", id)
 		return path, "", nil
 	}
 	return path, pw, err
-}
-
-// reports adapts store.UsenetReportRepo to runner.ReportStore.
-type reports struct{ repo *store.UsenetReportRepo }
-
-func (r reports) SaveReport(ctx context.Context, id core.ID, d runner.FetchDetail) error {
-	return r.repo.SaveReport(ctx, id, store.UsenetReport{
-		MissingArticles: d.MissingArticles, MissingBytes: d.MissingBytes,
-		DamagedArticles: d.DamagedArticles, DamagedBytes: d.DamagedBytes, MissingFiles: d.MissingFiles,
-	})
-}
-
-func (r reports) LoadReport(ctx context.Context, id core.ID) (runner.FetchDetail, error) {
-	rep, err := r.repo.LoadReport(ctx, id)
-	if err != nil {
-		return runner.FetchDetail{}, err
-	}
-	return runner.FetchDetail{
-		MissingArticles: rep.MissingArticles, MissingBytes: rep.MissingBytes,
-		DamagedArticles: rep.DamagedArticles, DamagedBytes: rep.DamagedBytes, MissingFiles: rep.MissingFiles,
-	}, nil
 }

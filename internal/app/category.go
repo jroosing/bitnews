@@ -47,6 +47,16 @@ func (s *CategoryService) Ensure(ctx context.Context, name string) (core.Categor
 	return ensureCategory(ctx, s.cats, s.opts.log, name)
 }
 
+// FindCategory returns the Category in cats named name, ignoring case.
+func FindCategory(cats []core.Category, name string) (core.Category, bool) {
+	for _, c := range cats {
+		if strings.EqualFold(c.Name, name) {
+			return c, true
+		}
+	}
+	return core.Category{}, false
+}
+
 // ensureCategory is Ensure on a repository. Two callers creating the same
 // name at once both end up with the one Category.
 func ensureCategory(ctx context.Context, repo core.CategoryRepo, log *slog.Logger, name string) (core.Category, error) {
@@ -56,10 +66,8 @@ func ensureCategory(ctx context.Context, repo core.CategoryRepo, log *slog.Logge
 		if err != nil {
 			return core.Category{}, fmt.Errorf("app: list categories: %w", err)
 		}
-		for _, c := range cats {
-			if strings.EqualFold(c.Name, name) {
-				return c, nil
-			}
+		if c, ok := FindCategory(cats, name); ok {
+			return c, nil
 		}
 		c := core.Category{ID: core.NewID(), Name: strings.ToLower(name)}
 		if err := validateCategory(c); err != nil {

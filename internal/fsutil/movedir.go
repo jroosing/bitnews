@@ -114,7 +114,7 @@ func isNested(src, dst string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return within(realSrc, realDst), nil
+	return Within(realSrc, realDst), nil
 }
 
 // resolveLoosely makes path absolute and resolves symlinks in its existing

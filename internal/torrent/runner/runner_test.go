@@ -365,8 +365,6 @@ func TestRemovedEventDropsTheTorrentFromTheEngineAndKeepsItsData(t *testing.T) {
 	h.bus.Publish(core.Removed{ID: b.ID})
 
 	h.eventually(func() bool { return len(h.callsFor("Remove", a.ID)) == 1 && len(h.callsFor("Remove", b.ID)) == 1 }, "removed from the engine")
-	assert.False(t, h.callsFor("Remove", a.ID)[0].DeleteData, "the daemon's data remover deletes files")
-	assert.False(t, h.callsFor("Remove", b.ID)[0].DeleteData)
 }
 
 func TestADownloadThatVanishedWithoutAnEventIsDroppedOnTheNextPoll(t *testing.T) {

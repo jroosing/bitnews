@@ -314,12 +314,8 @@ func (s *AddService) resolveCategory(ctx context.Context, id core.ID, metaName s
 	if err != nil {
 		return "", fmt.Errorf("app: add download: %w", err)
 	}
-	for _, c := range cats {
-		if strings.EqualFold(c.Name, metaName) {
-			return c.ID, nil
-		}
-	}
-	return "", nil
+	c, _ := FindCategory(cats, metaName)
+	return c.ID, nil
 }
 
 func firstNonEmpty(vs ...string) string {

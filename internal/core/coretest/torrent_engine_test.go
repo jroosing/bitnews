@@ -54,9 +54,8 @@ func TestFakeUnknownHashIsNotFound(t *testing.T) {
 	var h core.InfoHash
 	assert.ErrorIs(t, f.Pause(h), core.ErrNotFound)
 	assert.ErrorIs(t, f.Resume(h), core.ErrNotFound)
-	assert.ErrorIs(t, f.Remove(context.Background(), h, true), core.ErrNotFound)
+	assert.ErrorIs(t, f.Remove(context.Background(), h), core.ErrNotFound)
 	assert.ErrorIs(t, f.Relocate(context.Background(), h, "/x"), core.ErrNotFound)
-	assert.ErrorIs(t, f.SetShareLimits(h, core.UnlimitedShareLimit()), core.ErrNotFound)
 	_, err := f.Stats(h)
 	assert.ErrorIs(t, err, core.ErrNotFound)
 }
@@ -82,23 +81,21 @@ func TestFakePauseResumeRemoveRelocateChangeState(t *testing.T) {
 	require.NoError(t, f.Relocate(ctx, h, "/b"))
 	assert.Equal(t, "/b", f.StorageDir(h))
 
-	require.NoError(t, f.Remove(ctx, h, true))
+	require.NoError(t, f.Remove(ctx, h))
 	_, err = f.Stats(h)
 	assert.ErrorIs(t, err, core.ErrNotFound)
 	last := f.Calls()[len(f.Calls())-1]
-	assert.Equal(t, coretest.TorrentCall{Method: "Remove", Hash: h, DeleteData: true}, last)
+	assert.Equal(t, coretest.TorrentCall{Method: "Remove", Hash: h}, last)
 }
 
-func TestFakeRecordsLimits(t *testing.T) {
+func TestFakeRecordsRateLimits(t *testing.T) {
 	f := coretest.NewFakeTorrentEngine()
-	h, _ := f.Add(context.Background(), core.TorrentSpec{Magnet: magnet, StorageDir: "/a"})
+	_, _ = f.Add(context.Background(), core.TorrentSpec{Magnet: magnet, StorageDir: "/a"})
 
-	require.NoError(t, f.SetShareLimits(h, core.ShareLimit{Ratio: 2, SeedingTime: -1}))
 	require.NoError(t, f.SetRateLimits(100, 50))
 
 	calls := f.Calls()
-	assert.Equal(t, core.ShareLimit{Ratio: 2, SeedingTime: -1}, calls[1].Limit)
-	assert.Equal(t, coretest.TorrentCall{Method: "SetRateLimits", Down: 100, Up: 50}, calls[2])
+	assert.Equal(t, coretest.TorrentCall{Method: "SetRateLimits", Down: 100, Up: 50}, calls[1])
 }
 
 func TestFakeEmitDeliversEventsInOrder(t *testing.T) {

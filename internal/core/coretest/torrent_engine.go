@@ -14,13 +14,11 @@ import (
 // TorrentCall is one recorded call to a FakeTorrentEngine. Only the fields
 // that belong to Method are set.
 type TorrentCall struct {
-	Method     string
-	Hash       core.InfoHash
-	Spec       core.TorrentSpec
-	DeleteData bool
-	Dir        string
-	Limit      core.ShareLimit
-	Down, Up   int64
+	Method   string
+	Hash     core.InfoHash
+	Spec     core.TorrentSpec
+	Dir      string
+	Down, Up int64
 }
 
 type fakeTorrent struct {
@@ -196,10 +194,10 @@ func (f *FakeTorrentEngine) lookup(c TorrentCall) (*fakeTorrent, error) {
 }
 
 // Remove forgets the torrent.
-func (f *FakeTorrentEngine) Remove(_ context.Context, h core.InfoHash, deleteData bool) error {
+func (f *FakeTorrentEngine) Remove(_ context.Context, h core.InfoHash) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if _, err := f.lookup(TorrentCall{Method: "Remove", Hash: h, DeleteData: deleteData}); err != nil {
+	if _, err := f.lookup(TorrentCall{Method: "Remove", Hash: h}); err != nil {
 		return err
 	}
 	delete(f.torrents, h)
@@ -253,14 +251,6 @@ func (f *FakeTorrentEngine) Relocate(_ context.Context, h core.InfoHash, newDir 
 		t.dir = newDir
 	}
 	return nil
-}
-
-// SetShareLimits records the limit.
-func (f *FakeTorrentEngine) SetShareLimits(h core.InfoHash, l core.ShareLimit) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	_, err := f.lookup(TorrentCall{Method: "SetShareLimits", Hash: h, Limit: l})
-	return err
 }
 
 // SetRateLimits records the limits.

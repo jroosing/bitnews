@@ -61,12 +61,3 @@ func (c *call) finishAdd(req app.AddRequest) {
 	}
 	c.json(idsBody{Status: true, NzoIDs: []string{nzoID(d.ID)}})
 }
-
-func findCategory(cats []core.Category, name string) (core.Category, bool) {
-	for _, cat := range cats {
-		if strings.EqualFold(cat.Name, name) {
-			return cat, true
-		}
-	}
-	return core.Category{}, false
-}

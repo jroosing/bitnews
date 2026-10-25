@@ -59,7 +59,7 @@ func TestFactsOfARegisteredTorrentAddTheEngineCountersToTheStoredBases(t *testin
 func TestFactsOfARegisteredTorrentWhoseStatsFailAreTheBasesOnly(t *testing.T) {
 	h := newHarness(t)
 	d := h.registered(core.TorrentRecord{Uploaded: 400, SeedingTime: time.Minute}, withTotal(800))
-	require.NoError(t, h.engine.Remove(t.Context(), hashOf(d.ID), false)) // Stats now fails
+	require.NoError(t, h.engine.Remove(t.Context(), hashOf(d.ID))) // Stats now fails
 
 	f, ok, err := h.runner.Facts(t.Context(), d.ID)
 

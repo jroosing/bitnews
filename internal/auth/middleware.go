@@ -97,7 +97,7 @@ func bypassKind(s core.Auth, r *http.Request) (PrincipalKind, bool) {
 	if len(s.LANBypassCIDRs) == 0 {
 		return "", false
 	}
-	ip := ClientIP(r, ParsePrefixes(s.TrustedProxies))
+	ip := ClientIPFrom(r, s)
 	if ip.IsValid() && contains(ParsePrefixes(s.LANBypassCIDRs), ip) {
 		return PrincipalLANBypass, true
 	}

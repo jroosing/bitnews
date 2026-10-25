@@ -63,15 +63,8 @@ func (r *UsenetProgressRepo) Delete(ctx context.Context, id core.ID) error {
 }
 
 // UsenetReport is what a finished fetch recorded about a Download's
-// Articles. It mirrors runner.FetchDetail, which this package cannot import;
-// the daemon converts between them.
-type UsenetReport struct {
-	MissingArticles int
-	MissingBytes    int64
-	DamagedArticles int
-	DamagedBytes    int64
-	MissingFiles    int
-}
+// Articles.
+type UsenetReport = core.FetchDetail
 
 // UsenetReportRepo keeps the UsenetReport of Fetched Downloads (table
 // usenet_reports).

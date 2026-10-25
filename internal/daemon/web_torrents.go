@@ -45,37 +45,17 @@ func (w webTorrents) SetShareLimit(ctx context.Context, id core.ID, c web.ShareL
 	if c.UseDefault {
 		return w.run.ClearShareLimit(ctx, id)
 	}
-	l := core.UnlimitedShareLimit()
-	if c.Ratio >= 0 {
-		l.Ratio = c.Ratio
-	}
-	if c.Minutes >= 0 {
-		l.SeedingTime = time.Duration(c.Minutes) * time.Minute
-	}
-	return w.run.SetShareLimit(ctx, id, l)
+	return w.run.SetShareLimit(ctx, id, shareLimit(c.Ratio, int64(c.Minutes), time.Minute))
 }
 
 // webDetail implements web.DetailSource: the Article report of the Usenet
 // runner (in memory, else the stored one).
-type webDetail struct {
-	run     *runner.Runner
-	reports reports
-}
+type webDetail struct{ run *runner.Runner }
 
 var _ web.DetailSource = webDetail{}
 
 // FetchReport implements web.DetailSource.
 func (d webDetail) FetchReport(ctx context.Context, id core.ID) (web.FetchReport, bool) {
-	detail, ok := d.run.Detail(id)
-	if !ok {
-		var err error
-		if detail, err = d.reports.LoadReport(ctx, id); err != nil {
-			return web.FetchReport{}, false
-		}
-	}
-	return web.FetchReport{
-		MissingArticles: detail.MissingArticles, MissingBytes: detail.MissingBytes,
-		DamagedArticles: detail.DamagedArticles, DamagedBytes: detail.DamagedBytes,
-		MissingFiles: detail.MissingFiles,
-	}, true
+	detail, err := d.run.FetchDetailOf(ctx, id)
+	return detail, err == nil
 }

@@ -64,7 +64,7 @@ func (c *call) readCatFilter(filter string) (catFilter, error) {
 		n = strings.TrimSpace(n)
 		if n == defaultCategoryName {
 			f.want[""] = true
-		} else if cat, ok := findCategory(cats, n); ok {
+		} else if cat, ok := app.FindCategory(cats, n); ok {
 			f.want[cat.ID] = true
 		}
 	}

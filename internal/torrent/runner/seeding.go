@@ -94,7 +94,7 @@ func (r *Runner) drop(ctx context.Context, id core.ID) {
 	}
 	t.cancel()
 	r.throttle.Flush(id)
-	if err := r.engine.Remove(context.WithoutCancel(ctx), t.hash, false); err != nil && !errors.Is(err, core.ErrNotFound) {
+	if err := r.engine.Remove(context.WithoutCancel(ctx), t.hash); err != nil && !errors.Is(err, core.ErrNotFound) {
 		r.log.Warn("torrent runner: cannot remove the torrent from the engine", "id", id, "err", err)
 	}
 }

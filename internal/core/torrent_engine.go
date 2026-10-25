@@ -20,17 +20,13 @@ type TorrentEngine interface {
 	// or a magnet link and returns its InfoHash. Adding an InfoHash that is
 	// already present returns that InfoHash and an error wrapping ErrConflict.
 	Add(ctx context.Context, spec TorrentSpec) (InfoHash, error)
-	// Remove forgets the torrent. With deleteData it also deletes the
-	// torrent's own files from its storage directory, never anything else.
-	Remove(ctx context.Context, h InfoHash, deleteData bool) error
+	// Remove forgets the torrent. Its files stay on disk.
+	Remove(ctx context.Context, h InfoHash) error
 	Pause(h InfoHash) error
 	Resume(h InfoHash) error
 	// Relocate moves the torrent's data to newDir without rehashing and keeps
 	// seeding. On failure the torrent stays at its old location.
 	Relocate(ctx context.Context, h InfoHash, newDir string) error
-	// SetShareLimits sets the limits after which the engine emits
-	// TorrentShareLimitReached. The engine takes no other action.
-	SetShareLimits(h InfoHash, l ShareLimit) error
 	// SetRateLimits sets the global download and upload limits in bytes per
 	// second. A value of zero or less means unlimited.
 	SetRateLimits(down, up int64) error
@@ -176,9 +172,6 @@ const (
 	TorrentFetched TorrentEventKind = "fetched"
 	// TorrentErrored: the torrent failed; Err says why.
 	TorrentErrored TorrentEventKind = "error"
-	// TorrentShareLimitReached: the Share Limit was reached. The caller
-	// decides the action.
-	TorrentShareLimitReached TorrentEventKind = "share_limit_reached"
 )
 
 // TorrentEvent is something the engine reports about one torrent.

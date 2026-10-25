@@ -2,7 +2,6 @@ package torrent_test
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -197,38 +196,17 @@ func TestPausedSeederStopsUploadingUntilResumed(t *testing.T) {
 	assert.Equal(t, core.TorrentSeeding, st.State)
 }
 
-func TestRemoveKeepsFilesUnlessAsked(t *testing.T) {
+func TestRemoveKeepsFiles(t *testing.T) {
 	t.Parallel()
 	c := makeContent(t, "Keep.Files", map[string]int{"a.bin": 5_000})
 	e := seed(t, c)
 
-	require.NoError(t, e.Remove(context.Background(), c.hash, false))
+	require.NoError(t, e.Remove(context.Background(), c.hash))
 
 	c.assertFilesEqual(t, c.seedDir)
 	_, err := e.Stats(c.hash)
 	assert.ErrorIs(t, err, core.ErrNotFound)
-	assert.ErrorIs(t, e.Remove(context.Background(), c.hash, false), core.ErrNotFound)
-}
-
-func TestRemoveWithDataDeletesOnlyTheTorrentsOwnFiles(t *testing.T) {
-	t.Parallel()
-	c := makeContent(t, "Delete.Me", map[string]int{"a.bin": 30_000, "sub/deep/b.bin": 5_000, "zero": 0})
-	e := seed(t, c)
-	// Things the torrent does not own, next to and inside its directories.
-	foreignTop := filepath.Join(c.seedDir, "foreign.txt")
-	foreignInside := filepath.Join(c.seedDir, c.name, "sub", "keep.nfo")
-	require.NoError(t, os.WriteFile(foreignTop, []byte("mine"), 0o644))
-	require.NoError(t, os.WriteFile(foreignInside, []byte("mine"), 0o644))
-
-	require.NoError(t, e.Remove(context.Background(), c.hash, true))
-
-	assert.NoFileExists(t, filepath.Join(c.seedDir, c.name, "a.bin"))
-	assert.NoFileExists(t, filepath.Join(c.seedDir, c.name, "sub", "deep", "b.bin"))
-	assert.NoFileExists(t, filepath.Join(c.seedDir, c.name, "zero"))
-	assert.NoDirExists(t, filepath.Join(c.seedDir, c.name, "sub", "deep"), "emptied directories go too")
-	assert.FileExists(t, foreignTop, "never anything the torrent does not list")
-	assert.FileExists(t, foreignInside)
-	assert.DirExists(t, c.seedDir, "the storage dir itself stays")
+	assert.ErrorIs(t, e.Remove(context.Background(), c.hash), core.ErrNotFound)
 }
 
 func TestRemoveForgetsPieceCompletion(t *testing.T) {
@@ -242,7 +220,7 @@ func TestRemoveForgetsPieceCompletion(t *testing.T) {
 	waitEvent(t, e, core.TorrentFetched, c.hash)
 	require.Eventually(t, func() bool { _, err := repo.Load(context.Background(), c.hash); return err == nil }, 5*time.Second, 10*time.Millisecond)
 
-	require.NoError(t, e.Remove(context.Background(), c.hash, false))
+	require.NoError(t, e.Remove(context.Background(), c.hash))
 
 	_, err = repo.Load(context.Background(), c.hash)
 	assert.ErrorIs(t, err, core.ErrNotFound)

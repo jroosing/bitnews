@@ -89,7 +89,7 @@ func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
 	page := loginPage{Username: r.PostForm.Get("username"), Next: safeNext(r.PostForm.Get("next"), s.knownPath)}
 	password := core.Secret(r.PostForm.Get("password"))
 
-	token, err := s.Sessions.Login(r.Context(), page.Username, password, s.clientIP(r))
+	_, _, err := s.UIAuth.SignIn(w, r, page.Username, password)
 	if limited, ok := errors.AsType[*auth.RateLimitError](err); ok {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(limited.RetryAfter)))
 		page.Error = "Too many failed attempts. Try again in " + waitText(limited.RetryAfter) + "."
@@ -101,12 +101,13 @@ func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
 		s.renderLogin(w, r, http.StatusUnprocessableEntity, page)
 		return
 	}
+	if errors.Is(err, auth.ErrSessionStart) {
+		s.sessionStartFailed(w, r, err)
+		return
+	}
 	if err != nil {
 		s.Logger.Error("login failed", "err", err)
 		s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not sign you in. Details are in the server log.")
-		return
-	}
-	if !s.startSession(w, r, token) {
 		return
 	}
 	target := page.Next
@@ -116,16 +117,11 @@ func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
 	s.redirect(w, r, target)
 }
 
-// startSession sets the session cookie for a fresh token.
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, token string) bool {
-	sess, _, err := s.Sessions.Authenticate(r.Context(), token)
-	if err != nil {
-		s.Logger.Error("new session unusable", "err", err)
-		s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not start your session. Details are in the server log.")
-		return false
-	}
-	s.UIAuth.SetSessionCookie(w, r, token, sess.CreatedAt.Add(auth.SessionAbsoluteTimeout))
-	return true
+// sessionStartFailed answers a sign-in whose credentials were good but whose
+// new session could not be used.
+func (s *Server) sessionStartFailed(w http.ResponseWriter, r *http.Request, err error) {
+	s.Logger.Error("new session unusable", "err", err)
+	s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not start your session. Details are in the server log.")
 }
 
 func (s *Server) postLogout(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +135,7 @@ func (s *Server) postLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) clientIP(r *http.Request) netip.Addr {
-	return auth.ClientIP(r, auth.ParsePrefixes(s.Settings.Current().Auth.TrustedProxies))
+	return auth.ClientIPFrom(r, s.Settings.Current().Auth)
 }
 
 // retryAfterSeconds rounds a wait up to whole seconds, at least one.
@@ -249,14 +245,15 @@ func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The admin exists. Sign them in; if that fails for any reason, the
-	// login page is the fallback.
-	token, err := s.Sessions.Login(r.Context(), page.Username, password, s.clientIP(r))
-	if err != nil {
-		s.redirect(w, r, "/login")
+	// The admin exists. Sign them in; if the login itself fails, the login
+	// page is the fallback.
+	_, _, err = s.UIAuth.SignIn(w, r, page.Username, password)
+	if errors.Is(err, auth.ErrSessionStart) {
+		s.sessionStartFailed(w, r, err)
 		return
 	}
-	if !s.startSession(w, r, token) {
+	if err != nil {
+		s.redirect(w, r, "/login")
 		return
 	}
 	s.redirect(w, r, "/queue")

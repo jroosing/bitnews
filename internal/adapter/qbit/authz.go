@@ -75,7 +75,7 @@ func (h *handler) secure(r *http.Request) bool {
 // manager out by failing its username); a banned IP gets 403 whatever it
 // sends.
 func (c *call) login() {
-	ip := auth.ClientIP(c.r, c.h.trustedProxies())
+	ip := auth.ClientIPFrom(c.r, c.h.Settings.Current().Auth)
 	key := ip.String()
 	if wait := c.h.Limiter.Check(ip, key); wait > 0 {
 		c.h.log.Warn("qbit: login refused, too many failures", "ip", key)

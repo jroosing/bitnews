@@ -71,10 +71,7 @@ type Config struct {
 	// Zero means DefaultFlushInterval.
 	FlushInterval time.Duration
 
-	// ShareLimitInterval is how often Share Limits are checked. Zero means
-	// 30 seconds.
-	ShareLimitInterval time.Duration
-	// Now is the clock for Share Limits and seeding time. Nil means time.Now.
+	// Now is the clock for seeding time. Nil means time.Now.
 	Now func() time.Time
 
 	// EventBuffer is the size of the Events channel. Zero means 256. When it
@@ -88,8 +85,7 @@ type Config struct {
 }
 
 const (
-	defaultShareLimitInterval = 30 * time.Second
-	defaultEventBuffer        = 256
+	defaultEventBuffer = 256
 	// maxRateBurst caps the burst of the rate limiters at one MiB, which
 	// anacrolix also uses for an unlimited limiter.
 	maxRateBurst = 1 << 20
