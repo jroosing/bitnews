@@ -67,18 +67,30 @@ set_port() {
 
 log "starting: url=$BITNEWS_URL file=$FORWARDED_PORT_FILE interval=${SYNC_INTERVAL_SECONDS}s"
 
+seen=
+synced=
 while true; do
   if [ -f "$FORWARDED_PORT_FILE" ]; then
     port=$(tr -d '[:space:]' <"$FORWARDED_PORT_FILE")
     if valid_port "$port"; then
+      # Say what gluetun forwards whenever it is new (at start and after a
+      # reconnect), not on every check.
+      if [ "$port" != "$seen" ]; then
+        log "gluetun forwarded port: $port"
+        seen=$port
+      fi
       have=$(current_port || true)
       if [ -z "$have" ]; then
         log "cannot read the bitnews port (is it up, and is the API key right?)"
       elif [ "$have" != "$port" ]; then
         if set_port "$port"; then
           log "bitnews torrent port set to $port (was $have)"
+          synced=$port
         fi
+      elif [ "$port" != "$synced" ]; then
+        log "bitnews already listens on $port"
       fi
+      [ -n "$have" ] && [ "$have" = "$port" ] && synced=$port
     else
       log "ignoring invalid forwarded port: '$port'"
     fi
