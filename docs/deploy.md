@@ -238,13 +238,14 @@ The `HEALTHCHECK` uses `--interval=30s --timeout=5s --start-period=20s --retries
 
 ## Proxmox LXC
 
-`deploy/proxmox/` holds a [community-scripts](https://community-scripts.org) installer for a Proxmox VE host. The scripts are written but not published there yet (see `deploy/proxmox/README.md`). Once they are, one command on the Proxmox shell creates the container:
+`deploy/proxmox/` holds an installer for a Proxmox VE host, built on the [community-scripts](https://community-scripts.org) framework. Run this on the Proxmox shell:
 
 ```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/bitnews.sh)"
+export COMMUNITY_SCRIPTS_URL=https://raw.githubusercontent.com/jroosing/bitnews/main/deploy/proxmox
+bash -c "$(curl -fsSL $COMMUNITY_SCRIPTS_URL/ct/bitnews.sh)"
 ```
 
-(Use the address the community-scripts site shows for bitnews.) It creates an unprivileged Debian 13 LXC (2 cores, 2 GiB RAM, 8 GiB disk by default, all changeable in the advanced settings) and installs the release tarball from GitHub: `bitnews` plus the pinned `7zz` and `par2`, in `/opt/bitnews`. The script's update function installs the newest release; the database and master key stay.
+`COMMUNITY_SCRIPTS_URL` is the framework's documented way to run its scripts from another repository ([Script Origin](https://community-scripts.org/docs/guides/source_origin)); the framework itself is still downloaded from community-scripts. The script creates an unprivileged Debian 13 LXC (2 cores, 2 GiB RAM, 8 GiB disk by default, all changeable in the advanced settings) and installs the release tarball from GitHub: `bitnews` plus the pinned `7zz` and `par2`, in `/opt/bitnews`. Run it again to update: its update function installs the newest release and keeps the database and master key.
 
 - **Login.** The script creates the admin account itself, so there is no setup screen. The username is `admin` and the password is in `/root/bitnews.creds` inside the container. Change it in the UI.
 - **Service.** `systemctl status bitnews`, logs with `journalctl -u bitnews`. It runs as the user `bitnews` (uid and gid 1000, so `101000` on the Proxmox host of an unprivileged container) with the settings of `/etc/bitnews/bitnews.env` ([bootstrap settings](#bootstrap-settings)). Config, database and master key are in `/var/lib/bitnews`: back that directory up as a whole ([The master key](#the-master-key)).
@@ -252,7 +253,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/Proxmo
 - **Torrent port.** Forward `51413` (TCP and UDP) from your router to the container's address. There is no UPnP.
 - **TLS.** Plain HTTP on port 9494: put a reverse proxy in front of it ([Reverse proxy and TLS](#reverse-proxy-and-tls)).
 
-The release tarball is built by `scripts/package-release.sh` and published by `.github/workflows/release.yml` when a version tag (`0.6.0`) is pushed. `deploy/proxmox/README.md` says how the scripts are submitted to community-scripts.
+The release tarball is built by `scripts/package-release.sh` and published by `.github/workflows/release.yml` when a version tag (`0.6.0`) is pushed; the installer needs at least one release.
 
 ## Without Docker
 

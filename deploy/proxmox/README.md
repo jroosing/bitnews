@@ -7,21 +7,22 @@ Scripts for [community-scripts](https://community-scripts.org) (the former tteck
 | `ct/bitnews.sh` | `ct/bitnews.sh`: asks for the container settings, creates the LXC, and holds the update function |
 | `install/bitnews-install.sh` | `install/bitnews-install.sh`: runs inside the new container and installs bitnews |
 
-Both load the community-scripts helper functions (`build.func`, `fetch_and_deploy_gh_release`, ...), so they only run from that project's repository. They install from the GitHub release of this repository: the asset `bitnews_<version>_linux_amd64.tar.gz` made by `scripts/package-release.sh` and published by `.github/workflows/release.yml` on a version tag. There must be at least one release before the scripts work.
+Both load the community-scripts helper functions (`build.func`, `fetch_and_deploy_gh_release`, ...), and the framework fetches them from `COMMUNITY_SCRIPTS_URL`. They install from the GitHub release of this repository: the asset `bitnews_<version>_linux_amd64.tar.gz` made by `scripts/package-release.sh` and published by `.github/workflows/release.yml` on a version tag. There must be at least one release before the scripts work.
 
 ## Install command
 
-Once the scripts are in ProxmoxVE, this is the command to run in the Proxmox VE host shell (the one every community-scripts page shows):
+Run in the Proxmox VE host shell. `COMMUNITY_SCRIPTS_URL` points the framework at this repository (see [Script Origin](https://community-scripts.org/docs/guides/source_origin)):
 
 ```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/bitnews.sh)"
+export COMMUNITY_SCRIPTS_URL=https://raw.githubusercontent.com/jroosing/bitnews/main/deploy/proxmox
+bash -c "$(curl -fsSL $COMMUNITY_SCRIPTS_URL/ct/bitnews.sh)"
 ```
 
-While a script is still in DevScripts for testing, the maintainers give the exact test command in the issue and Discord thread; use that one.
+The framework itself (`build.func` and friends) is still downloaded from community-scripts. The command has not been run on a Proxmox host yet; the URLs it uses all resolve.
 
-## Submitting
+## Submitting to the official collection (optional)
 
-New scripts go to [community-scripts/DevScripts](https://github.com/community-scripts/DevScripts) first, not to ProxmoxVE (pull requests with new scripts there are closed). Read its contributing guide and the [documentation](https://community-scripts.org/docs/contribution) for the current rules, then:
+Not needed for the command above. To get bitnews into the official collection, new scripts go to [community-scripts/DevScripts](https://github.com/community-scripts/DevScripts) first, not to ProxmoxVE (pull requests with new scripts there are closed). Read its contributing guide and the [documentation](https://community-scripts.org/docs/contribution) for the current rules, then:
 
 1. Fork DevScripts and copy `ct/bitnews.sh` and `install/bitnews-install.sh` to the same paths there.
 2. Test both on a real Proxmox VE host (the scripts here were only run against a Debian 13 container with stubbed helper functions and no systemd).
