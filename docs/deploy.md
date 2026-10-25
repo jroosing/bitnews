@@ -142,6 +142,8 @@ Providers such as ProtonVPN hand out a forwarded port that changes when the VPN 
         sleep 3; done; exit 1'
 ```
 
+Instead of the hook, a small sidecar can poll gluetun's port file: `deploy/bitnews-port-sync.sh` runs in an `alpine` container that shares gluetun's network and mounts gluetun's data directory read-only. Every `SYNC_INTERVAL_SECONDS` it compares the port in `forwarded_port` with the one bitnews reports and sets it when they differ. Configure it with `BITNEWS_URL` (default `http://127.0.0.1:9494`), `BITNEWS_API_KEY` (required), `FORWARDED_PORT_FILE` (default `/gluetun/forwarded_port`) and `SYNC_INTERVAL_SECONDS` (default `30`).
+
 Replace `YOUR_API_KEY` with the key (rotating the key on the Security page means updating it here). Do not publish the torrent port on the gluetun service and do not set `BITNEWS_TORRENT_PORT`: gluetun opens the forwarded port in its own firewall, and a fixed port makes the route answer `409 port_fixed`. `GET /api/v1/torrent/port` shows the port in use and whether a peer has connected in yet.
 
 ### Identity and UMASK
