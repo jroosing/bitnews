@@ -3,6 +3,8 @@ package web
 import (
 	"net/http"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -12,7 +14,7 @@ func postprocessingSection() SettingsSection {
 	return SettingsSection{
 		Slug: "postprocessing", Title: "Post-processing", Icon: "check-circle", Order: 35,
 		Description: "Optional tidying of the names of NZB downloads.",
-		Template:    "settings_postprocessing.html", Data: settingsPostprocessingData, Routes: (*Server).registerPostprocessingRoutes,
+		Component:   SettingsPostprocessingPage, Data: settingsPostprocessingData, Routes: (*Server).registerPostprocessingRoutes,
 	}
 }
 
@@ -27,8 +29,9 @@ var postprocessingCards = []*settingsCard{postprocessingNamesCard}
 // postprocessingNamesCard edits Settings.PostProcess. Both options are read
 // when a download is added or finished, so they apply to the next download.
 var postprocessingNamesCard = &settingsCard{
-	key: "names", route: "/settings/postprocessing", slug: "postprocessing", partial: "postprocessing_names_card",
-	saved: "Post-processing options saved. They apply to the next download.",
+	key: "names", route: "/settings/postprocessing", slug: "postprocessing",
+	render: func(view any) templ.Component { return PostprocessingNamesCard(view.(cardView)) },
+	saved:  "Post-processing options saved. They apply to the next download.",
 	values: func(s core.Settings) map[string]string {
 		return map[string]string{
 			"clean_names":         checked(s.PostProcess.CleanNames),

@@ -54,7 +54,7 @@ func settingsSections() []SettingsSection {
 		{
 			Slug: "paths", Title: "Paths & Categories", Icon: "folder", Order: 10,
 			Description: "Where downloads are kept and the categories your media managers use.",
-			Template:    "settings_paths.html", Data: settingsPathsData, Routes: (*Server).registerPathRoutes,
+			Component:   SettingsPathsPage, Data: settingsPathsData, Routes: (*Server).registerPathRoutes,
 		},
 		{
 			Slug: "servers", Title: "Usenet servers", Icon: "server", Order: 20,

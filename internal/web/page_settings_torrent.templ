@@ -1,0 +1,155 @@
+package web
+
+// SettingsTorrentPage is the Torrent network section.
+templ SettingsTorrentPage(v *View, p settingsPage) {
+	{{ views := p.Data.(cardViews) }}
+	{{ connection := viewOf[connectionView](views, "connection") }}
+	{{ binding := viewOf[bindingView](views, "binding") }}
+	{{ seeding := viewOf[seedingView](views, "seeding") }}
+	@AppLayout(v, cardsSubtitle(p.Section.Description), nil) {
+		@SettingsLayout(p.Nav) {
+			@TorrentConnectionCard(connection)
+			@TorrentBindingCard(binding)
+			@TorrentSeedingCard(seeding)
+		}
+	}
+}
+
+// TorrentConnectionCard is the "Connection" card.
+templ TorrentConnectionCard(v connectionView) {
+	@SettingsForm(SettingsFormProps{
+		ID: "connection", Action: "/settings/torrent", Title: "Connection",
+		Subtitle: "How other torrent users find and talk to bitnews.",
+		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save connection",
+	}) {
+		if v.Restart {
+			@Alert(AlertProps{Variant: AlertInfo, ID: "connection-restart", Title: "Saved, waiting for a restart", Body: "Your changes are saved. Restart bitnews to start using them."})
+		} else {
+			@Alert(AlertProps{Variant: AlertInfo, Title: "Most changes need a restart", Body: "A new listen port is used right away. The torrent engine reads the other settings when bitnews starts: they are saved right away and used after the next restart."})
+		}
+		if v.Port.Known {
+			<div id="torrent-port-status" data-state={ v.Port.State } class="space-y-1 text-sm text-fg-muted" role="status">
+				<p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+					if v.Port.State == "open" {
+						@Badge(BadgeReady, v.Port.Label)
+					} else {
+						@Badge(BadgePaused, v.Port.Label)
+					}
+					<span class="min-w-0 break-words">{ v.Port.Detail }</span>
+				</p>
+				<p>
+					@Icon(IconInfo, "mr-1.5 inline size-4 align-text-bottom")
+					{ v.Port.Help() }
+				</p>
+			</div>
+		}
+		<div class="grid gap-4 sm:grid-cols-2">
+			@Field(FieldProps{
+				ID: "listen-port", Name: "listen_port", Label: "Listen port", Value: v.V["listen_port"], Error: v.E["listen_port"],
+				Help:        v.listenPortHelp(),
+				Placeholder: "51413", Inputmode: "numeric", Raw: true, Autocomplete: "off", Required: !v.PortFixed, Disabled: v.PortFixed,
+			})
+			@SelectField(SelectProps{
+				ID: "mse", Name: "mse", Label: "Encryption", Options: v.MSE, Selected: v.V["mse"], Error: v.E["mse"],
+				Help: "Hides torrent traffic from simple filters. Some peers only speak plain traffic, so Require finds fewer peers.",
+			})
+		</div>
+		<fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+			<legend class="px-2 text-sm font-semibold text-fg">Finding peers</legend>
+			<p class="mb-4 text-sm text-fg-muted">These only apply to public torrents. Private torrents never use them, to keep your tracker account safe.</p>
+			<div class="space-y-4">
+				@SwitchField(CheckProps{ID: "dht", Name: "dht", Label: "DHT", Help: "Find peers through the distributed network, not only through trackers.", Checked: v.V["dht"] != ""})
+				@SwitchField(CheckProps{ID: "pex", Name: "pex", Label: "Peer exchange", Help: "Peers tell each other about more peers.", Checked: v.V["pex"] != ""})
+			</div>
+		</fieldset>
+	}
+}
+
+// BindingGroupProps are the parameters of BindingGroup.
+type BindingGroupProps struct {
+	Proto  string // "usenet" or "torrent"
+	Title  string
+	Status bindingStatusView
+	V, E   map[string]string // the card's values and errors
+}
+
+// BindingGroup is one protocol's binding: the status line and the two fields.
+templ BindingGroup(p BindingGroupProps) {
+	<fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+		<legend class="px-2 text-sm font-semibold text-fg">{ p.Title }</legend>
+		if p.Status.Known {
+			<p id={ p.Proto + "-binding-status" } data-state={ p.Status.State } class="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted" role="status">
+				switch p.Status.State {
+					case "bound":
+						@Badge(BadgeReady, p.Status.Label)
+					case "unavailable":
+						@Badge(BadgeFailed, p.Status.Label)
+					default:
+						@Badge(BadgeQueued, p.Status.Label)
+				}
+				<span class="min-w-0 break-words">{ p.Status.Detail }</span>
+				if p.Status.Pending {
+					<span class="text-fg">The saved binding is not in use yet: restart bitnews to apply it.</span>
+				}
+			</p>
+		}
+		<div class="grid gap-4 sm:grid-cols-2">
+			@Field(FieldProps{
+				ID: p.Proto + "-interface", Name: p.Proto + "_interface", Label: "Network interface",
+				Value: p.V[p.Proto+"_interface"], Error: p.E[p.Proto+"_interface"],
+				Help: "For example wg0 or tun0. Linux only.", Placeholder: "Not bound", Raw: true, Autocomplete: "off", Optional: true,
+			})
+			@Field(FieldProps{
+				ID: p.Proto + "-address", Name: p.Proto + "_address", Label: "Local IP address",
+				Value: p.V[p.Proto+"_address"], Error: p.E[p.Proto+"_address"],
+				Help: "An address of this machine, for example 10.2.0.2.", Placeholder: "Not bound", Inputmode: "decimal", Raw: true, Autocomplete: "off", Optional: true,
+			})
+		</div>
+	</fieldset>
+}
+
+// TorrentBindingCard is the "Network binding" card.
+templ TorrentBindingCard(v bindingView) {
+	@SettingsForm(SettingsFormProps{
+		ID: "binding", Action: "/settings/torrent/binding", Title: "Network binding",
+		Subtitle: "Keep Usenet or torrent traffic on your VPN. If the VPN goes down, that traffic stops instead of using your normal connection.",
+		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save binding",
+	}) {
+		if v.Restart {
+			@Alert(AlertProps{Variant: AlertInfo, ID: "binding-restart", Title: "Saved, waiting for a restart", Body: "Your changes are saved. Restart bitnews to start using them."})
+		} else {
+			@Alert(AlertProps{Variant: AlertInfo, Title: "Changes need a restart", Body: "Sockets are bound when they are opened. A new binding is saved right away and used after the next restart."})
+		}
+		<p class="text-sm text-fg-muted">Leave both fields empty for no binding. Fill in the interface, the address or both. This only limits what bitnews sends out: the web interface stays reachable from your network, and DNS lookups still use your normal connection.</p>
+		@BindingGroup(BindingGroupProps{Proto: "usenet", Title: "Usenet", Status: v.Usenet, V: v.V, E: v.E})
+		@BindingGroup(BindingGroupProps{Proto: "torrent", Title: "Torrents", Status: v.Torrent, V: v.V, E: v.E})
+	}
+}
+
+// TorrentSeedingCard is the "Share Limit defaults" card.
+templ TorrentSeedingCard(v seedingView) {
+	@SettingsForm(SettingsFormProps{
+		ID: "seeding", Action: "/settings/torrent/seeding", Title: "Share Limit defaults",
+		Subtitle: "When bitnews stops seeding a finished torrent. Changes apply right away.",
+		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save defaults",
+	}) {
+		<p class="text-sm text-fg-muted">A Share Limit is a ratio (how much you uploaded compared to the torrent size) or a seeding time. These are the defaults: a single torrent, or Sonarr and Radarr, can set its own, which wins. With both fields empty, bitnews never stops seeding on its own.</p>
+		<div class="grid gap-4 sm:grid-cols-2">
+			@Field(FieldProps{
+				ID: "ratio-limit", Name: "ratio_limit", Label: "Stop at ratio", Value: v.V["ratio_limit"], Error: v.E["ratio_limit"],
+				Help:        "For example 2 to upload twice the size. Check your tracker's rules before setting this.",
+				Placeholder: "No limit", Inputmode: "decimal", Raw: true, Autocomplete: "off",
+			})
+			@Field(FieldProps{
+				ID: "seeding-minutes", Name: "seeding_minutes", Label: "Stop after (minutes)", Value: v.V["seeding_minutes"], Error: v.E["seeding_minutes"],
+				Help:        "For example 1440 for one day.",
+				Placeholder: "No limit", Inputmode: "numeric", Raw: true, Autocomplete: "off",
+			})
+		</div>
+		@SelectField(SelectProps{
+			ID: "seeding-action", Name: "seeding_action", Label: "When a limit is reached", Options: v.Actions,
+			Selected: v.V["seeding_action"], Error: v.E["seeding_action"],
+			Help: "Pausing is the safe choice: Sonarr and Radarr see the torrent as finished and remove it themselves. Deleting files cannot be undone.",
+		})
+	}
+}

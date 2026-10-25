@@ -1,0 +1,87 @@
+package web
+
+// SettingsSpeedPage is the Speed & queue section.
+templ SettingsSpeedPage(v *View, p settingsPage) {
+	{{ views := p.Data.(cardViews) }}
+	{{ limits := viewOf[cardView](views, "limits") }}
+	{{ queue := viewOf[cardView](views, "queue") }}
+	{{ space := viewOf[cardView](views, "space") }}
+	@AppLayout(v, cardsSubtitle(p.Section.Description), nil) {
+		@SettingsLayout(p.Nav) {
+			@SpeedLimitsCard(limits)
+			@SpeedQueueCard(queue)
+			@SpeedSpaceCard(space)
+		}
+	}
+}
+
+// SpeedLimitsCard is the "Speed limits" card.
+templ SpeedLimitsCard(v cardView) {
+	@SettingsForm(SettingsFormProps{
+		ID: "speed", Action: "/settings/speed", Title: "Speed limits",
+		Subtitle: "Keep bitnews from using your whole connection. Changes apply right away.",
+		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save limits",
+	}) {
+		<p class="text-sm text-fg-muted">Limits are in KB/s (1000 KB/s is about 1 MB/s, or 8 Mbit/s). Leave a field empty for no limit.</p>
+		<fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+			<legend class="px-2 text-sm font-semibold text-fg">Overall</legend>
+			<p class="mb-4 text-sm text-fg-muted">A ceiling for Usenet and for torrents, each on its own. When both are busy at once, together they can use up to twice this. Use the limits below to split your line between them.</p>
+			<div class="grid gap-4 sm:grid-cols-2">
+				@Field(speedField(v, FieldProps{ID: "global-down", Name: "global_down_kbps", Label: "Download (KB/s)", Placeholder: "No limit"}))
+				@Field(speedField(v, FieldProps{ID: "global-up", Name: "global_up_kbps", Label: "Upload (KB/s)", Placeholder: "No limit", Help: "Applies to torrents, the only thing bitnews uploads."}))
+			</div>
+		</fieldset>
+		<fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+			<legend class="px-2 text-sm font-semibold text-fg">Usenet</legend>
+			<p class="mb-4 text-sm text-fg-muted">Usenet only downloads, so there is no upload limit here.</p>
+			<div class="grid gap-4 sm:grid-cols-2">
+				@Field(speedField(v, FieldProps{ID: "usenet-down", Name: "usenet_down_kbps", Label: "Download (KB/s)", Placeholder: "No limit"}))
+			</div>
+		</fieldset>
+		<fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+			<legend class="px-2 text-sm font-semibold text-fg">Torrents</legend>
+			<p class="mb-4 text-sm text-fg-muted">Upload speed matters for torrents: leave some room, or downloads slow down too.</p>
+			<div class="grid gap-4 sm:grid-cols-2">
+				@Field(speedField(v, FieldProps{ID: "torrent-down", Name: "torrent_down_kbps", Label: "Download (KB/s)", Placeholder: "No limit"}))
+				@Field(speedField(v, FieldProps{ID: "torrent-up", Name: "torrent_up_kbps", Label: "Upload (KB/s)", Placeholder: "No limit"}))
+			</div>
+		</fieldset>
+	}
+}
+
+// SpeedQueueCard is the "Downloads at the same time" card.
+templ SpeedQueueCard(v cardView) {
+	@SettingsForm(SettingsFormProps{
+		ID: "queue", Action: "/settings/speed/queue", Title: "Downloads at the same time",
+		Subtitle: "How many downloads each queue works on at once. The rest wait their turn.",
+		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save queue sizes",
+	}) {
+		if v.Restart {
+			@Alert(AlertProps{Variant: AlertInfo, ID: "queue-restart", Title: "Saved, waiting for a restart", Body: "The post-processing change is saved. Restart bitnews to start using it."})
+		}
+		<div class="grid gap-4 sm:grid-cols-2">
+			@Field(speedField(v, FieldProps{ID: "usenet-queue", Name: "usenet_queue", Label: "Usenet downloads", Help: "Usenet downloads share your connections, so 1 or 2 is plenty. Downloads you force to start ignore this."}))
+			@Field(speedField(v, FieldProps{ID: "torrent-queue", Name: "torrent_queue", Label: "Torrent downloads", Help: "Torrents that are only seeding do not count against this."}))
+		</div>
+		<div class="grid gap-4 sm:grid-cols-2">
+			@Field(speedField(v, FieldProps{ID: "postproc-concurrency", Name: "postproc_concurrency", Label: "Unpack and repair at the same time", Help: "After a download finishes, bitnews checks, repairs and unpacks it. This is disk heavy: raise it only on fast storage. Applies after a restart."}))
+		</div>
+	}
+}
+
+// SpeedSpaceCard is the "Free space" card.
+templ SpeedSpaceCard(v cardView) {
+	@SettingsForm(SettingsFormProps{
+		ID: "space", Action: "/settings/speed/space", Title: "Free space",
+		Subtitle: "How much room bitnews leaves on the disk. Changes apply right away.",
+		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save free space",
+	}) {
+		<div class="grid gap-4 sm:grid-cols-2">
+			@Field(FieldProps{
+				ID: "min-free", Name: "min_free_gb", Label: "Keep free (GB)", Value: v.V["min_free_gb"], Error: v.E["min_free_gb"],
+				Help:        "Downloads wait, and unpacking stops, when the disk would have less than this left. The default is 5 GB.",
+				Placeholder: "5", Inputmode: "decimal", Raw: true, Autocomplete: "off", Required: true,
+			})
+		</div>
+	}
+}

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -13,12 +15,20 @@ func speedSection() SettingsSection {
 	return SettingsSection{
 		Slug: "speed", Title: "Speed & queue", Icon: "arrow-down", Order: 30,
 		Description: "Speed limits, how many downloads run at once and free space.",
-		Template:    "settings_speed.html", Data: settingsSpeedData, Routes: (*Server).registerSpeedRoutes,
+		Component:   SettingsSpeedPage, Data: settingsSpeedData, Routes: (*Server).registerSpeedRoutes,
 	}
 }
 
 func settingsSpeedData(s *Server, r *http.Request) (any, error) {
 	return s.cardPage(r, speedCards, nil), nil
+}
+
+// speedField completes the whole-number field p with the value and error of
+// its name in the card's view.
+func speedField(cv cardView, p FieldProps) FieldProps {
+	p.Value, p.Error = cv.V[p.Name], cv.E[p.Name]
+	p.Inputmode, p.Raw, p.Autocomplete = "numeric", true, "off"
+	return p
 }
 
 func (s *Server) registerSpeedRoutes() { s.registerCards(speedCards) }
@@ -39,8 +49,9 @@ var speedLimitFields = []struct {
 
 // speedLimitsCard edits Settings.Speed. It applies live.
 var speedLimitsCard = &settingsCard{
-	key: "limits", route: "/settings/speed", slug: "speed", partial: "speed_limits_card",
-	saved: "Speed limits saved. They apply right away.",
+	key: "limits", route: "/settings/speed", slug: "speed",
+	render: func(view any) templ.Component { return SpeedLimitsCard(view.(cardView)) },
+	saved:  "Speed limits saved. They apply right away.",
 	values: func(s core.Settings) map[string]string {
 		sp := s.Speed
 		v := map[string]string{}
@@ -69,7 +80,8 @@ const maxQueueSize = 1000
 // speedQueueCard edits how many downloads run at once. The queue sizes apply
 // live; post-processing concurrency is read when bitnews starts.
 var speedQueueCard = &settingsCard{
-	key: "queue", route: "/settings/speed/queue", slug: "speed", partial: "speed_queue_card",
+	key: "queue", route: "/settings/speed/queue", slug: "speed",
+	render:      func(view any) templ.Component { return SpeedQueueCard(view.(cardView)) },
 	saved:       "Queue sizes saved.",
 	restartNote: "Restart bitnews for the post-processing change to take effect.",
 	values: func(s core.Settings) map[string]string {
@@ -115,8 +127,9 @@ const gib = 1 << 30
 
 // speedSpaceCard edits min_free. It applies live.
 var speedSpaceCard = &settingsCard{
-	key: "space", route: "/settings/speed/space", slug: "speed", partial: "speed_space_card",
-	saved: "Free space saved. It applies right away.",
+	key: "space", route: "/settings/speed/space", slug: "speed",
+	render: func(view any) templ.Component { return SpeedSpaceCard(view.(cardView)) },
+	saved:  "Free space saved. It applies right away.",
 	values: func(s core.Settings) map[string]string {
 		gb := float64(s.Queues.EffectiveMinFree()) / gib
 		return map[string]string{"min_free_gb": strconv.FormatFloat(gb, 'f', -1, 64)}
