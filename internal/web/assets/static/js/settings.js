@@ -34,6 +34,63 @@
       };
     });
 
+    // The folder picker: a field's Browse button opens the one folder dialog
+    // of the page for that field (data-folder-input names the input).
+    Alpine.data("folderButton", function () {
+      return {
+        open: function () {
+          if (window.bitnewsFolders) {
+            window.bitnewsFolders.open(this.$el.dataset.folderInput);
+          }
+        },
+      };
+    });
+
+    // The folder dialog loads one folder at a time from /settings/folders
+    // (htmx swaps the list inside it) and writes the chosen path into the
+    // field, as typing would, so the form sees an unsaved change.
+    Alpine.data("folderDialog", function () {
+      return {
+        input: null,
+        init: function () {
+          var self = this;
+          window.bitnewsFolders = {
+            open: function (id) {
+              self.open(id);
+            },
+          };
+        },
+        open: function (id) {
+          this.input = document.getElementById(id);
+          var start = this.input ? this.input.value : "";
+          window.htmx.ajax("GET", "/settings/folders?path=" + encodeURIComponent(start), {
+            target: this.$refs.body,
+            swap: "innerHTML",
+          });
+          this.$refs.dlg.showModal();
+        },
+        choose: function (evt) {
+          var path = evt.currentTarget.dataset.path;
+          if (this.input && path) {
+            this.input.value = path;
+            this.input.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          this.$refs.dlg.close();
+          if (this.input) {
+            this.input.focus();
+          }
+        },
+        hide: function () {
+          this.$refs.dlg.close();
+        },
+        onBackdrop: function (evt) {
+          if (evt.target === this.$refs.dlg) {
+            this.$refs.dlg.close();
+          }
+        },
+      };
+    });
+
     // The settings form pattern: Save stays disabled until a field changes.
     // A form re-rendered after a failed save starts dirty (data-dirty).
     // The form is swapped out by htmx after a save, which resets the state.

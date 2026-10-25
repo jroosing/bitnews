@@ -90,6 +90,7 @@ func pathsPage(s *Server, r *http.Request, views cardViews) (any, error) {
 
 func (s *Server) registerPathRoutes() {
 	s.registerCards(pathsCards)
+	s.handleAuthed("GET /settings/folders", s.getFolders)
 	s.registerCategoryRoutes()
 }
 

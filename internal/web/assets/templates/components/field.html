@@ -3,8 +3,10 @@
   Keys: ID, Name (default ID), Label, Type (default text), Value, Help,
   Error, Placeholder, Autocomplete, Required, Optional, Autofocus,
   MinLength, MaxLength, Inputmode, Raw (no autocapitalize/spellcheck),
-  Disabled, Class.
+  Disabled, Class, Browse.
   Type "password" adds a show/hide toggle (Alpine "reveal"; hidden without JS).
+  Browse adds a button that opens the folder picker (folder_dialog) for the
+  field; it needs the dialog on the page (the settings layout has it).
 */}}
 {{define "field"}}
 {{- $id := .ID -}}
@@ -16,6 +18,14 @@
       {{- template "field_attrs" .}}>
     <button type="button" x-cloak class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-fg-subtle hover:text-fg" @click="toggle" :aria-label="label" aria-label="Show password">
       <span x-show="!shown">{{icon "eye" "size-5"}}</span><span x-show="shown" x-cloak>{{icon "eye-slash" "size-5"}}</span>
+    </button>
+  </div>
+  {{- else if .Browse -}}
+  <div class="flex gap-2">
+    <input id="{{$id}}" name="{{or .Name $id}}" type="{{or .Type "text"}}" class="input min-w-0 flex-1"
+      {{- template "field_attrs" .}}>
+    <button type="button" x-data="folderButton" x-cloak @click="open" data-folder-input="{{$id}}" class="btn btn-secondary shrink-0" aria-label="Browse folders for {{.Label}}"{{if .Disabled}} disabled{{end}}>
+      {{icon "folder" "size-4"}}<span class="max-sm:sr-only">Browse</span>
     </button>
   </div>
   {{- else -}}

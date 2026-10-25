@@ -197,3 +197,19 @@ Semantic HTML, labels on every input, and keyboard-operable actions. The layout 
 
 - **Speed & queue / Torrent network (M6-07):** new persisted settings `queues.postproc_concurrency`, `queues.min_free`, `speed.{global,usenet,torrent}.{down_kbps,up_kbps}` and `torrent.{listen_port,disable_dht,disable_pex,lsd,mse}`; a zero value means the default. Speed limits, queue sizes, `min_free` and Share Limit defaults apply live. Listen port, DHT, PEX, MSE, network binding and `postproc_concurrency` apply after a restart, and the UI says so. LSD is stored but has no effect (the engine has no LSD support). The overall speed limit caps each protocol on its own; it is not one shared budget. `BITNEWS_TORRENT_PORT` no longer has a default; when set it overrides the UI port.
 - **Security (M6-08):** turning sign-in off or enabling LAN bypass is blocked without `allowed_hosts`, and also when the list lacks the Host the browser used (no self-lockout). Risky changes go through a confirm card. Password change signs out the user's other sessions (`SessionRepo.DeleteForUserExcept`). Plaintext keys and passwords appear only in the create response (`Cache-Control: no-store`).
+
+### M6-09: Folder picker for the folder fields
+- **Labels:** area:ui, ready-for-agent
+
+**Goal:** The download folders and a Category's folder can be chosen by clicking through the folders of the machine bitnews runs on, instead of only typing the path.
+
+**Design**
+- Each folder field has a Browse button that opens one dialog per settings page. The dialog loads `GET /settings/folders?path=` (htmx) and shows breadcrumbs, "Up one level", the folders inside and "Use this folder", which writes the path into the field as typing would.
+- The route needs a session (the API key cannot reach it), lists folders only (no files, no symlinks, no hidden entries, at most 500), never writes, and opens at the typed path or its nearest existing parent (`/data`, else `/`, when the field is empty). Folders bitnews cannot write to are marked read-only. Listing goes through `fsutil.ListDirs` and `fsutil.NearestDir`.
+- The browser's own file dialog is not used: it shows the visitor's computer, not the server.
+
+**Acceptance criteria**
+- [x] The four download folder fields and both Category folder fields have Browse.
+- [x] The picker lists only folders, opens at the nearest existing folder and needs a session.
+- [x] Typing a path still works without JavaScript.
+

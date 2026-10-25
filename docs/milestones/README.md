@@ -111,6 +111,7 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | M6-06 |  | Settings — Usenet Servers | area:ui, area:usenet, ready-for-agent | done |
 | M6-07 |  | Settings — torrent network, speed, queue and Share Limits | area:ui, area:torrent, ready-for-agent | done |
 | M6-08 |  | Settings — security, API keys and media-manager credentials | area:ui, area:auth, ready-for-agent | done |
+| M6-09 |  | Folder picker for the folder fields | area:ui, ready-for-agent | done |
 
 ### [M7 — Simplification](m7-simplification.md)
 

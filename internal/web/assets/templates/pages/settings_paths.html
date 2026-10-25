@@ -9,7 +9,7 @@
 
 {{/* One folder input of the paths card. Dot is a pathsField. */}}
 {{define "paths_field"}}
-{{template "field" dict "ID" .ID "Name" .Name "Label" .Label "Value" .Value "Help" .Help "Error" .Error "Placeholder" .Placeholder "Raw" true "Autocomplete" "off" "Required" true}}
+{{template "field" dict "ID" .ID "Name" .Name "Label" .Label "Value" .Value "Help" .Help "Error" .Error "Placeholder" .Placeholder "Raw" true "Autocomplete" "off" "Required" true "Browse" true}}
 {{end}}
 
 {{define "paths_card"}}
@@ -73,7 +73,7 @@
         {{- end}}
       </div>
       <div>
-        {{template "field" dict "ID" "category-dir" "Name" "dir_override" "Label" "Folder" "Optional" true "Value" .Dir "Placeholder" "/data/media/tv" "Help" "Absolute path. Empty uses the default folder." "Error" .DirError "Raw" true "Autocomplete" "off"}}
+        {{template "field" dict "ID" "category-dir" "Name" "dir_override" "Label" "Folder" "Optional" true "Value" .Dir "Placeholder" "/data/media/tv" "Help" "Absolute path. Empty uses the default folder." "Error" .DirError "Raw" true "Autocomplete" "off" "Browse" true}}
       </div>
     </div>
     <div class="mt-4 flex justify-end">
@@ -105,7 +105,7 @@
     <form method="post" action="/settings/categories/{{.ID}}" hx-post="/settings/categories/{{.ID}}" hx-target="closest tr" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']" class="w-full text-left">
       {{template "csrf_field" .}}
       <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-        {{template "field" dict "ID" (print "category-dir-" .ID) "Name" "dir_override" "Label" (print "Folder for " .Name) "Optional" true "Value" .Dir "Placeholder" "Empty uses the default folder" "Help" "Absolute path. Applies to new downloads only." "Error" .Error "Raw" true "Autocomplete" "off" "Autofocus" true}}
+        {{template "field" dict "ID" (print "category-dir-" .ID) "Name" "dir_override" "Label" (print "Folder for " .Name) "Optional" true "Value" .Dir "Placeholder" "Empty uses the default folder" "Help" "Absolute path. Applies to new downloads only." "Error" .Error "Raw" true "Autocomplete" "off" "Autofocus" true "Browse" true}}
         <div class="flex justify-end gap-2 sm:pb-6">
           {{template "button" dict "Label" "Cancel" "Variant" "secondary" "Attrs" (attrs "hx-get" (print "/settings/categories/" .ID) "hx-target" "closest tr" "hx-swap" "outerHTML")}}
           <button type="submit" class="btn btn-primary"><span class="btn-spinner" aria-hidden="true"></span>Save</button>
