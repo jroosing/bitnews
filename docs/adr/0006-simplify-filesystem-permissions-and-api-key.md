@@ -11,6 +11,8 @@ bitnews stops checking and managing things the operating system already handles,
 
 ## Process identity
 
+> **The container part is superseded by [ADR-0010](0010-puid-pgid-entrypoint.md):** the image's entrypoint takes `PUID`/`PGID` again and drops to them. bitnews itself still has no privilege drop and runs as whoever starts it.
+
 - bitnews runs as whoever starts it. `PUID`/`PGID` and the in-process privilege drop are removed. Docker uses `user: "uid:gid"` and systemd uses `User=`/`Group=`, and they take care of permissions. Running as root still works, without a warning.
 - `UMASK` stays (default `002`), so the files are group-writable for Sonarr and Radarr running as another user in the same group.
 

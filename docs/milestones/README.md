@@ -124,6 +124,7 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | M7-04 |  | A single API key | area:auth, area:adapter, ready-for-agent | done |
 | M7-05 |  | Security page key card | area:ui, area:auth, ready-for-agent | done |
 | M7-06 |  | Post-processing with 7-Zip and par2cmdline-turbo | area:postproc, area:deploy, ready-for-agent | done |
+| M7-07 |  | PUID/PGID in the container entrypoint | area:deploy, ready-for-agent | done |
 
 ### [M8 — Deep modules](m8-deep-modules.md)
 

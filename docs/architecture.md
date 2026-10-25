@@ -189,8 +189,8 @@ The defaults follow the TRaSH-guides layout:
 
 - **Binary:** a static `bitnews` for linux amd64 (darwin for development).
 - **Bootstrap config (flags/env only):** `--config-dir`, optional `--key-file`, listen address (default `:9494`), `UMASK`. Everything else is configured through the UI/API and stored in the DB. The full table is in [M1](milestones/m1-foundation.md#bootstrap-configuration).
-- **Privileges:** bitnews runs as whoever starts it ([ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md)): Docker `user:`. There is no in-process privilege drop. It applies `UMASK` (default `002`) before creating any file, and running as root works without a warning.
-- **Docker:** distroless image, `/config` volume (database and key), `/data` mounted at the same path as in the media-manager containers. HTTPS is terminated by a reverse proxy (Caddy/Traefik/nginx).
+- **Privileges:** bitnews runs as whoever starts it. The container's entrypoint starts as root, gives `/config` to `PUID:PGID` and runs bitnews as that user ([ADR-0010](adr/0010-puid-pgid-entrypoint.md)); `user:` still works. bitnews applies `UMASK` (default `002`) before creating any file.
+- **Docker:** Alpine image with a PUID/PGID entrypoint, `/config` volume (database and key), `/data` mounted at the same path as in the media-manager containers. HTTPS is terminated by a reverse proxy (Caddy/Traefik/nginx).
 
 ## Testing and CI
 

@@ -1,6 +1,6 @@
 # Deploying bitnews
 
-bitnews is one static binary that listens on one port (default `9494`) for the UI, its own API and the Sonarr/Radarr adapters. It speaks plain HTTP; put a reverse proxy in front of it for TLS. Docker is the supported way to run it: a distroless image and `deploy/docker-compose.example.yml`, aimed at a homelab. [Running without Docker](#without-docker) is possible but not packaged.
+bitnews is one static binary that listens on one port (default `9494`) for the UI, its own API and the Sonarr/Radarr adapters. It speaks plain HTTP; put a reverse proxy in front of it for TLS. Docker is the supported way to run it: an Alpine-based image and `deploy/docker-compose.example.yml`, aimed at a homelab. [Running without Docker](#without-docker) is possible but not packaged.
 
 Then read the [hardening checklist](#hardening-checklist).
 
@@ -25,7 +25,7 @@ On first start (no admin yet), bitnews prints a one-time **setup token** in its 
 
 ## Docker
 
-The image holds bitnews and the two programs it runs for post-processing ([ADR-0007](adr/0007-external-postproc-tools.md)): 7-Zip (`7zz`) and par2cmdline-turbo (`par2`), static binaries pinned by version and checksum, so the image stays on distroless and has no shell. Archives and PAR2 sets are untrusted input and these are native programs, so keep the container hardening from the compose example (non-root user, read-only root with a `tmpfs` at `/tmp`, `cap_drop: ALL`, `no-new-privileges`) and rebuild the image when either tool publishes a security fix. Consider a memory limit (`mem_limit`) too: 7-Zip can use a lot of memory on a large archive.
+The image holds bitnews and the two programs it runs for post-processing ([ADR-0007](adr/0007-external-postproc-tools.md)): 7-Zip (`7zz`) and par2cmdline-turbo (`par2`), static binaries pinned by version and checksum. Archives and PAR2 sets are untrusted input and these are native programs, so keep the container hardening from the compose example (bitnews running as PUID, read-only root with a `tmpfs` at `/tmp`, `cap_drop: ALL` with only the four capabilities the entrypoint needs, `no-new-privileges`) and rebuild the image when either tool publishes a security fix. Consider a memory limit (`mem_limit`) too: 7-Zip can use a lot of memory on a large archive.
 
 ### Build the image
 
@@ -35,16 +35,16 @@ docker build -t bitnews \
   --build-arg COMMIT="$(git rev-parse --short HEAD)" .
 ```
 
-The build stage compiles with `CGO_ENABLED=0`. The supported image is linux/amd64, and it is what CI publishes (a plain `docker build`); there is no arm64 image. The final stage is `gcr.io/distroless/static-debian12`: no shell, no package manager, just the binary, CA certificates and tzdata (so `TZ` works).
+The build stage compiles with `CGO_ENABLED=0`. The supported image is linux/amd64, and it is what CI publishes (a plain `docker build`); there is no arm64 image. The final stage is `alpine`: the binary, the two tools, CA certificates, tzdata (so `TZ` works) and `su-exec`, which the entrypoint uses to drop from root to PUID:PGID ([ADR-0010](adr/0010-puid-pgid-entrypoint.md)).
 
 Pinning is a hardening step. Tags are mutable; pin both base images to a digest for reproducible builds:
 
 ```sh
 docker buildx imagetools inspect golang:1.27.3                  # note "Digest: sha256:..."
-docker buildx imagetools inspect gcr.io/distroless/static-debian12
+docker buildx imagetools inspect alpine:3.21
 ```
 
-Then write `FROM golang:1.27.3@sha256:<digest>` and `FROM gcr.io/distroless/static-debian12@sha256:<digest>` in the `Dockerfile`. Distroless images are signed with cosign, and you can verify the one you pin (see the distroless README for the exact command). Renovate or Dependabot can keep the digests current.
+Then write `FROM golang:1.27.3@sha256:<digest>` and `FROM alpine:3.21@sha256:<digest>` in the `Dockerfile`. Renovate or Dependabot can keep the digests current.
 
 ### Publishing the image by hand
 
@@ -71,7 +71,7 @@ You do nothing: on first start bitnews generates the key and stores it as `bitne
 mkdir -p secrets
 head -c 32 /dev/urandom | base64 > secrets/bitnews_key
 chmod 600 secrets/bitnews_key
-sudo chown 1000:1000 secrets/bitnews_key      # the uid:gid of `user:` in your compose file
+sudo chown 1000:1000 secrets/bitnews_key      # your PUID:PGID
 ```
 
 ```yaml
@@ -85,11 +85,11 @@ secrets:
     file: ./secrets/bitnews_key
 ```
 
-bitnews reads the key as the user the container runs as (`user:` in compose). Under plain `docker compose` (no Swarm) a `file:` secret is a bind mount of the host file, so the host file's owner and mode apply inside the container; a root-owned `0600` file fails with "permission denied". A key file readable by other users (such as `0444` in Swarm) only produces a warning. If the file named by `BITNEWS_KEY_FILE` is missing and its directory is not writable (the normal case for `/run/secrets`), startup fails with instructions rather than silently using a different key. Back the key up separately from the database.
+bitnews reads the key as the user it runs as (PUID:PGID, or `user:`). Only `/config` is re-owned on start, never a key mounted elsewhere. Under plain `docker compose` (no Swarm) a `file:` secret is a bind mount of the host file, so the host file's owner and mode apply inside the container; a root-owned `0600` file fails with "permission denied". A key file readable by other users (such as `0444` in Swarm) only produces a warning. If the file named by `BITNEWS_KEY_FILE` is missing and its directory is not writable (the normal case for `/run/secrets`), startup fails with instructions rather than silently using a different key. Back the key up separately from the database.
 
 ### Compose
 
-Copy `deploy/docker-compose.example.yml` next to your other stacks, adjust `user:`, `TZ` and the `/data` path, then:
+Copy `deploy/docker-compose.example.yml` next to your other stacks, adjust `PUID`, `PGID`, `TZ` and the `/data` path, then:
 
 ```sh
 docker compose up -d
@@ -146,16 +146,16 @@ Replace `YOUR_API_KEY` with the key (rotating the key on the Security page means
 
 ### Identity and UMASK
 
-bitnews runs as whoever starts it. The image defaults to the distroless `nonroot` user (`65532:65532`); set `user: "1000:1000"` in compose (or `--user 1000:1000`) to run as the owner of your media library (`id <user>`, same group as Sonarr and Radarr). There is no `PUID`/`PGID` and no privilege drop inside bitnews, and the container needs no extra capabilities. Running as root works too, with no warning; it is just a wider blast radius if a parser of hostile input (NZB, NNTP, archives) has a bug.
+Set `PUID` and `PGID` to the owner of your media library (`id <user>`, same group as Sonarr and Radarr); the image default is `65532:65532`. Like the linuxserver.io images, the container starts as root only for its entrypoint ([ADR-0010](adr/0010-puid-pgid-entrypoint.md)): it creates `/config` if needed, gives it and everything in it to `PUID:PGID` when it is not theirs yet (symlinks are re-owned, never followed), and runs bitnews as that user with `su-exec`. bitnews itself never runs as root. `PUID=0` runs bitnews as root, with a warning.
 
-bitnews cannot `chown` anything, so the directories you mount must already be usable by that user:
+- `/config` needs nothing from you: a missing bind-mount directory (which Docker creates as root) is handed over on the first start, and after changing `PUID` the next start re-owns it.
+- `/data` is never re-owned (it may hold a whole media library): it must be writable by `PUID` or by its group.
 
-- `/config` writable by it (`chown -R 1000:1000 config`). The image ships `/config` world-writable, so a fresh **named volume** works for any `user:`; a bind mount keeps the host's owner and mode.
-- `/data` writable by that user or by its group.
+`user: "uid:gid"` (or `--user`) still works and overrides all of this: the entrypoint then starts bitnews directly as that user, `PUID`/`PGID` are ignored, nothing is re-owned, and `/config` must already be writable by that user (bitnews stops at start with the `chown` command if it is not).
 
 `UMASK` (default `002`) is applied process-wide before bitnews creates any file: files become `664` and directories `775`. It stays because Sonarr and Radarr usually run as another user in the same group, and they can only manage what bitnews wrote if the group may write it. Use `027` or `077` if nothing else needs access.
 
-The hardened compose example uses `cap_drop: [ALL]` and adds nothing back. `no-new-privileges` blocks gaining privilege through `execve`, and bitnews executes no other program. Do not combine `cap_drop: [ALL]` with `user: "0:0"`: root without `DAC_OVERRIDE` can only touch files it owns.
+The hardened compose example uses `cap_drop: [ALL]` and adds back only what the entrypoint needs as root: `CHOWN` (hand over `/config`), `SETUID` and `SETGID` (switch to PUID:PGID) and `DAC_READ_SEARCH` (read a `/config` that an earlier PUID owns with mode `0700`). A process that switches from root to a normal user keeps no capabilities, so bitnews runs with none. `no-new-privileges` blocks gaining privilege through `execve`. With `user:` instead of PUID/PGID, `cap_add` can go.
 
 ### The shared `/data` layout
 
@@ -226,7 +226,7 @@ Interface and address binding for Usenet and torrents, what it covers and what i
 
 ### The `bitnews healthcheck` subcommand
 
-The image's `HEALTHCHECK` runs `["/bitnews", "healthcheck"]` (exec form, because distroless has no shell). Contract of the subcommand:
+The image's `HEALTHCHECK` runs `["/entrypoint.sh", "healthcheck"]`, which starts `bitnews healthcheck` without re-owning anything. Contract of the subcommand:
 
 - It sends `GET http://127.0.0.1:<port>/api/v1/health`, with `<port>` taken from `BITNEWS_LISTEN` (default `9494`).
 - It exits `0` when the answer is `200` within **3 seconds**, and `1` for anything else (connection refused, timeout, other status).
@@ -240,7 +240,7 @@ The binary is static and has no other files to install, so it also runs directly
 
 ## Hardening checklist
 
-- [ ] The container runs as a dedicated non-root user (`user: "1000:1000"`).
+- [ ] bitnews runs as a dedicated non-root user (`PUID`/`PGID`, or `user: "1000:1000"`).
 - [ ] The config directory, which holds the database and the master key, is backed up as a whole and readable only by the service. If you want the key apart from the database: a Docker secret via `BITNEWS_KEY_FILE`.
 - [ ] TLS is terminated by a reverse proxy; port 9494 is not reachable from the internet (loopback or internal Docker network only).
 - [ ] `allowed_hosts` lists the public hostname, `trusted_proxies` lists only the proxy, and *disable auth* and *LAN bypass* are off.

@@ -2,14 +2,13 @@
 #
 # Before the first `docker compose up -d`:
 #
-#   1. Create the config dir and give it to the `user:` below, with the same
-#      ids (bitnews runs as that user and cannot chown anything itself; if the
-#      dir is missing, Docker creates it as root and bitnews refuses to start
-#      with a message saying exactly this):
-#        mkdir -p config && sudo chown 1000:1000 config
+#   1. Set PUID and PGID below to the user that owns your media library
+#      (`id <user>`), in the same group as Sonarr/Radarr. The container gives
+#      ./config to that user on start (creating it if needed) and runs
+#      bitnews as that user.
 #
 #   2. Decide where /data lives on the host (see the layout below) and make
-#      sure that user may write to it.
+#      sure that user may write to it. /data is never re-owned.
 #
 # The master key that encrypts the stored Server and archive passwords is
 # generated on first start as ./config/bitnews.key, so back up ./config as a
@@ -34,10 +33,6 @@ services:
     container_name: bitnews
     restart: unless-stopped
 
-    # bitnews runs as whoever starts it. Use the ids of the user that owns
-    # your media library (`id <user>`), with the same group as Sonarr/Radarr.
-    # Without `user:` the image runs as its built-in user 65532:65532.
-    user: "1000:1000"
 
     ports:
       # UI, API and the Sonarr/Radarr adapters, all on one port. To use
@@ -55,6 +50,12 @@ services:
       # sharing the group can read and manage what bitnews writes).
       UMASK: "002"
       TZ: Etc/UTC
+      # The user bitnews runs as (the image default is 65532:65532). It gets
+      # ./config on start. Instead of these you can set `user: "uid:gid"`:
+      # then the container does not re-own anything and ./config must
+      # already belong to that user.
+      PUID: "1000"
+      PGID: "1000"
       # The address bitnews listens on inside the container. Keep the port
       # equal to the one published above.
       BITNEWS_LISTEN: "0.0.0.0:${BITNEWS_PORT:-9494}"
@@ -63,7 +64,7 @@ services:
       # BITNEWS_LOG_FORMAT: text       # text | json
 
     volumes:
-      # Database and master key (bitnews.key). Must be writable by the `user:` above.
+      # Database and master key (bitnews.key). Given to PUID:PGID on start.
       - ./config:/config
       # ONE mount for everything, at the same path in every container
       # (TRaSH layout). Downloads and the media library must be on the same
@@ -80,9 +81,17 @@ services:
       - /tmp
     cap_drop:
       - ALL
+    # The entrypoint starts as root only to give ./config to PUID:PGID and to
+    # switch to that user; these are the capabilities it needs for that. They
+    # are gone once bitnews runs as PUID (a non-root process keeps none).
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_READ_SEARCH
     security_opt:
       # Blocks gaining privileges through execve (setuid binaries, file
-      # capabilities). bitnews executes no other program.
+      # capabilities).
       - no-new-privileges:true
 
   # --- Sonarr sharing the same /data, same path ---------------------------

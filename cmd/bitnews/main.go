@@ -153,7 +153,8 @@ func prepareConfigDir(dir string) error {
 	}
 	uid, gid := os.Getuid(), os.Getgid()
 	return fmt.Errorf("the config dir %q is not writable by uid %d gid %d, the user bitnews runs as. "+
-		"bitnews cannot change the owner itself. Give that user the directory on the host, for example:\n"+
+		"bitnews cannot change the owner itself. With the Docker image, drop `user:` and set PUID/PGID instead, "+
+		"or give that user the directory on the host, for example:\n"+
 		"  sudo mkdir -p <host dir> && sudo chown %d:%d <host dir>\n"+
 		"where <host dir> is what you mount at %s (Docker creates a missing bind-mount directory as root)",
 		dir, uid, gid, uid, gid, dir)

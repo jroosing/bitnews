@@ -23,6 +23,7 @@ coverage.*
 docs
 scripts/*
 !scripts/get-postproc-tools.sh
+!scripts/docker-entrypoint.sh
 deploy
 *.md
 Dockerfile

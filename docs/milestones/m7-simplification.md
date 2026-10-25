@@ -106,3 +106,19 @@ Remove what the operating system already does and what the user is responsible f
 - [ ] Crafted archives and PAR2 sets (traversal names, symlinks, bombs, wrong password, truncation, missing volume) end in the right core error and write nothing outside the destination.
 - [ ] No pure-Go PAR2 or RAR/7z code or dependency remains, and `os/exec` is imported only by `internal/postproc/tool`.
 - [ ] The image runs both tools on amd64.
+
+### M7-07: PUID/PGID in the container entrypoint
+- **Labels:** area:deploy, ready-for-agent
+
+**Goal:** A first `docker compose up` works without preparing `/config` by hand ([ADR-0010](../adr/0010-puid-pgid-entrypoint.md), which reverses the container part of M7-03).
+
+**Work**
+- `scripts/docker-entrypoint.sh`: as root, check that `PUID`/`PGID` (default 65532) are numeric, create `/config`, re-own it to `PUID:PGID` when it is not theirs yet (`chown -R -h`), and `exec su-exec PUID:PGID /bitnews`. As anyone else, `exec /bitnews`. The healthcheck goes straight to `bitnews healthcheck`.
+- Dockerfile: Alpine final stage with `ca-certificates`, `tzdata` and `su-exec`; `PUID`/`PGID` env defaults; entrypoint and healthcheck through `/entrypoint.sh`; starts as root.
+- Compose example: `PUID`/`PGID` instead of `user:`, `cap_add` CHOWN, SETUID, SETGID, DAC_READ_SEARCH. Docs follow.
+
+**Acceptance criteria**
+- [x] A missing bind-mount `/config` (created by Docker as root) works on the first start with `PUID=988`; bitnews runs as 988 and its files are 988's.
+- [x] Changing `PUID` re-owns `/config` on the next start; `user:` skips the hand-over; a non-numeric `PUID` stops with a message.
+- [x] The healthcheck reports healthy with the hardened compose options.
+
