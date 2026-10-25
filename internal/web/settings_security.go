@@ -7,6 +7,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/a-h/templ"
 )
 
 // The Security section (M6-08) is four independent cards, each swapped on
@@ -15,15 +17,19 @@ import (
 // The files settings_security_*.go hold one card each; this file holds the
 // registry entry, the page data and the parsing the cards share.
 
-const settingsSecurityPage = "settings_security.html"
-
 // securitySection is the "Security" entry of the settings registry.
 func securitySection() SettingsSection {
 	return SettingsSection{
 		Slug: "security", Title: "Security", Icon: "shield", Order: 50,
 		Description: "Sign-in options, allowed hosts, your password and the API key for Sonarr, Radarr and scripts.",
-		Template:    settingsSecurityPage, Data: settingsSecurityData, Routes: (*Server).registerSecurityRoutes,
+		Component:   settingsSecurityComponent, Data: settingsSecurityData, Routes: (*Server).registerSecurityRoutes,
 	}
+}
+
+// settingsSecurityComponent is the Component of the Security section.
+func settingsSecurityComponent(v *View, p settingsPage) templ.Component {
+	d, _ := p.Data.(securityPageData)
+	return SettingsSecurityPage(v, p, d)
 }
 
 // securityPageData is the .Page.Data of the section.
@@ -52,9 +58,9 @@ func (s *Server) registerSecurityRoutes() {
 
 // respondSecurityCard answers a card post: the card for htmx, the whole
 // page (with the same card state) for a plain form post.
-func (s *Server) respondSecurityCard(w http.ResponseWriter, r *http.Request, status int, card string, v any, page func(*securityPageData)) {
+func (s *Server) respondSecurityCard(w http.ResponseWriter, r *http.Request, status int, card templ.Component, page func(*securityPageData)) {
 	if isHTMX(r) {
-		s.renderSettingsPart(w, status, settingsSecurityPage, card, v)
+		s.renderComponent(w, r, status, card)
 		return
 	}
 	d, err := settingsSecurityData(s, r)

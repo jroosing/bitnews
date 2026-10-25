@@ -1,0 +1,339 @@
+package web
+
+import "strconv"
+
+// securitySubtitle is the section description under the page heading.
+templ securitySubtitle(description string) {
+	<p class="mt-1 text-sm text-fg-muted">{ description }</p>
+}
+
+// SettingsSecurityPage is the Security section: four independent cards that
+// htmx swaps one by one.
+templ SettingsSecurityPage(v *View, p settingsPage, d securityPageData) {
+	@AppLayout(v, securitySubtitle(p.Section.Description), nil) {
+		@SettingsLayout(p.Nav) {
+			@SecurityAccessCard(d.Access)
+			@SecurityHostsCard(d.Hosts)
+			@SecurityPasswordCard(d.Password)
+			@SecurityAppKeyCard(d.Key)
+		}
+	}
+}
+
+// SecurityTextareaProps are the parameters of securityTextarea.
+type SecurityTextareaProps struct {
+	ID          string
+	Name        string
+	Label       string
+	Value       string
+	Help        string
+	Error       string
+	Rows        int // default 3
+	Placeholder string
+}
+
+func (p SecurityTextareaProps) rows() int {
+	if p.Rows == 0 {
+		return 3
+	}
+	return p.Rows
+}
+
+// securityTextarea is a labelled multi-line input for a list.
+templ securityTextarea(p SecurityTextareaProps) {
+	<div>
+		<label for={ p.ID } class="label">{ p.Label }</label>
+		<textarea
+			id={ p.ID }
+			name={ p.Name }
+			rows={ strconv.Itoa(p.rows()) }
+			class="input font-mono text-xs"
+			autocapitalize="none"
+			autocorrect="off"
+			spellcheck="false"
+			autocomplete="off"
+			if p.Placeholder != "" {
+				placeholder={ p.Placeholder }
+			}
+			if p.Error != "" {
+				aria-invalid="true"
+			}
+			if d := describedBy(p.ID, p.Help != "", p.Error != ""); d != "" {
+				aria-describedby={ d }
+			}
+		>{ p.Value }</textarea>
+		if p.Help != "" {
+			<p id={ p.ID + "-help" } class="help">{ p.Help }</p>
+		}
+		if p.Error != "" {
+			<p id={ p.ID + "-error" } class="field-error">
+				@Icon(IconError, "mt-px size-4 shrink-0")
+				<span>{ p.Error }</span>
+			</p>
+		}
+	</div>
+}
+
+// SecuritySwitchProps are the parameters of securitySwitch.
+type SecuritySwitchProps struct {
+	ID      string
+	Name    string
+	Label   string
+	Help    string
+	Checked bool
+	Error   string
+}
+
+// securitySwitch is a switch with an error line.
+templ securitySwitch(p SecuritySwitchProps) {
+	<div>
+		<div class="flex items-start justify-between gap-4">
+			<div>
+				<label for={ p.ID } class="text-sm font-medium text-fg">{ p.Label }</label>
+				if p.Help != "" {
+					<p id={ p.ID + "-help" } class="text-xs text-fg-muted">{ p.Help }</p>
+				}
+			</div>
+			<input
+				id={ p.ID }
+				name={ p.Name }
+				type="checkbox"
+				role="switch"
+				value="on"
+				class="switch"
+				checked?={ p.Checked }
+				if p.Error != "" {
+					aria-invalid="true"
+				}
+				if d := describedBy(p.ID, p.Help != "", p.Error != ""); d != "" {
+					aria-describedby={ d }
+				}
+			/>
+		</div>
+		if p.Error != "" {
+			<p id={ p.ID + "-error" } class="field-error">
+				@Icon(IconError, "mt-px size-4 shrink-0")
+				<span>{ p.Error }</span>
+			</p>
+		}
+	</div>
+}
+
+// SecurityConfirm is the "are you sure" step of a risky change. It replaces
+// the card; the hidden fields carry the values again plus confirmed=1.
+templ SecurityConfirm(c *confirmView) {
+	<section id={ c.ID + "-card" } class="card border-warn-fg" aria-labelledby={ c.ID + "-title" }>
+		<header class="card-header">
+			<div>
+				<h2 id={ c.ID + "-title" } class="text-base">{ c.Title }</h2>
+				<p class="mt-0.5 text-sm text-fg-muted">Nothing is saved yet.</p>
+			</div>
+		</header>
+		<div id={ c.ID + "-confirm" }>
+			<form
+				id={ c.ID + "-confirm-form" }
+				method="post"
+				action={ templ.SafeURL(c.Action) }
+				{ Hx{Post: c.Action, Target: "#" + c.ID + "-card", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
+			>
+				@CSRFField(c.CSRF)
+				for _, f := range c.Fields {
+					<input type="hidden" name={ f.Name } value={ f.Value }/>
+				}
+				<div class="card-body space-y-4">
+					<div class="alert alert-warn" role="alert">
+						@Icon(IconWarning, "mt-0.5 size-5 shrink-0")
+						<div class="min-w-0">
+							<p class="alert-title">{ c.Heading }</p>
+							<ul class="mt-2 list-disc space-y-1.5 pl-5">
+								for _, b := range c.Bullets {
+									<li class="break-words">{ b }</li>
+								}
+							</ul>
+						</div>
+					</div>
+				</div>
+				<footer class="card-footer">
+					<a href={ templ.SafeURL(c.Cancel) } class="btn btn-secondary" { Hx{Get: c.Action, Target: "#" + c.ID + "-card", Swap: "outerHTML"}.MustAttrs()... }>Cancel</a>
+					<button type="submit" class="btn btn-danger">
+						<span class="btn-spinner" aria-hidden="true"></span>
+						{ c.Label }
+					</button>
+				</footer>
+			</form>
+		</div>
+	</section>
+}
+
+// SecurityAccessCard is the sign-in card: turn sign-in off, LAN bypass.
+templ SecurityAccessCard(v accessView) {
+	if v.Confirm != nil {
+		@SecurityConfirm(v.Confirm)
+	} else {
+		@SettingsForm(SettingsFormProps{ID: "access", Action: "/settings/security/access", Title: "Sign-in", Subtitle: "Normally everyone has to sign in. These two options let some people skip that. Both are risky, so think twice.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save sign-in options"}) {
+			if v.NoHosts {
+				@Alert(AlertProps{Variant: AlertInfo, Title: "Add an allowed host first", Body: "Both options need at least one allowed host (see “Allowed hosts and trusted proxies” below). Without one they cannot be turned on."})
+			}
+			<fieldset class="min-w-0 space-y-4 rounded-xl border border-line px-4 pt-2 pb-4">
+				<legend class="px-2 text-sm font-semibold text-fg">Turn sign-in off</legend>
+				<div class="alert alert-warn">
+					@Icon(IconWarning, "mt-0.5 size-5 shrink-0")
+					<p class="min-w-0">Anyone who can reach this address can control bitnews and everything it downloads, with no password. Only do this if something else in front of bitnews, such as a reverse proxy with its own login, already protects it. Sonarr, Radarr and anything using the API key are not affected.</p>
+				</div>
+				@securitySwitch(SecuritySwitchProps{ID: "access-disable-auth", Name: "disable_auth", Label: "Do not ask anyone to sign in", Checked: v.DisableAuth, Error: v.Errors["disable_auth"]})
+			</fieldset>
+			<fieldset class="min-w-0 space-y-4 rounded-xl border border-line px-4 pt-2 pb-4">
+				<legend class="px-2 text-sm font-semibold text-fg">LAN bypass</legend>
+				<div class="alert alert-warn">
+					@Icon(IconWarning, "mt-0.5 size-5 shrink-0")
+					<p class="min-w-0">Devices on the networks you list here skip sign-in and get full control of bitnews. Use it for a trusted home network only, never for a range that others share. If you reach bitnews through a reverse proxy, also set the trusted proxies below, or every visitor looks like the proxy.</p>
+				</div>
+				@securityTextarea(SecurityTextareaProps{ID: "access-lan-bypass", Name: "lan_bypass", Label: "Networks that skip sign-in", Value: v.LAN, Rows: 3, Placeholder: "192.168.1.0/24", Help: "One network per line, such as 192.168.1.0/24, or a single address. Leave it empty to keep LAN bypass off.", Error: v.Errors["lan_bypass"]})
+			</fieldset>
+		}
+	}
+}
+
+// SecurityHostsCard is the allowed hosts and trusted proxies card.
+templ SecurityHostsCard(v hostsView) {
+	if v.Confirm != nil {
+		@SecurityConfirm(v.Confirm)
+	} else {
+		@SettingsForm(SettingsFormProps{ID: "hosts", Action: "/settings/security/hosts", Title: "Allowed hosts and trusted proxies", Subtitle: "Which addresses bitnews answers to, and which proxies it believes.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save hosts and proxies"}) {
+			<div class="space-y-3">
+				<h3 class="text-sm font-semibold text-fg">Allowed hosts</h3>
+				<div class="alert alert-warn">
+					@Icon(IconWarning, "mt-0.5 size-5 shrink-0")
+					<p class="min-w-0">
+						{ "The addresses people type to open bitnews, such as " }
+						<code class="rounded bg-surface px-1.5 py-0.5 text-xs">bitnews.lan</code>
+						{ " or " }
+						<code class="rounded bg-surface px-1.5 py-0.5 text-xs">192.168.1.10:9494</code>
+						{ ". While sign-in is skipped for anyone, bitnews refuses requests for any other name, which stops websites from tricking your browser into talking to it. " }
+						if v.BypassOn {
+							Sign-in is skipped for some devices right now, so keep your own address in the list or you lock yourself out.
+						} else {
+							Needed before you can turn the sign-in options on.
+						}
+					</p>
+				</div>
+				@securityTextarea(SecurityTextareaProps{ID: "hosts-allowed", Name: "allowed_hosts", Label: "Allowed hosts", Value: v.AllowedHosts, Rows: 3, Placeholder: v.YourHost, Help: "One per line. You are using “" + v.YourHost + "” right now.", Error: v.Errors["allowed_hosts"]})
+			</div>
+			<div class="space-y-3">
+				<h3 class="text-sm font-semibold text-fg">Trusted proxies</h3>
+				<div class="alert alert-warn">
+					@Icon(IconWarning, "mt-0.5 size-5 shrink-0")
+					<p class="min-w-0">Networks of reverse proxies in front of bitnews (nginx, Traefik, Caddy). For requests from them, bitnews believes the visitor address they report instead of the proxy's own. Leave it empty if you open bitnews directly. Listing a network that can be reached by others lets them fake their address, which breaks LAN bypass and the login rate limit.</p>
+				</div>
+				@securityTextarea(SecurityTextareaProps{ID: "hosts-proxies", Name: "trusted_proxies", Label: "Trusted proxies", Value: v.TrustedProxies, Rows: 2, Placeholder: "172.18.0.0/16", Help: "One network per line, such as 172.18.0.0/16, or a single address.", Error: v.Errors["trusted_proxies"]})
+			</div>
+		}
+	}
+}
+
+// SecurityPasswordCard is the password card. It only explains why there is
+// no form when nobody is signed in with a password.
+templ SecurityPasswordCard(v passwordView) {
+	if v.Unavailable {
+		<section id="password-card" class="card" aria-labelledby="password-title">
+			<header class="card-header">
+				<div>
+					<h2 id="password-title" class="text-base">Password</h2>
+					<p class="mt-0.5 text-sm text-fg-muted">Change the password you sign in with.</p>
+				</div>
+			</header>
+			<div class="card-body">
+				@Alert(AlertProps{Variant: AlertInfo, Title: "You are not signed in with a password", Body: "Sign-in is skipped for this device, so there is no password to change from here. Turn that off, or sign in from another device, to change the password."})
+			</div>
+		</section>
+	} else {
+		@SettingsForm(SettingsFormProps{ID: "password", Action: "/settings/security/password", Title: "Password", Subtitle: "Change the password you sign in with. Your other browsers are signed out when you do.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Change password"}) {
+			@Field(FieldProps{ID: "password-current", Name: "current_password", Label: "Current password", Type: FieldPassword, Autocomplete: "current-password", Required: true, Error: v.Errors["current_password"]})
+			<div class="grid gap-4 sm:grid-cols-2">
+				@Field(FieldProps{ID: "password-new", Name: "new_password", Label: "New password", Type: FieldPassword, Autocomplete: "new-password", Required: true, Help: "At least 12 characters.", Error: v.Errors["new_password"]})
+				@Field(FieldProps{ID: "password-confirm", Name: "confirm_password", Label: "New password again", Type: FieldPassword, Autocomplete: "new-password", Required: true, Error: v.Errors["confirm_password"]})
+			</div>
+		}
+	}
+}
+
+// SecurityAppKeyCard is the one API key (ADR-0006), as plain text with a
+// Copy button. The key is in this card only.
+templ SecurityAppKeyCard(v appKeyView) {
+	if v.Confirm != nil {
+		@SecurityConfirm(v.Confirm)
+	} else {
+		<section id="appkey-card" class="card" aria-labelledby="appkey-title">
+			<header class="card-header">
+				<div>
+					<h2 id="appkey-title" class="text-base">API key</h2>
+					<p class="mt-0.5 text-sm text-fg-muted">
+						{ "One key for everything that talks to bitnews: Sonarr and Radarr (as a SABnzbd or qBittorrent download client) and your own scripts (" }
+						<code>Authorization: Bearer</code>
+						{ "). Anyone who has it can control bitnews, so treat it like a password." }
+					</p>
+				</div>
+			</header>
+			if v.Unavailable {
+				<div class="card-body">
+					@Alert(AlertProps{Variant: AlertInfo, Body: "The API key is not available in this build."})
+				</div>
+			} else {
+				<div class="card-body space-y-6">
+					<div>
+						<p id="appkey-label" class="label">API key</p>
+						<div class="flex flex-wrap items-center gap-2">
+							<code id="appkey-value" aria-labelledby="appkey-label" class="min-w-0 flex-1 select-all break-all rounded-lg border border-line bg-surface px-3 py-2 font-mono text-sm text-fg">{ v.Key }</code>
+							@CopyButton(v.Key)
+						</div>
+						<p class="help">The same key is the SABnzbd API key, the qBittorrent password and the API bearer token.</p>
+					</div>
+					<div>
+						<h3 class="text-sm font-semibold">Settings for Sonarr and Radarr</h3>
+						<p class="mt-1 text-sm text-fg-muted">In Settings, Download Clients, add SABnzbd (Usenet) or qBittorrent (torrents) and enter these values. For SABnzbd the API key is the key above; for qBittorrent the password is.</p>
+						<dl class="mt-4 space-y-3">
+							@appKeyValue("Host", v.Host)
+							@appKeyValue("Port", v.Port)
+							@appKeyValue("URL base", "sabnzbd")
+							@appKeyValue("qBittorrent username", "bitnews")
+						</dl>
+						<p class="mt-3 text-xs text-fg-muted">
+							{ "SABnzbd needs the URL base " }
+							<code>sabnzbd</code>
+							{ "; leave the URL base empty for qBittorrent. " }
+							if v.TLS {
+								Turn “Use SSL” on.
+							} else {
+								Leave “Use SSL” off.
+							}
+						</p>
+						if v.Loopback {
+							<p class="mt-2 text-xs text-fg-muted">{ "You opened bitnews as “" + v.Host + "”. If your media manager runs on another machine or in a container, use this machine's network address or name instead." }</p>
+						}
+					</div>
+				</div>
+				<footer class="card-footer justify-between">
+					<p class="text-sm text-fg-muted">Rotating makes a new key. Every client stops working until you update it.</p>
+					<form method="post" action="/settings/security/app-key" hx-post="/settings/security/app-key" hx-target="#appkey-card" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']">
+						@CSRFField(v.CSRF)
+						<button type="submit" class="btn btn-secondary">
+							<span class="btn-spinner" aria-hidden="true"></span>
+							@Icon(IconRefresh, "size-4 shrink-0")
+							Rotate key
+						</button>
+					</form>
+				</footer>
+			}
+		</section>
+	}
+}
+
+templ appKeyValue(label, value string) {
+	<div>
+		<dt class="text-xs font-medium text-fg-muted">{ label }</dt>
+		<dd class="mt-1 flex flex-wrap items-center gap-2">
+			<code class="min-w-0 flex-1 select-all break-all rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg">{ value }</code>
+			@CopyButton(value)
+		</dd>
+	</div>
+}

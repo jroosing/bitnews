@@ -51,7 +51,7 @@ func (s *Server) getAppKey(w http.ResponseWriter, r *http.Request) {
 		s.redirect(w, r, "/settings/security")
 		return
 	}
-	s.renderSettingsPart(w, http.StatusOK, settingsSecurityPage, "appkey_card", s.appKeyViewFor(r))
+	s.renderComponent(w, r, http.StatusOK, SecurityAppKeyCard(s.appKeyViewFor(r)))
 }
 
 // postAppKeyRotate makes a new key. Every client stops working with the old
@@ -93,7 +93,7 @@ func (s *Server) postAppKeyRotate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) respondAppKey(w http.ResponseWriter, r *http.Request, status int, v appKeyView) {
-	s.respondSecurityCard(w, r, status, "appkey_card", v, func(d *securityPageData) { d.Key = v })
+	s.respondSecurityCard(w, r, status, SecurityAppKeyCard(v), func(d *securityPageData) { d.Key = v })
 }
 
 // requestEndpoint is the host and port the browser used to reach bitnews.

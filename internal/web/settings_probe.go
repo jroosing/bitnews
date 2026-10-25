@@ -27,7 +27,53 @@ type probeView struct {
 // probeStep is one stage of a connection, with how far the test got.
 type probeStep struct {
 	Label string
-	State string // "ok", "fail" or "skipped"
+	State probeState
+}
+
+// probeState is how far a connection got at one stage.
+type probeState string
+
+const (
+	probeOK      probeState = "ok"
+	probeFail    probeState = "fail"
+	probeSkipped probeState = "skipped"
+)
+
+// srText is what a screen reader hears after the stage label.
+func (st probeStep) srText() string {
+	switch st.State {
+	case probeOK:
+		return "worked"
+	case probeFail:
+		return "failed"
+	}
+	return "not reached"
+}
+
+// alertClass is the colour of the full result: green, red when a stage
+// failed, amber when the test did not run.
+func (v probeView) alertClass() string {
+	switch {
+	case v.OK:
+		return "alert-success"
+	case len(v.Steps) > 0:
+		return "alert-danger"
+	}
+	return "alert-warn"
+}
+
+func (v probeView) role() string {
+	if v.OK {
+		return "status"
+	}
+	return "alert"
+}
+
+func (v probeView) probe() string {
+	if v.OK {
+		return "ok"
+	}
+	return "failed"
 }
 
 var probeStepLabels = []string{"Host name", "Connection", "TLS", "Login", "Server reply"}
@@ -50,12 +96,12 @@ func probeViewOf(res app.ProbeResult, host string, port int) probeView {
 		failed = probeStepIndex[res.Class]
 	}
 	for i, label := range probeStepLabels {
-		st := "ok"
+		st := probeOK
 		switch {
 		case i == failed:
-			st = "fail"
+			st = probeFail
 		case i > failed:
-			st = "skipped"
+			st = probeSkipped
 		}
 		v.Steps = append(v.Steps, probeStep{Label: label, State: st})
 	}
@@ -127,8 +173,8 @@ func probeExplanation(res app.ProbeResult, host string, port int) (title, body s
 
 // ---- routes --------------------------------------------------------------
 
-func (s *Server) renderProbe(w http.ResponseWriter, v probeView) {
-	s.renderSettingsPart(w, http.StatusOK, settingsServersPage, "probe_result", v)
+func (s *Server) renderProbe(w http.ResponseWriter, r *http.Request, v probeView) {
+	s.renderComponent(w, r, http.StatusOK, ProbeResult(v))
 }
 
 // postServerRowTest tests a saved server with its stored settings.
@@ -144,7 +190,7 @@ func (s *Server) postServerRowTest(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.Servers.Test(r.Context(), id)
 	if ae, ok := settingsAppError(err); ok && ae.Code == "password_unavailable" {
-		s.renderProbe(w, probeView{
+		s.renderProbe(w, r, probeView{
 			Compact: true,
 			Title:   "Password needs to be entered again",
 			Body:    "The stored password can no longer be read. Use Re-enter password to set it, then test again.",
@@ -156,7 +202,7 @@ func (s *Server) postServerRowTest(w http.ResponseWriter, r *http.Request) {
 	}
 	v := probeViewOf(res, srv.Host, srv.Port)
 	v.Compact = true
-	s.renderProbe(w, v)
+	s.renderProbe(w, r, v)
 }
 
 // postServerTest tests the values in the dialog, saved or not. An empty
@@ -186,7 +232,7 @@ func (s *Server) postServerTest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(problems) > 0 {
-		s.renderProbe(w, probeView{Title: "Fix the connection details first", Body: strings.Join(problems, " ")})
+		s.renderProbe(w, r, probeView{Title: "Fix the connection details first", Body: strings.Join(problems, " ")})
 		return
 	}
 
@@ -199,7 +245,7 @@ func (s *Server) postServerTest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if stored.PasswordUnavailable {
-			s.renderProbe(w, probeView{Title: "Enter the password to test", Body: "The stored password can no longer be read. Type it in the password field, then test again."})
+			s.renderProbe(w, r, probeView{Title: "Enter the password to test", Body: "The stored password can no longer be read. Type it in the password field, then test again."})
 			return
 		}
 		if stored.Host == spec.Host && stored.Port == spec.Port && stored.Username == spec.Username {
@@ -213,11 +259,11 @@ func (s *Server) postServerTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if ae, ok := settingsAppError(err); ok {
-			s.renderProbe(w, probeView{Title: "Could not test", Body: ae.Message})
+			s.renderProbe(w, r, probeView{Title: "Could not test", Body: ae.Message})
 			return
 		}
 		s.settingsFail(w, r, "server", err)
 		return
 	}
-	s.renderProbe(w, probeViewOf(res, spec.Host, spec.Port))
+	s.renderProbe(w, r, probeViewOf(res, spec.Host, spec.Port))
 }

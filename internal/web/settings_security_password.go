@@ -123,5 +123,5 @@ func (s *Server) postPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) respondPassword(w http.ResponseWriter, r *http.Request, status int, v passwordView) {
-	s.respondSecurityCard(w, r, status, "password_card", v, func(d *securityPageData) { d.Password = v })
+	s.respondSecurityCard(w, r, status, SecurityPasswordCard(v), func(d *securityPageData) { d.Password = v })
 }

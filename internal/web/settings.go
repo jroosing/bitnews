@@ -59,7 +59,7 @@ func settingsSections() []SettingsSection {
 		{
 			Slug: "servers", Title: "Usenet servers", Icon: "server", Order: 20,
 			Description: "Providers, connections, retention and priority.",
-			Template:    "settings_servers.html", Data: settingsServersData, Routes: (*Server).registerServerRoutes,
+			Component:   settingsServersComponent, Data: settingsServersData, Routes: (*Server).registerServerRoutes,
 		},
 		speedSection(),
 		postprocessingSection(),
