@@ -9,6 +9,16 @@ Scripts for [community-scripts](https://community-scripts.org) (the former tteck
 
 Both load the community-scripts helper functions (`build.func`, `fetch_and_deploy_gh_release`, ...), so they only run from that project's repository. They install from the GitHub release of this repository: the asset `bitnews_<version>_linux_amd64.tar.gz` made by `scripts/package-release.sh` and published by `.github/workflows/release.yml` on a version tag. There must be at least one release before the scripts work.
 
+## Install command
+
+Once the scripts are in ProxmoxVE, this is the command to run in the Proxmox VE host shell (the one every community-scripts page shows):
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/bitnews.sh)"
+```
+
+While a script is still in DevScripts for testing, the maintainers give the exact test command in the issue and Discord thread; use that one.
+
 ## Submitting
 
 New scripts go to [community-scripts/DevScripts](https://github.com/community-scripts/DevScripts) first, not to ProxmoxVE (pull requests with new scripts there are closed). Read its contributing guide and the [documentation](https://community-scripts.org/docs/contribution) for the current rules, then:

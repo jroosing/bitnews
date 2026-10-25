@@ -59,7 +59,15 @@ docker compose logs bitnews      # prints the one-time setup token
 
 Open `http://<host>:9494`, enter the setup token, create the admin account, add your Usenet server under **Settings → Servers**, and copy the app key from **Settings → Security** into Sonarr and Radarr.
 
-For Proxmox VE, `deploy/proxmox/` has an LXC installer written for the [community-scripts](https://community-scripts.org) project (not published there yet): see the [deployment guide](docs/deploy.md#proxmox-lxc).
+### Proxmox VE (LXC)
+
+Run this in the Proxmox VE host shell. It creates an unprivileged LXC with bitnews installed and prints the address and the admin login:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/bitnews.sh)"
+```
+
+This is the [community-scripts](https://community-scripts.org) installer. It is written (`deploy/proxmox/`) but **not published there yet**, so the command only works once it has been accepted. See the [deployment guide](docs/deploy.md#proxmox-lxc) for what it sets up.
 
 The image is `ghcr.io/jroosing/bitnews` (linux/amd64). bitnews speaks plain HTTP: put a reverse proxy in front of it for TLS and do not expose it to the internet. See the [deployment guide](docs/deploy.md) for configuration, the master key, VPN and port forwarding, the `/data` layout and hardening.
 
