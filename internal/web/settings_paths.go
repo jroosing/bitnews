@@ -7,12 +7,13 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/core"
 )
 
-// settingsPaths is the template and data of the Paths & Categories section.
-// The page holds two independent cards, each swapped on its own by htmx.
-const settingsPathsPage = "settings_paths.html"
+// The Paths & Categories section (page_settings_paths.templ) holds two
+// independent cards, each swapped on its own by htmx.
 
 // pathsPageData is the .Page.Data of the section.
 type pathsPageData struct {
@@ -42,6 +43,14 @@ type pathsGroup struct {
 type pathsField struct {
 	ID, Name, Label, Value, Help, Error string
 	Placeholder                         string
+}
+
+// props is the folder input of the card.
+func (f pathsField) props() FieldProps {
+	return FieldProps{
+		ID: f.ID, Name: f.Name, Label: f.Label, Value: f.Value, Help: f.Help, Error: f.Error,
+		Placeholder: f.Placeholder, Raw: true, Autocomplete: "off", Required: true, Browse: true,
+	}
 }
 
 var pathsGroupDefs = []struct{ key, title, summary, protocol string }{
@@ -109,7 +118,8 @@ func pathsOf(v map[string]string) core.Paths {
 
 // pathsCard edits Settings.Paths. New downloads use the folders at once.
 var pathsCard = &settingsCard{
-	key: "paths", route: "/settings/paths", slug: "paths", partial: "paths_card",
+	key: "paths", route: "/settings/paths", slug: "paths",
+	render:  func(view any) templ.Component { return PathsCard(view.(pathsView)) },
 	saved:   "Folders saved. New downloads use them.",
 	invalid: "Some folders need fixing. Nothing was saved.",
 	values: func(s core.Settings) map[string]string {

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -74,8 +76,12 @@ type cardView struct {
 type settingsCard struct {
 	// key names the card in the page data; route is its POST path.
 	key, route string
-	// slug is the section, partial the card's template define.
-	slug, partial string
+	// slug is the section.
+	slug string
+	// render draws the card from its view: what view returned, or the
+	// cardView itself without a view function. It asserts the view to the
+	// card's own view type.
+	render func(view any) templ.Component
 	// saved is the toast after a save.
 	saved string
 	// values turns the Settings into form values.
@@ -118,6 +124,13 @@ func (s *Server) finishCard(c *settingsCard, v cardView, cur core.Settings) any 
 		return c.view(s, v, cur)
 	}
 	return v
+}
+
+// viewOf returns the view of the card with the given key from the page data
+// of a section made of cards. T is the card's view type; a mismatch is a
+// programming error.
+func viewOf[T any](views cardViews, key string) T {
+	return views[key].(T)
 }
 
 // cardPage is the data of a whole section page. over replaces the view of
@@ -203,8 +216,7 @@ func (s *Server) restartPending(c *settingsCard, saved core.Settings) bool {
 // respondCard answers with the card for htmx, or the whole page.
 func (s *Server) respondCard(w http.ResponseWriter, r *http.Request, status int, cards []*settingsCard, c *settingsCard, view any) {
 	if isHTMX(r) {
-		sec, _ := settingsSectionBySlug(c.slug)
-		s.renderSettingsPart(w, status, sec.Template, c.partial, view)
+		s.renderComponent(w, r, status, c.render(view))
 		return
 	}
 	views := s.cardPage(r, cards, map[string]any{c.key: view})

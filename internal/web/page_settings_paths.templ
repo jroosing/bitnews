@@ -1,0 +1,213 @@
+package web
+
+// cardsSubtitle is the one-sentence subtitle under the title of a settings
+// section made of cards.
+templ cardsSubtitle(description string) {
+	<p class="mt-1 text-sm text-fg-muted">{ description }</p>
+}
+
+// SettingsPathsPage is the Paths & Categories section.
+templ SettingsPathsPage(v *View, p settingsPage) {
+	{{ d := p.Data.(pathsPageData) }}
+	@AppLayout(v, cardsSubtitle(p.Section.Description), nil) {
+		@SettingsLayout(p.Nav) {
+			@PathsCard(d.Paths)
+			@CategoriesCard(d.Categories)
+		}
+	}
+}
+
+// PathsCard is the "Download folders" card.
+templ PathsCard(v pathsView) {
+	@SettingsForm(SettingsFormProps{
+		ID: "paths", Action: "/settings/paths", Title: "Download folders",
+		Subtitle: "Where bitnews keeps downloads while they run and after they finish.",
+		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save folders",
+	}) {
+		@Alert(AlertProps{Variant: AlertInfo, Title: "Changes apply to new downloads only", Body: "Downloads that already exist keep the folders they started with. New downloads use the folders below."})
+		<div class="rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-3.5 text-sm text-fg-muted">
+			<p class="flex items-center gap-2 font-medium text-fg">
+				@Icon(IconFolder, "size-4 text-fg-subtle")
+				{ "Tip: keep complete and your library on one filesystem" }
+			</p>
+			<p class="mt-1.5">Sonarr and Radarr import a finished download by hardlinking it into your library, and bitnews does not make those links. That only works when the complete folders and the library are on the same filesystem, for example under <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> (<code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/usenet</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/torrents</code>, <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data/media</code>). In Docker, mount <code class="rounded bg-surface px-1.5 py-0.5 text-xs">/data</code> once, not one volume per folder. The incomplete folder can live anywhere, such as a fast local disk.</p>
+			<p class="mt-1.5">bitnews checks only that each path is absolute and that the folders are not nested. Folders that do not exist yet are fine: bitnews will create missing folders when the first download needs them.</p>
+		</div>
+		for _, g := range v.Groups {
+			<fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
+				<legend class="px-2 text-sm font-semibold text-fg">{ g.Title }</legend>
+				<p class="mb-4 text-sm text-fg-muted">{ g.Summary }</p>
+				<div class="grid gap-4 sm:grid-cols-2">
+					@Field(g.Incomplete.props())
+					@Field(g.Complete.props())
+				</div>
+			</fieldset>
+		}
+	}
+}
+
+// CategoriesCard is the "Categories" card: the table and the add form.
+templ CategoriesCard(v categoriesView) {
+	<section id="categories-card" class="card" aria-labelledby="categories-title">
+		<header class="card-header">
+			<div>
+				<h2 id="categories-title" class="text-base">Categories</h2>
+				<p class="mt-0.5 text-sm text-fg-muted">Labels that decide where finished downloads go and which media manager picks them up. Without a folder, a category uses <code class="rounded bg-surface-2 px-1.5 py-0.5 text-xs">complete folder/name</code>. Changes apply to new downloads only.</p>
+			</div>
+		</header>
+		if len(v.Items) > 0 {
+			@TableShell("Categories", "rounded-none border-0 shadow-none") {
+				<thead>
+					<tr><th scope="col">Name</th><th scope="col">Folder</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
+				</thead>
+				<tbody>
+					for _, row := range v.Items {
+						@CategoryRow(row)
+					}
+				</tbody>
+			}
+		} else {
+			@EmptyState(EmptyProps{Icon: IconFolder, Title: "No categories yet", Body: "Create one per media manager, for example tv, movies or music, and set the same name in Sonarr, Radarr or Lidarr."})
+		}
+		<form
+			id="category-form"
+			method="post"
+			action="/settings/categories"
+			hx-post="/settings/categories"
+			hx-target="#categories-card"
+			hx-swap="outerHTML"
+			hx-disabled-elt="find button[type='submit']"
+			x-data="categoryForm"
+			class="border-t border-line p-5"
+		>
+			@CSRFField(v.CSRF)
+			<h3 class="text-sm font-semibold">Add a category</h3>
+			if v.Error != "" {
+				<div class="mt-3">
+					@Alert(AlertProps{Variant: AlertDanger, Body: v.Error})
+				</div>
+			}
+			<div class="mt-3 grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:items-start">
+				<div>
+					<label for="category-name" class="label">Name</label>
+					<input
+						id="category-name"
+						name="name"
+						type="text"
+						class="input"
+						value={ v.Name }
+						x-model="name"
+						@input="check"
+						maxlength="64"
+						required
+						placeholder="tv"
+						autocapitalize="none"
+						autocorrect="off"
+						spellcheck="false"
+						autocomplete="off"
+						if v.NameError != "" {
+							aria-invalid="true"
+						}
+						aria-describedby={ describedBy("category-name", true, v.NameError != "") }
+					/>
+					<p id="category-name-help" class="help">Lowercase letters, digits, dot, underscore and hyphen.</p>
+					<p id="category-name-live" x-show="invalid" x-cloak class="field-error" role="status">
+						@Icon(IconError, "mt-px size-4 shrink-0")
+						<span x-text="hint"></span>
+					</p>
+					if v.NameError != "" {
+						<p id="category-name-error" class="field-error">
+							@Icon(IconError, "mt-px size-4 shrink-0")
+							<span>{ v.NameError }</span>
+						</p>
+					}
+				</div>
+				<div>
+					@Field(FieldProps{
+						ID: "category-dir", Name: "dir_override", Label: "Folder", Optional: true, Value: v.Dir,
+						Placeholder: "/data/media/tv", Help: "Absolute path. Empty uses the default folder.",
+						Error: v.DirError, Raw: true, Autocomplete: "off", Browse: true,
+					})
+				</div>
+			</div>
+			<div class="mt-4 flex justify-end">
+				<button type="submit" class="btn btn-primary">
+					<span class="btn-spinner" aria-hidden="true"></span>
+					@Icon(IconPlus, "size-4 shrink-0")
+					{ "Add category" }
+				</button>
+			</div>
+		</form>
+	</section>
+}
+
+// CategoryRow is one read-only row of the categories table.
+templ CategoryRow(r categoryRow) {
+	<tr id={ "category-" + r.ID }>
+		<td data-label="Name"><span class="font-medium text-fg">{ r.Name }</span></td>
+		<td data-label="Folder" class="min-w-0 md:max-w-[22rem]">
+			if r.Dir != "" {
+				<code class="break-all text-xs text-fg">{ r.Dir }</code>
+			} else {
+				<span class="text-fg-subtle">Default <code class="text-xs">…/{ r.Name }</code></span>
+			}
+		</td>
+		<td data-label="" class="whitespace-nowrap md:w-px">
+			<div class="flex justify-end gap-1">
+				@Button(ButtonProps{
+					Label: "Edit", Variant: ButtonGhost, Size: ButtonSmall,
+					Hx: Hx{Get: "/settings/categories/" + r.ID + "/edit", Target: "closest tr", Swap: "outerHTML"},
+				})
+				<button
+					type="button"
+					class="btn btn-ghost btn-sm btn-icon"
+					aria-label={ "Delete " + r.Name }
+					{ Hx{
+						Delete:  "/settings/categories/" + r.ID,
+						Target:  "#categories-card",
+						Swap:    "outerHTML",
+						Confirm: "Delete the category " + r.Name + "? Downloads keep their files; their category is cleared.",
+					}.MustAttrs()... }
+					data-confirm-tone="danger"
+					data-confirm-label="Delete"
+				>
+					@Icon(IconTrash, "size-4 shrink-0")
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+// CategoryEditRow is the row of the categories table while its folder is
+// being edited.
+templ CategoryEditRow(r categoryRow) {
+	<tr id={ "category-" + r.ID }>
+		<td colspan="3" data-label="" class="bg-surface-2">
+			<form
+				method="post"
+				action={ templ.SafeURL("/settings/categories/" + r.ID) }
+				{ Hx{Post: "/settings/categories/" + r.ID, Target: "closest tr", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
+				class="w-full text-left"
+			>
+				@CSRFField(r.CSRF)
+				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+					@Field(FieldProps{
+						ID: "category-dir-" + r.ID, Name: "dir_override", Label: "Folder for " + r.Name, Optional: true, Value: r.Dir,
+						Placeholder: "Empty uses the default folder", Help: "Absolute path. Applies to new downloads only.",
+						Error: r.Error, Raw: true, Autocomplete: "off", Autofocus: true, Browse: true,
+					})
+					<div class="flex justify-end gap-2 sm:pb-6">
+						@Button(ButtonProps{
+							Label: "Cancel", Variant: ButtonSecondary,
+							Hx: Hx{Get: "/settings/categories/" + r.ID, Target: "closest tr", Swap: "outerHTML"},
+						})
+						<button type="submit" class="btn btn-primary">
+							<span class="btn-spinner" aria-hidden="true"></span>
+							Save
+						</button>
+					</div>
+				</div>
+			</form>
+		</td>
+	</tr>
+}

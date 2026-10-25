@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 )
@@ -81,7 +83,7 @@ func cleanCategoryDir(dir string) string {
 // respondCategories answers with the card for htmx, or the whole page.
 func (s *Server) respondCategories(w http.ResponseWriter, r *http.Request, status int, v categoriesView) {
 	if isHTMX(r) {
-		s.renderSettingsPart(w, status, settingsPathsPage, "categories_card", v)
+		s.renderComponent(w, r, status, CategoriesCard(v))
 		return
 	}
 	d := pathsPageData{Paths: pathsViewFrom(settingsCSRF(r), s.Settings.Current().Paths, nil), Categories: v}
@@ -140,7 +142,7 @@ func (s *Server) findCategory(r *http.Request) (categoryRow, bool, error) {
 	return categoryRow{}, false, nil
 }
 
-func (s *Server) categoryRowFragment(w http.ResponseWriter, r *http.Request, name string) {
+func (s *Server) categoryRowFragment(w http.ResponseWriter, r *http.Request, draw func(categoryRow) templ.Component) {
 	if !s.settingsServices(w, r, s.Categories != nil) {
 		return
 	}
@@ -153,16 +155,16 @@ func (s *Server) categoryRowFragment(w http.ResponseWriter, r *http.Request, nam
 	case !isHTMX(r):
 		s.redirect(w, r, "/settings/paths")
 	default:
-		s.renderSettingsPart(w, http.StatusOK, settingsPathsPage, name, row)
+		s.renderComponent(w, r, http.StatusOK, draw(row))
 	}
 }
 
 func (s *Server) getCategoryRow(w http.ResponseWriter, r *http.Request) {
-	s.categoryRowFragment(w, r, "category_row")
+	s.categoryRowFragment(w, r, CategoryRow)
 }
 
 func (s *Server) getCategoryEdit(w http.ResponseWriter, r *http.Request) {
-	s.categoryRowFragment(w, r, "category_edit_row")
+	s.categoryRowFragment(w, r, CategoryEditRow)
 }
 
 // postCategoryUpdate changes the folder override of a category.
@@ -186,14 +188,14 @@ func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 	dir := strings.TrimSpace(r.PostForm.Get("dir_override"))
 	if _, dirErr := validCategoryInput(row.Name, dir, false); dirErr != "" {
 		row.Dir, row.Error = dir, dirErr
-		s.renderSettingsPart(w, http.StatusUnprocessableEntity, settingsPathsPage, "category_edit_row", row)
+		s.renderComponent(w, r, http.StatusUnprocessableEntity, CategoryEditRow(row))
 		return
 	}
 	dir = cleanCategoryDir(dir)
 	updated, err := s.Categories.Update(r.Context(), core.ID(row.ID), app.CategoryPatch{DirOverride: &dir})
 	if ae, isApp := settingsAppError(err); isApp {
 		row.Dir, row.Error = dir, ae.Message
-		s.renderSettingsPart(w, http.StatusUnprocessableEntity, settingsPathsPage, "category_edit_row", row)
+		s.renderComponent(w, r, http.StatusUnprocessableEntity, CategoryEditRow(row))
 		return
 	} else if err != nil {
 		s.settingsFail(w, r, "category", err)
@@ -205,7 +207,7 @@ func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	row.Dir, row.Error = updated.DirOverride, ""
 	settingsTrigger(w, "success", "Category saved. It applies to new downloads.", nil)
-	s.renderSettingsPart(w, http.StatusOK, settingsPathsPage, "category_row", row)
+	s.renderComponent(w, r, http.StatusOK, CategoryRow(row))
 }
 
 func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
@@ -226,5 +228,5 @@ func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	settingsTrigger(w, "success", "Category deleted. Its downloads keep their files.", nil)
-	s.renderSettingsPart(w, http.StatusOK, settingsPathsPage, "categories_card", v)
+	s.renderComponent(w, r, http.StatusOK, CategoriesCard(v))
 }

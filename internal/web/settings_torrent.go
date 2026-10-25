@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -14,7 +16,7 @@ func torrentSection() SettingsSection {
 	return SettingsSection{
 		Slug: "torrent", Title: "Torrent network", Icon: "bolt", Order: 40,
 		Description: "Listen port, peer discovery, encryption and network binding.",
-		Template:    "settings_torrent.html", Data: settingsTorrentData, Routes: (*Server).registerTorrentRoutes,
+		Component:   SettingsTorrentPage, Data: settingsTorrentData, Routes: (*Server).registerTorrentRoutes,
 	}
 }
 
@@ -30,10 +32,8 @@ const restartNote = "Restart bitnews for this to take effect."
 
 // ---- connection ---------------------------------------------------------
 
-// mseOption is one choice of the encryption policy.
-type mseOption struct{ Value, Label string }
-
-var mseOptions = []mseOption{
+// mseOptions are the choices of the encryption policy.
+var mseOptions = []SelectOption{
 	{string(core.MSEPrefer), "Prefer encryption (recommended)"},
 	{string(core.MSERequire), "Require encryption"},
 	{string(core.MSEDisable), "No encryption"},
@@ -43,12 +43,20 @@ var mseOptions = []mseOption{
 // part of the view.
 type connectionView struct {
 	cardView
-	MSE []mseOption
+	MSE []SelectOption
 	// PortFixed is set when the operator fixed the port with
 	// BITNEWS_TORRENT_PORT: the field then shows that port and is read-only.
 	PortFixed bool
 	// Port is the live state of the listen port.
 	Port portView
+}
+
+// listenPortHelp is the help text of the listen port field.
+func (v connectionView) listenPortHelp() string {
+	if v.PortFixed {
+		return "This port is fixed by the BITNEWS_TORRENT_PORT setting of your installation, so it cannot be changed here. Forward it (TCP and UDP) on your router."
+	}
+	return "The port other peers connect to. Forward it (TCP and UDP) on your router so more peers can reach you: bitnews does not open ports by itself."
 }
 
 // fixedPort is the listen port fixed by the operator, or 0.
@@ -75,7 +83,8 @@ func torrentKeyOf(t core.TorrentSettings) torrentKey {
 // the engine reads the rest when it starts, so a change to it needs a
 // restart.
 var torrentConnectionCard = &settingsCard{
-	key: "connection", route: "/settings/torrent", slug: "torrent", partial: "torrent_connection_card",
+	key: "connection", route: "/settings/torrent", slug: "torrent",
+	render:      func(view any) templ.Component { return TorrentConnectionCard(view.(connectionView)) },
 	saved:       "Connection settings saved.",
 	restartNote: restartNote,
 	values: func(s core.Settings) map[string]string {
@@ -188,7 +197,8 @@ func describeBinding(st BindingStatus) string {
 // torrentBindingCard edits Settings.Network. Sockets are bound when they are
 // opened, so a change needs a restart.
 var torrentBindingCard = &settingsCard{
-	key: "binding", route: "/settings/torrent/binding", slug: "torrent", partial: "torrent_binding_card",
+	key: "binding", route: "/settings/torrent/binding", slug: "torrent",
+	render:      func(view any) templ.Component { return TorrentBindingCard(view.(bindingView)) },
 	saved:       "Network binding saved.",
 	restartNote: restartNote,
 	values: func(s core.Settings) map[string]string {
@@ -242,10 +252,8 @@ var torrentBindingCard = &settingsCard{
 
 // ---- Share Limit defaults ----------------------------------------------
 
-// seedingOption is one choice of the action.
-type seedingOption struct{ Value, Label string }
-
-var seedingOptions = []seedingOption{
+// seedingOptions are the choices of the action.
+var seedingOptions = []SelectOption{
 	{string(core.SeedingActionPause), "Pause the torrent (recommended)"},
 	{string(core.SeedingActionRemove), "Remove the download, keep the files"},
 	{string(core.SeedingActionRemoveData), "Remove the download and delete the files"},
@@ -253,7 +261,7 @@ var seedingOptions = []seedingOption{
 
 type seedingView struct {
 	cardView
-	Actions []seedingOption
+	Actions []SelectOption
 }
 
 const (
@@ -263,8 +271,9 @@ const (
 
 // torrentSeedingCard edits Settings.Seeding. It applies live.
 var torrentSeedingCard = &settingsCard{
-	key: "seeding", route: "/settings/torrent/seeding", slug: "torrent", partial: "torrent_seeding_card",
-	saved: "Share Limit defaults saved. They apply right away.",
+	key: "seeding", route: "/settings/torrent/seeding", slug: "torrent",
+	render: func(view any) templ.Component { return TorrentSeedingCard(view.(seedingView)) },
+	saved:  "Share Limit defaults saved. They apply right away.",
 	values: func(s core.Settings) map[string]string {
 		g := s.Seeding
 		v := map[string]string{"seeding_action": string(g.EffectiveAction())}
