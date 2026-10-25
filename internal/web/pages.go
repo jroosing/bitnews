@@ -34,7 +34,7 @@ func builtinPages() []Page {
 	return []Page{
 		{Path: "/queue", Template: "queue.html", Title: "Queue", NavLabel: "Queue", NavIcon: "queue", Data: queueData},
 		{Path: "/history", Template: "history.html", Title: "History", NavLabel: "History", NavIcon: "history", Data: historyData},
-		{Path: "/ui/styleguide", Template: "styleguide.html", Title: "Style guide", Data: styleguideData},
+		{Path: "/ui/styleguide", Component: styleguideComponent, Title: "Style guide", Data: styleguideData},
 	}
 }
 
@@ -80,20 +80,28 @@ func (s *Server) navItems(path string) []NavItem {
 type styleSwatch struct{ Name, Class string }
 
 type styleRow struct {
-	Name, State, Size, Speed string
-	Percent                  int
+	Name        string
+	State       BadgeState
+	Size, Speed string
+	Percent     int
 }
 
 type styleguide struct {
 	Swatches []styleSwatch
-	States   []string
+	States   []BadgeState
 	Rows     []styleRow
 	Options  []option
-	Icons    []string
+	Icons    []IconName
 }
 
-// option is one entry of a select_field.
+// option is one entry of a select field.
 type option = SelectOption
+
+// styleguideComponent renders the style guide page.
+func styleguideComponent(v *View, data any) templ.Component {
+	g, _ := data.(styleguide)
+	return StyleguidePage(v, g)
+}
 
 func styleguideData(*Server, *http.Request) (any, error) {
 	g := styleguide{
@@ -105,17 +113,17 @@ func styleguideData(*Server, *http.Request) (any, error) {
 			{"accent-text", "bg-accent-text"}, {"danger", "bg-danger"},
 			{"info-soft", "bg-info-soft"}, {"ok-soft", "bg-ok-soft"}, {"warn-soft", "bg-warn-soft"}, {"bad-soft", "bg-bad-soft"},
 		},
-		States: []string{"queued", "downloading", "processing", "ready", "failed", "paused"},
+		States: []BadgeState{BadgeQueued, BadgeDownloading, BadgeProcessing, BadgeReady, BadgeFailed, BadgePaused},
 		Rows: []styleRow{
-			{"Ubuntu.24.04.Desktop.amd64", "downloading", "5.7 GB", "48.2 MB/s", 64},
-			{"Some.Show.S01E01.1080p.WEB-DL", "processing", "2.1 GB", "-", 100},
-			{"Another.Release.2160p.BluRay.REMUX", "queued", "58.4 GB", "-", 0},
-			{"Broken.Upload.720p", "failed", "1.3 GB", "-", 71},
+			{"Ubuntu.24.04.Desktop.amd64", BadgeDownloading, "5.7 GB", "48.2 MB/s", 64},
+			{"Some.Show.S01E01.1080p.WEB-DL", BadgeProcessing, "2.1 GB", "-", 100},
+			{"Another.Release.2160p.BluRay.REMUX", BadgeQueued, "58.4 GB", "-", 0},
+			{"Broken.Upload.720p", BadgeFailed, "1.3 GB", "-", 71},
 		},
 		Options: []option{{"force", "Force"}, {"high", "High"}, {"normal", "Normal"}, {"low", "Low"}},
 	}
 	for name := range iconPaths {
-		g.Icons = append(g.Icons, string(name))
+		g.Icons = append(g.Icons, name)
 	}
 	slices.Sort(g.Icons)
 	return g, nil

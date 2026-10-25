@@ -1,0 +1,37 @@
+package web
+
+// SetupPage is the first-run setup page.
+templ SetupPage(v *View, p setupPage) {
+	@BareLayout(v) {
+		<div class="card shadow-pop">
+			<div class="card-body p-6 sm:p-8">
+				<h1 class="text-xl">Set up bitnews</h1>
+				<p class="mt-1 text-sm text-fg-muted">Create the admin account. You will need the one-time setup token that bitnews wrote to its log when it started.</p>
+				<div class="mt-6">
+					@SetupForm(p)
+				</div>
+			</div>
+		</div>
+	}
+}
+
+// SetupForm is the setup form, and the fragment htmx swaps in when it is
+// refused.
+templ SetupForm(p setupPage) {
+	<form id="setup-form" method="post" action="/setup" hx-post="/setup" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" class="space-y-5" novalidate>
+		if p.Error != "" {
+			<div class="alert alert-danger" role="alert" id="setup-error">
+				@Icon(IconError, "mt-0.5 size-5 shrink-0")
+				<p>{ p.Error }</p>
+			</div>
+		}
+		@Field(FieldProps{ID: "token", Label: "Setup token", Value: p.Token, Help: "Find it in the bitnews log: look for the line “first-run setup required”.", Error: p.Errors["token"], Required: true, Raw: true, Autocomplete: "off"})
+		@Field(FieldProps{ID: "username", Label: "Username", Value: p.Username, Error: p.Errors["username"], Autocomplete: "username", Required: true, Raw: true, MaxLength: 64})
+		@Field(FieldProps{ID: "password", Label: "Password", Type: FieldPassword, Help: p.PasswordHelp, Error: p.Errors["password"], Autocomplete: "new-password", Required: true, MinLength: p.MinPassword})
+		@Field(FieldProps{ID: "confirm", Label: "Confirm password", Type: FieldPassword, Error: p.Errors["confirm"], Autocomplete: "new-password", Required: true})
+		<button type="submit" class="btn btn-primary btn-lg btn-block">
+			<span class="btn-spinner" aria-hidden="true"></span>
+			Create account
+		</button>
+	</form>
+}

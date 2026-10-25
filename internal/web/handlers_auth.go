@@ -61,8 +61,9 @@ func (s *Server) getLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := s.newView(r, "Sign in")
-	v.Page = loginPage{Next: safeNext(r.URL.Query().Get("next"), s.knownPath)}
-	s.render(w, r, http.StatusOK, "login.html", "layout_bare", v)
+	p := loginPage{Next: safeNext(r.URL.Query().Get("next"), s.knownPath)}
+	v.Page = p
+	s.renderComponent(w, r, http.StatusOK, LoginPage(v, p))
 }
 
 // renderLogin shows the form again with a message: only the form for htmx,
@@ -71,10 +72,10 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, status int,
 	v := s.newView(r, "Sign in")
 	v.Page = p
 	if isHTMX(r) {
-		s.renderFragment(w, r, status, "login.html", "login_form", v)
+		s.renderComponent(w, r, status, LoginForm(p))
 		return
 	}
-	s.render(w, r, status, "login.html", "layout_bare", v)
+	s.renderComponent(w, r, status, LoginPage(v, p))
 }
 
 func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
@@ -179,18 +180,19 @@ func (s *Server) getSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := s.newView(r, "Set up")
-	v.Page = newSetupPage()
-	s.render(w, r, http.StatusOK, "setup.html", "layout_bare", v)
+	p := newSetupPage()
+	v.Page = p
+	s.renderComponent(w, r, http.StatusOK, SetupPage(v, p))
 }
 
 func (s *Server) renderSetup(w http.ResponseWriter, r *http.Request, status int, p setupPage) {
 	v := s.newView(r, "Set up")
 	v.Page = p
 	if isHTMX(r) {
-		s.renderFragment(w, r, status, "setup.html", "setup_form", v)
+		s.renderComponent(w, r, status, SetupForm(p))
 		return
 	}
-	s.render(w, r, status, "setup.html", "layout_bare", v)
+	s.renderComponent(w, r, status, SetupPage(v, p))
 }
 
 func (s *Server) postSetup(w http.ResponseWriter, r *http.Request) {

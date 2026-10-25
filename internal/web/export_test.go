@@ -23,6 +23,14 @@ func RenderTemplate(page, name string, data any) (string, error) {
 	}
 	set, ok := tpl.sets[page]
 	if !ok {
+		// Every set holds all components; pages move to templ one by one, so
+		// a page that is gone falls back to any remaining one.
+		for _, set = range tpl.sets {
+			ok = true
+			break
+		}
+	}
+	if !ok {
 		return "", fmt.Errorf("no page %q", page)
 	}
 	var buf bytes.Buffer

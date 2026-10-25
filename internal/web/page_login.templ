@@ -1,0 +1,38 @@
+package web
+
+// LoginPage is the sign-in page.
+templ LoginPage(v *View, p loginPage) {
+	@BareLayout(v) {
+		<div class="card shadow-pop">
+			<div class="card-body p-6 sm:p-8">
+				<h1 class="text-xl">Sign in</h1>
+				<p class="mt-1 text-sm text-fg-muted">Welcome back. Sign in to manage your downloads.</p>
+				<div class="mt-6">
+					@LoginForm(p)
+				</div>
+			</div>
+		</div>
+	}
+}
+
+// LoginForm is the sign-in form, and the fragment htmx swaps in when a
+// sign-in fails.
+templ LoginForm(p loginPage) {
+	<form id="login-form" method="post" action="/login" hx-post="/login" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" class="space-y-5">
+		if p.Error != "" {
+			<div class="alert alert-danger" role="alert" id="login-error">
+				@Icon(IconError, "mt-0.5 size-5 shrink-0")
+				<p>{ p.Error }</p>
+			</div>
+		}
+		if p.Next != "" {
+			<input type="hidden" name="next" value={ p.Next }/>
+		}
+		@Field(FieldProps{ID: "username", Label: "Username", Value: p.Username, Autocomplete: "username", Required: true, Raw: true, Autofocus: p.Error == ""})
+		@Field(FieldProps{ID: "password", Label: "Password", Type: FieldPassword, Autocomplete: "current-password", Required: true, Autofocus: p.Error != "" && p.Username != ""})
+		<button type="submit" class="btn btn-primary btn-lg btn-block">
+			<span class="btn-spinner" aria-hidden="true"></span>
+			Sign in
+		</button>
+	</form>
+}
