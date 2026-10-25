@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/jroosing/bitnews/internal/api"
 	"github.com/jroosing/bitnews/internal/bootstrap"
 	"github.com/jroosing/bitnews/internal/daemon"
+	"github.com/jroosing/bitnews/internal/fsutil"
 	"github.com/jroosing/bitnews/internal/store"
 )
 
@@ -105,15 +107,15 @@ func run(ctx context.Context, args []string, getenv func(string) (string, bool),
 // the HTTP server stops first, then the daemon's workers are cancelled and
 // awaited, then the database is closed.
 func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve serveFunc) (err error) {
+	if err := prepareConfigDir(cfg.ConfigDir); err != nil {
+		return err
+	}
 	// The master key encrypts Server passwords and archive passwords.
 	// Loading it creates it on first start and fails early when it cannot
 	// be read.
 	key, err := store.LoadOrCreateKey(cfg.KeyFile, log)
 	if err != nil {
 		return err
-	}
-	if err := os.MkdirAll(cfg.ConfigDir, 0o700); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
 	}
 	db, err := store.Open(ctx, filepath.Join(cfg.ConfigDir, "bitnews.db"), store.WithLogger(log))
 	if err != nil {
@@ -134,4 +136,25 @@ func serveAll(ctx context.Context, cfg bootstrap.Config, log *slog.Logger, serve
 	return d.Serve(ctx, cfg.Listen, func(ctx context.Context, srv *http.Server) error {
 		return serve(ctx, srv, log)
 	})
+}
+
+// prepareConfigDir creates the config dir and checks that bitnews can write
+// in it. bitnews runs as whoever starts it and cannot change an owner
+// (ADR-0006), so a directory it may not write to is a startup error that
+// says which user it runs as and how to fix it. The usual cause is Docker:
+// it creates a missing bind-mount directory on the host as root.
+func prepareConfigDir(dir string) error {
+	err := os.MkdirAll(dir, 0o700)
+	if err == nil && fsutil.Writable(dir) {
+		return nil
+	}
+	if err != nil && !errors.Is(err, fs.ErrPermission) {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	uid, gid := os.Getuid(), os.Getgid()
+	return fmt.Errorf("the config dir %q is not writable by uid %d gid %d, the user bitnews runs as. "+
+		"bitnews cannot change the owner itself. Give that user the directory on the host, for example:\n"+
+		"  sudo mkdir -p <host dir> && sudo chown %d:%d <host dir>\n"+
+		"where <host dir> is what you mount at %s (Docker creates a missing bind-mount directory as root)",
+		dir, uid, gid, uid, gid, dir)
 }

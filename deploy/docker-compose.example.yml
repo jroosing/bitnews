@@ -2,8 +2,10 @@
 #
 # Before the first `docker compose up -d`:
 #
-#   1. Make the config dir writable for the `user:` below (bitnews runs as
-#      that user and cannot chown anything itself):
+#   1. Create the config dir and give it to the `user:` below, with the same
+#      ids (bitnews runs as that user and cannot chown anything itself; if the
+#      dir is missing, Docker creates it as root and bitnews refuses to start
+#      with a message saying exactly this):
 #        mkdir -p config && sudo chown 1000:1000 config
 #
 #   2. Decide where /data lives on the host (see the layout below) and make

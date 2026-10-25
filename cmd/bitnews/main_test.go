@@ -347,3 +347,24 @@ func TestRunServesOnARealListenerAndShutsDownGracefullyWhenTheContextEnds(t *tes
 	assert.Error(t, dialErr, "the listener must be closed")
 	assert.Contains(t, errOut.String(), "shutdown complete")
 }
+
+func TestAnUnwritableConfigDirSaysWhoAndHowToFixIt(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root may write anywhere")
+	}
+	vars := validEnv(t)
+	cfg := vars["BITNEWS_CONFIG_DIR"]
+	require.NoError(t, os.Mkdir(cfg, 0o555)) // as Docker leaves a missing bind mount: not ours
+	t.Cleanup(func() { _ = os.Chmod(cfg, 0o755) })
+	delete(vars, "BITNEWS_KEY_FILE") // the key goes into the config dir, as in the image
+	var out, errOut bytes.Buffer
+
+	code := runTest(nil, env(vars), noUmask, &out, &errOut)
+
+	assert.NotEqual(t, 0, code)
+	msg := errOut.String()
+	assert.Contains(t, msg, cfg)
+	assert.Contains(t, msg, "not writable")
+	assert.Regexp(t, `uid \d+`, msg)
+	assert.Contains(t, msg, "chown")
+}
