@@ -72,6 +72,10 @@ _Avoid_: Sharing, uploading
 The ratio or seeding time after which Seeding stops for a Download.
 _Avoid_: Seed goal, ratio limit
 
+**Seeding paused**:
+A Ready torrent whose Seeding the user has stopped. It stays Ready and keeps its data, and the user can resume it. This is the same pause the user applies to a Download that is not yet Fetched, now also available once the Download is Ready. It is not the Seeding stopped by reaching a Share Limit, which the daemon does by itself.
+_Avoid_: Stopped, limit-paused
+
 ### Lifecycle
 
 **Fetched**:

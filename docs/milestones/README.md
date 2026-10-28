@@ -162,3 +162,9 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | ID | Issue | Title | Status |
 |---|---|---|---|
 | M11-01 | [#5](https://github.com/jroosing/bitnews/issues/5) | Views as templ components | done |
+
+### [M12 — History: torrent and seeding status](m12-history-seeding.md)
+
+| ID | Issue | Title | Status |
+|---|---|---|---|
+| M12-01 | [#6](https://github.com/jroosing/bitnews/issues/6) | History shows torrent and seeding status and can pause seeding | planned |
