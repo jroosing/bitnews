@@ -244,6 +244,15 @@ func kindLabel(k core.SourceKind) (label, icon string) {
 	return "Usenet", "server"
 }
 
+// sourceLabel names the Source of a Download the way the glossary does, with
+// the icon that goes with it.
+func sourceLabel(k core.SourceKind) (label, icon string) {
+	if k == core.SourceTorrent {
+		return "Torrent", "bolt"
+	}
+	return "NZB", "server"
+}
+
 func terminal(st core.State) bool { return st == core.StateReady || st == core.StateFailed }
 
 // histClean makes untrusted text (names, paths) safe to show: invalid UTF-8

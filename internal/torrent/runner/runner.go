@@ -157,6 +157,9 @@ func (r *Runner) Run(ctx context.Context) error {
 			if ev.Kind().IsProgress() {
 				continue
 			}
+			if up, isUp := ev.(core.DownloadUpdated); isUp {
+				r.syncPaused(ctx, up.Download)
+			}
 			if rm, isRm := ev.(core.Removed); isRm {
 				r.drop(ctx, rm.ID)
 				r.Release(rm.ID)

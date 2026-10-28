@@ -15,6 +15,17 @@ func historySummary(p historyPage) string {
 	return s
 }
 
+// historyHasTorrents says the page lists a Ready torrent, so its seeding
+// cells need the poll.
+func historyHasTorrents(p historyPage) bool {
+	for _, r := range p.Rows {
+		if r.Torrent && r.Ready {
+			return true
+		}
+	}
+	return false
+}
+
 templ historySubtitle() {
 	<p class="mt-1 text-sm text-fg-muted">Downloads that are ready or have failed, newest first.</p>
 }
@@ -50,6 +61,9 @@ templ HistoryPage(v *View, p historyPage) {
 				</div>
 			</form>
 			<div id="history-results" aria-live="polite">
+				if historyHasTorrents(p) {
+					<div id="history-seeding-poll" hidden { Hx{Get: "/history/seeding", Trigger: "every 5s", Swap: "none", Include: "#history-rows [name=id]"}.MustAttrs()... }></div>
+				}
 				if len(p.Rows) > 0 {
 					<section class="card" aria-label="Finished downloads">
 						<table class="table table-responsive">

@@ -131,8 +131,9 @@ type historyRow struct {
 	Name       string
 	ShortName  string // for accessible names and confirmation texts
 	Kind       string // nzb | torrent
-	KindLabel  string
+	KindLabel  string // "NZB" or "Torrent"
 	KindIcon   string
+	Torrent    bool
 	State      string
 	Badge      string // badge class suffix
 	BadgeLabel string
@@ -146,6 +147,9 @@ type historyRow struct {
 	// Reason is the headline of a failure and Detail its redacted detail.
 	Reason string
 	Detail string
+	// Seed is set for a Ready torrent: whether it seeds, with the upload
+	// speed and the Share Limit progress.
+	Seed *seedView
 }
 
 // historyPage is what HistoryPage renders.
@@ -220,8 +224,9 @@ func historyData(s *Server, r *http.Request) (any, error) {
 		p.AppendHref = p.NextHref + "&append=1"
 	}
 	now := time.Now()
+	seeding := s.Settings.Current().Seeding
 	for _, d := range page {
-		p.Rows = append(p.Rows, historyRowOf(now, s.View.Of(ctx, d), names))
+		p.Rows = append(p.Rows, historyRowOf(now, s.View.Of(ctx, d), names, seeding))
 	}
 	if len(page) > 0 {
 		p.First, p.Last = start+1, start+len(page)
@@ -281,13 +286,14 @@ func (s *Server) historyEntries(ctx context.Context, f historyFilter) (all []cor
 	return all, truncated, nil
 }
 
-func historyRowOf(now time.Time, v view.View, categories map[core.ID]string) historyRow {
+func historyRowOf(now time.Time, v view.View, categories map[core.ID]string, seeding core.SeedingSettings) historyRow {
 	d := v.Download
 	badge, badgeLabel := badgeOf(v)
-	kind, icon := kindLabel(d.SourceKind)
+	kind, icon := sourceLabel(d.SourceKind)
 	row := historyRow{
 		ID: string(d.ID), Name: histClean(d.Name, 255), ShortName: histClean(d.Name, 60), Kind: string(d.SourceKind), KindLabel: kind, KindIcon: icon,
-		State: string(d.State), Badge: badge, BadgeLabel: badgeLabel,
+		Torrent: d.SourceKind == core.SourceTorrent,
+		State:   string(d.State), Badge: badge, BadgeLabel: badgeLabel,
 		Category: histClean(categories[d.CategoryID], 100), Size: histBytes(d.TotalBytes),
 		When: histWhen(now, historyTime(d)), Ready: d.State == core.StateReady, Failed: d.State == core.StateFailed,
 	}
@@ -298,6 +304,7 @@ func historyRowOf(now time.Time, v view.View, categories map[core.ID]string) his
 	case row.Ready:
 		row.WhenLabel = "Completed"
 		row.OutputPath = histClean(d.OutputPath, 1024)
+		row.Seed = seedOf(v, seeding)
 	case row.Failed:
 		row.WhenLabel = "Failed"
 		row.Reason = failureOf(d.FailureReason).Title

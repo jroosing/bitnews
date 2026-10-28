@@ -62,13 +62,31 @@ func TestPauseAll(t *testing.T) {
 func TestPausingWhatCannotBePausedOrIsUnknownIsNotAnError(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	d, v := s.seed("seeding", ready("/d/x"))
+	d, v := s.seed("done", inState(core.StateFetched))
 	sid := s.login()
 
 	rec := s.post(sid, "/api/v2/torrents/pause", url.Values{"hashes": {v.InfoHash + "|" + strings.Repeat("0", 40) + "|junk"}})
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.False(t, s.download(d.ID).Paused, "a Fetched torrent has nothing left to pause")
+	assert.False(t, s.download(d.ID).Paused, "a Fetched torrent in Post-processing has nothing to pause")
+}
+
+func TestPausingASeedingTorrentStopsItAndResumeStartsItAgain(t *testing.T) {
+	t.Parallel()
+	for _, names := range [][2]string{{"pause", "resume"}, {"stop", "start"}} {
+		s := newStack(t)
+		d, v := s.seed("seeding", ready("/d/x"))
+		sid := s.login()
+
+		require.Equal(t, http.StatusOK, s.post(sid, "/api/v2/torrents/"+names[0], url.Values{"hashes": {v.InfoHash}}).Code)
+		assert.True(t, s.download(d.ID).Paused, names[0])
+		assert.Equal(t, core.StateReady, s.download(d.ID).State, "pausing the seed does not leave Ready")
+		assert.Equal(t, "pausedUP", s.info(sid, "hashes="+v.InfoHash)[0].State, names[0])
+
+		require.Equal(t, http.StatusOK, s.post(sid, "/api/v2/torrents/"+names[1], url.Values{"hashes": {v.InfoHash}}).Code)
+		assert.False(t, s.download(d.ID).Paused, names[1])
+		assert.NotEqual(t, "pausedUP", s.info(sid, "hashes="+v.InfoHash)[0].State, names[1])
+	}
 }
 
 func TestDeleteWithoutFilesKeepsTheDataButDropsTheDownload(t *testing.T) {

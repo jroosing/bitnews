@@ -88,6 +88,53 @@ func TestPauseOfDownloadThatWasAlreadyFetchedIsAConflict(t *testing.T) {
 	assert.Empty(t, s.events())
 }
 
+// addReady stores a Download of the given kind that has reached Ready.
+func (s *stack) addReady(t *testing.T, kind core.SourceKind) core.Download {
+	t.Helper()
+	ctx := context.Background()
+	d := core.Download{
+		ID: core.NewID(), Name: "release", SourceKind: kind, State: core.StateQueued,
+		Priority: core.DownloadPriorityNormal, AddedAt: epoch, UpdatedAt: epoch,
+	}
+	require.NoError(t, s.downloads.Create(ctx, d))
+	for _, to := range []core.State{core.StateFetching, core.StateFetched, core.StateReady} {
+		var err error
+		d, err = s.downloads.UpdateState(ctx, d.ID, core.StateChange{To: to, At: epoch, OutputPath: outputFor(to)})
+		require.NoError(t, err)
+	}
+	return d
+}
+
+func TestReadyTorrentCanBePausedAndResumedWhichIsSeedingPaused(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	svc := s.downloadService()
+	d := s.addReady(t, core.SourceTorrent)
+	s.events()
+
+	paused, err := svc.Pause(ctx, d.ID)
+	require.NoError(t, err)
+	assert.True(t, paused.Paused)
+	assert.Equal(t, core.StateReady, paused.State, "pausing the seed does not leave Ready")
+	assert.Equal(t, []core.Event{core.DownloadUpdated{Download: paused}}, s.events())
+
+	resumed, err := svc.Resume(ctx, d.ID)
+	require.NoError(t, err)
+	assert.False(t, resumed.Paused)
+}
+
+func TestReadyNZBCannotBePaused(t *testing.T) {
+	s := newStack(t)
+	d := s.addReady(t, core.SourceNZB)
+
+	_, err := s.downloadService().Pause(context.Background(), d.ID)
+
+	require.ErrorIs(t, err, core.ErrConflict)
+	var appErr *app.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, "not_pausable", appErr.Code)
+}
+
 func TestPauseOfUnknownDownloadIsNotFound(t *testing.T) {
 	s := newStack(t)
 
@@ -553,4 +600,11 @@ func TestDeleteOfUnknownDownloadIsNotFoundAndPublishesNothing(t *testing.T) {
 
 	assert.ErrorIs(t, err, core.ErrNotFound)
 	assert.Empty(t, s.events())
+}
+
+func outputFor(to core.State) string {
+	if to == core.StateReady {
+		return "/data/complete/release"
+	}
+	return ""
 }

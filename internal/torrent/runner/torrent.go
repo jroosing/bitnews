@@ -50,6 +50,10 @@ type tor struct {
 	// Limit was reached; removing is set while a remove action is under way.
 	limitPaused bool
 	removing    bool
+	// userPaused is set while the user has paused the Seeding of this
+	// Fetched torrent (Download.Paused, ADR-0012). It is independent of
+	// limitPaused: the torrent uploads only while neither is set.
+	userPaused bool
 	// persisted is what was last written to the record.
 	persistedUp   int64
 	persistedSeed time.Duration
@@ -140,7 +144,9 @@ func (r *Runner) ensureRegistered(ctx context.Context, d core.Download, running 
 	// is added paused, so it does not upload until the first evaluation.
 	limitPaused := slices.Contains(seedingStates, d.State) &&
 		r.limitReached(settings.Seeding, rec, d.TotalBytes, rec.Uploaded, rec.SeedingTime)
-	if limitPaused {
+	// A Fetched torrent the user paused stays paused across a restart.
+	userPaused := slices.Contains(seedingStates, d.State) && d.Paused
+	if limitPaused || userPaused {
 		running = false
 	}
 	spec := core.TorrentSpec{StorageDir: dir, Paused: !running}
@@ -170,6 +176,7 @@ func (r *Runner) ensureRegistered(ctx context.Context, d core.Download, running 
 	t.persistedUp, t.persistedSeed = rec.Uploaded, rec.SeedingTime
 	t.ratioLimit, t.timeLimit = rec.RatioLimit, rec.SeedingTimeLimit
 	t.limitPaused = limitPaused
+	t.userPaused = userPaused
 	r.tors[d.ID] = t
 	return t, nil
 }

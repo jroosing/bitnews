@@ -212,10 +212,47 @@ func (r *Runner) evaluateOne(ctx context.Context, def core.SeedingSettings, t *t
 	case !hit && paused:
 		r.mu.Lock()
 		t.limitPaused = false
+		userPaused := t.userPaused
 		r.mu.Unlock()
+		if userPaused {
+			return // the user's pause still holds
+		}
 		r.log.Info("torrent runner: the share limit is no longer reached, seeding again", "id", t.id)
 		if err := r.engine.Resume(t.hash); err != nil {
 			r.log.Warn("torrent runner: cannot resume seeding", "id", t.id, "err", err)
+		}
+	}
+}
+
+// syncPaused makes the engine follow Download.Paused for a Fetched torrent:
+// Seeding paused stops the upload, resuming starts it again unless a Share
+// Limit holds it. d is the Download as just updated.
+func (r *Runner) syncPaused(ctx context.Context, d core.Download) {
+	t := r.lookup(d.ID)
+	if t == nil {
+		return
+	}
+	r.mu.Lock()
+	if !t.fetched || !slices.Contains(seedingStates, d.State) {
+		r.mu.Unlock()
+		return
+	}
+	was, limitPaused := t.userPaused, t.limitPaused
+	t.userPaused = d.Paused
+	r.mu.Unlock()
+	switch {
+	case d.Paused && !was:
+		r.throttle.Flush(t.id)
+		if err := r.engine.Pause(t.hash); err != nil {
+			r.log.Warn("torrent runner: cannot pause seeding", "id", t.id, "err", err)
+		}
+	case !d.Paused && was && !limitPaused:
+		if err := r.engine.Resume(t.hash); err != nil {
+			r.log.Warn("torrent runner: cannot resume seeding", "id", t.id, "err", err)
+		}
+		// A Share Limit reached meanwhile (a lowered limit) applies at once.
+		if settings, err := r.cfg.Settings(ctx); err == nil {
+			r.evaluateOne(ctx, settings.Seeding, t)
 		}
 	}
 }

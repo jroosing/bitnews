@@ -281,3 +281,71 @@ func TestTorrentThatAlreadyReachedItsLimitIsNotUploadingAfterARestart(t *testing
 	require.Len(t, adds, 1)
 	assert.True(t, adds[0].Spec.Paused, "added paused: no upload window before the first evaluation")
 }
+
+// setPaused does what DownloadService.Pause and Resume do to a Ready torrent.
+func (h *harness) setPaused(id core.ID, paused bool) {
+	h.t.Helper()
+	d := h.get(id)
+	d.Paused = paused
+	require.NoError(h.t, h.downloads.Update(h.t.Context(), d))
+	h.bus.Publish(core.DownloadUpdated{Download: d})
+}
+
+func TestPausingAReadyTorrentStopsItsSeedingAndResumingStartsItAgain(t *testing.T) {
+	h := newHarness(t)
+	a := h.addSeeding()
+	h.start()
+	h.waitInEngine(a.ID)
+	assert.False(t, h.paused(a.ID))
+
+	h.setPaused(a.ID, true)
+	h.eventually(func() bool { return h.paused(a.ID) }, "seeding paused")
+	assert.Equal(t, core.StateReady, h.get(a.ID).State, "the Download stays Ready")
+
+	h.setPaused(a.ID, false)
+	h.eventually(func() bool { return !h.paused(a.ID) }, "seeding again")
+}
+
+func TestPausedReadyTorrentDoesNotUploadAfterARestart(t *testing.T) {
+	h := newHarness(t)
+	a := h.addSeeding(withPaused())
+	h.start()
+	h.waitInEngine(a.ID)
+
+	h.eventually(func() bool { return h.paused(a.ID) }, "added paused")
+	assert.Empty(t, h.callsFor("Resume", a.ID))
+}
+
+func TestResumingATorrentStoppedByItsShareLimitKeepsItStopped(t *testing.T) {
+	h := newHarness(t)
+	h.setSettings(func(s *core.Settings) { s.Seeding.RatioLimit = 1 })
+	a := h.addSeeding()
+	h.start()
+	h.waitInEngine(a.ID)
+	h.engine.SetStats(hashOf(a.ID), seedingStats(1500, time.Hour))
+	h.eventually(func() bool { return h.paused(a.ID) }, "stopped by the Share Limit")
+
+	h.setPaused(a.ID, true)
+	h.setPaused(a.ID, false)
+	time.Sleep(200 * time.Millisecond)
+
+	assert.True(t, h.paused(a.ID), "Resume does not override a reached Share Limit")
+}
+
+func TestRaisingTheShareLimitOfAUserPausedTorrentDoesNotStartIt(t *testing.T) {
+	h := newHarness(t)
+	h.setSettings(func(s *core.Settings) { s.Seeding.RatioLimit = 1 })
+	a := h.addSeeding()
+	h.start()
+	h.waitInEngine(a.ID)
+	h.engine.SetStats(hashOf(a.ID), seedingStats(1500, time.Hour))
+	h.eventually(func() bool { return h.paused(a.ID) }, "stopped by the Share Limit")
+	h.setPaused(a.ID, true)
+
+	require.NoError(t, h.runner.SetShareLimit(t.Context(), a.ID, core.UnlimitedShareLimit()))
+	time.Sleep(200 * time.Millisecond)
+
+	assert.True(t, h.paused(a.ID), "the user's pause still holds")
+	h.setPaused(a.ID, false)
+	h.eventually(func() bool { return !h.paused(a.ID) }, "resumed once the user resumes")
+}

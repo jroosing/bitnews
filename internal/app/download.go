@@ -33,8 +33,9 @@ func NewDownloadService(downloads core.DownloadRepo, categories core.CategoryRep
 }
 
 // Pause stops a Download from being active. Pausing a paused Download does
-// nothing. Only Downloads that have not been Fetched can be paused: for the
-// others there is nothing left to pause (conflict, code "not_pausable").
+// nothing. A Download that has not been Fetched can be paused, and so can a
+// Ready torrent, which stops its Seeding (Seeding paused, ADR-0012). For the
+// others there is nothing to pause (conflict, code "not_pausable").
 func (s *DownloadService) Pause(ctx context.Context, id core.ID) (core.Download, error) {
 	return s.setPaused(ctx, id, true)
 }
@@ -54,7 +55,7 @@ func (s *DownloadService) setPaused(ctx context.Context, id core.ID, paused bool
 	if d.Paused == paused {
 		return d, nil
 	}
-	if paused && !pausable(d.State) {
+	if paused && !pausable(d) {
 		return core.Download{}, conflict("not_pausable", "a download in state %q cannot be paused", d.State)
 	}
 	d.Paused = paused
@@ -66,12 +67,14 @@ func (s *DownloadService) setPaused(ctx context.Context, id core.ID, paused bool
 	return d, nil
 }
 
-// pausable reports whether a Download in state st is still waiting for or
-// receiving data, which is what Paused acts on.
-func pausable(st core.State) bool {
-	switch st {
+// pausable reports whether Paused acts on d: it is still waiting for or
+// receiving data, or it is a torrent that is Ready and so only Seeding.
+func pausable(d core.Download) bool {
+	switch d.State {
 	case core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching:
 		return true
+	case core.StateReady:
+		return d.SourceKind == core.SourceTorrent
 	}
 	return false
 }

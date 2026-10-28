@@ -133,6 +133,7 @@ func (s *Server) registerRoutes() {
 	s.registerQueue()
 	s.registerSettings()
 	s.registerDownloadRoutes()
+	s.registerHistoryRoutes()
 
 	s.mux.HandleFunc("/", s.notFound)
 }

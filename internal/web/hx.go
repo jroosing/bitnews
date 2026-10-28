@@ -25,6 +25,7 @@ type Hx struct {
 
 	Target, Swap, SwapOOB, Select, SelectOOB string
 	Trigger, Encoding, DisabledElt, Confirm  string
+	Include                                  string // CSS selector of the elements whose values join the request
 	Ext, SSEConnect, SSESwap                 string // SSEConnect is a same-origin URL
 
 	Vals map[string]string // hx-vals: names and ID-shaped values
@@ -76,7 +77,7 @@ func (h Hx) Attrs() (templ.Attributes, error) {
 		"hx-select": h.Select, "hx-select-oob": h.SelectOOB,
 		"hx-trigger": h.Trigger, "hx-encoding": h.Encoding,
 		"hx-disabled-elt": h.DisabledElt, "hx-confirm": h.Confirm,
-		"hx-ext": h.Ext, "sse-swap": h.SSESwap,
+		"hx-ext": h.Ext, "sse-swap": h.SSESwap, "hx-include": h.Include,
 	} {
 		if v != "" {
 			out[attr] = v

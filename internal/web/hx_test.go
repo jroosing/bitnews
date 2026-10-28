@@ -26,6 +26,12 @@ func TestHxAttrsEmitsOnlyTheFieldsSet(t *testing.T) {
 	}, got)
 }
 
+func TestHxAttrsInclude(t *testing.T) {
+	got, err := web.Hx{Get: "/history/seeding", Trigger: "every 5s", Swap: "none", Include: "#history-rows [name=id]"}.Attrs()
+	require.NoError(t, err)
+	assert.Equal(t, "#history-rows [name=id]", got["hx-include"])
+}
+
 func TestHxAttrsZeroValueIsEmpty(t *testing.T) {
 	got, err := web.Hx{}.Attrs()
 	require.NoError(t, err)

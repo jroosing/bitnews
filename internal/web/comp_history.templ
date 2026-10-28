@@ -7,9 +7,8 @@ templ HistoryRow(r historyRow) {
 	<tr id={ "download-" + r.ID } data-state={ r.State }>
 		<td data-label="" class="md:w-[40%] md:max-w-0">
 			<div class="flex min-w-0 items-start gap-3 text-left">
-				<span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-fg-subtle" title={ r.KindLabel }>
+				<span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-fg-subtle" aria-hidden="true">
 					@Icon(IconName(r.KindIcon), "size-4")
-					<span class="sr-only">{ r.KindLabel }</span>
 				</span>
 				<div class="min-w-0 flex-1">
 					<a href={ templ.URL("/downloads/" + r.ID) } class="block break-words font-medium text-fg hover:text-accent-text">{ r.Name }</a>
@@ -40,7 +39,13 @@ templ HistoryRow(r historyRow) {
 			</div>
 		</td>
 		<td data-label="Status">
-			@Badge(BadgeState(r.Badge), r.BadgeLabel)
+			<div class="flex flex-wrap items-center gap-2">
+				@Badge(BadgeState(r.Badge), r.BadgeLabel)
+				@SourcePill(r)
+			</div>
+			if r.Seed != nil {
+				@HistorySeedCell(r, false)
+			}
 		</td>
 		<td
 			data-label="Category"
@@ -64,7 +69,11 @@ templ HistoryRow(r historyRow) {
 			}
 		</td>
 		<td data-label="" class="md:w-px">
-			<div x-data="menu" class="relative flex w-full justify-end md:w-auto" @keydown.escape="close" @click.outside="closeQuiet">
+			<div class="flex items-center justify-end gap-1">
+				if r.Torrent && r.Ready {
+					@HistorySeedControl(r, false)
+				}
+			<div x-data="menu" class="relative flex justify-end md:w-auto" @keydown.escape="close" @click.outside="closeQuiet">
 				<button type="button" x-ref="button" @click="toggle" @keydown="onButtonKey" class="btn btn-ghost btn-icon btn-sm" aria-haspopup="menu" :aria-expanded="open" aria-label={ "Actions for " + r.ShortName } title="Actions">
 					@Icon(IconMore, "size-4")
 				</button>
@@ -112,6 +121,100 @@ templ HistoryRow(r historyRow) {
 					}
 				</div>
 			</div>
+			</div>
 		</td>
 	</tr>
+}
+
+// SourcePill says whether a Download is an NZB or a Torrent. The colours
+// differ so the two are told apart at a glance, and the text names the
+// Source for those who do not see colour.
+templ SourcePill(r historyRow) {
+	<span
+		class={ "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ring-1",
+			templ.KV("bg-accent-soft text-accent-soft-fg ring-line", r.Torrent),
+			templ.KV("bg-surface-2 text-fg-muted ring-line", !r.Torrent) }
+	>
+		@Icon(IconName(r.KindIcon), "size-3.5")
+		{ r.KindLabel }
+	</span>
+}
+
+// HistorySeedCell is the seeding part of the Status cell: Seeding, Seeding
+// paused or Share Limit reached, the upload speed while it seeds, and the
+// ratio and time against the Share Limit. oob makes it a poll answer.
+templ HistorySeedCell(r historyRow, oob bool) {
+	<div
+		id={ "download-" + r.ID + "-seed" }
+		class="mt-1.5 text-xs"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		<p class="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium">
+			<span
+				class={ "inline-flex items-center gap-1",
+					templ.KV("text-ok-fg", r.Seed.State == seedSeeding),
+					templ.KV("text-fg-muted", r.Seed.State == seedPaused),
+					templ.KV("text-warn-fg", r.Seed.State == seedLimit) }
+			>
+				if r.Seed.State == seedSeeding {
+					@Icon(IconArrowUp, "size-3.5")
+				}
+				{ r.Seed.Label }
+			</span>
+			if r.Seed.Rate != "" {
+				<span class="tabular-nums text-fg">{ "↑ " + r.Seed.Rate }</span>
+			}
+		</p>
+		<p class="tabular-nums text-fg-muted" title={ r.Seed.LineTitle }>{ r.Seed.Line }</p>
+		if r.Seed.State == seedLimit {
+			<a href={ templ.URL("/downloads/" + r.ID + "#share-card") } class="font-medium text-accent-text underline">Change the Share Limit</a>
+		}
+	</div>
+}
+
+// HistorySeedControl is the pause or resume button of a seeding torrent, and
+// the hidden id the History poll collects. A torrent its Share Limit stopped
+// has no button.
+templ HistorySeedControl(r historyRow, oob bool) {
+	<span
+		id={ "download-" + r.ID + "-seedctl" }
+		class="inline-flex"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		<input type="hidden" name="id" value={ r.ID }/>
+		if r.Seed.CanPause() {
+			<button
+				type="button"
+				class="btn btn-ghost btn-icon btn-sm"
+				aria-label={ "Pause seeding of " + r.ShortName }
+				title="Pause seeding"
+				{ Hx{Post: "/history/" + r.ID + "/pause", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }
+			>
+				@Icon(IconPause, "size-4")
+			</button>
+		} else if r.Seed.CanResume() {
+			<button
+				type="button"
+				class="btn btn-ghost btn-icon btn-sm"
+				aria-label={ "Resume seeding of " + r.ShortName }
+				title="Resume seeding"
+				{ Hx{Post: "/history/" + r.ID + "/resume", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }
+			>
+				@Icon(IconPlay, "size-4")
+			</button>
+		}
+	</span>
+}
+
+// HistorySeedingOOB answers the History poll: the seeding cell and button of
+// each row, swapped into the page by id.
+templ HistorySeedingOOB(rows []historyRow) {
+	for _, r := range rows {
+		@HistorySeedCell(r, true)
+		@HistorySeedControl(r, true)
+	}
 }
