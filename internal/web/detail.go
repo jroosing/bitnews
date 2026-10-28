@@ -277,7 +277,7 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 	switch d.SourceKind {
 	case core.SourceNZB:
 		if s.Detail != nil && (!d.FetchedAt.IsZero() || p.Failed || d.State == core.StatePostProcessing) {
-			if rep, ok := s.Detail.FetchReport(ctx, d.ID); ok {
+			if rep, err := s.Detail(ctx, d.ID); err == nil {
 				p.Report = &detailReport{
 					MissingArticles: rep.MissingArticles, MissingBytes: histBytes(rep.MissingBytes),
 					DamagedArticles: rep.DamagedArticles, DamagedBytes: histBytes(rep.DamagedBytes),
@@ -287,15 +287,11 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 			}
 		}
 	case core.SourceTorrent:
-		if s.Torrents == nil || v.Torrent == nil {
+		if v.Torrent == nil {
 			p.TorrentsUnavailable = true
 			break
 		}
-		files, err := s.Torrents.Files(ctx, d.ID)
-		if err != nil {
-			return detailPage{}, fmt.Errorf("torrent files: %w", err)
-		}
-		p.Torrent = s.torrentView(v, files, form)
+		p.Torrent = s.torrentView(v, form)
 		if v.Torrent.Registered && !p.Terminal {
 			p.Speed = histRate(v.DownRate)
 		}
@@ -327,8 +323,9 @@ func stateText(d core.Download) string {
 
 // torrentView is the torrent part of the page: the facts of the View's
 // torrent half, the files and the Share Limit form.
-func (s *Server) torrentView(v view.View, files []TorrentFile, form *shareForm) *detailTorrent {
+func (s *Server) torrentView(v view.View, form *shareForm) *detailTorrent {
 	f := v.Torrent
+	files := f.Files
 	t := &detailTorrent{
 		InfoHash: histClean(f.Hash, 64), Registered: f.Registered, Private: f.Private, LimitPaused: f.LimitPaused,
 		Peers: f.Peers, Seeds: f.Seeds, DownRate: histRate(v.DownRate), UpRate: histRate(v.UpRate),
@@ -473,7 +470,9 @@ func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 const maxShareMinutes = 10 * 365 * 24 * 60
 
 // parseShareForm reads the share limit form. A problem is returned in form.
-func parseShareForm(r *http.Request) (ShareLimitChange, shareForm) {
+// The Share Limit is nil for the global default; a negative half is
+// unlimited.
+func parseShareForm(r *http.Request) (*core.ShareLimit, shareForm) {
 	form := shareForm{
 		Custom:  r.PostForm.Get("mode") == "custom",
 		Ratio:   strings.TrimSpace(r.PostForm.Get("ratio")),
@@ -481,9 +480,9 @@ func parseShareForm(r *http.Request) (ShareLimitChange, shareForm) {
 	}
 	form.Ratio, form.Minutes = histClean(form.Ratio, 32), histClean(form.Minutes, 32)
 	if !form.Custom {
-		return ShareLimitChange{UseDefault: true}, form
+		return nil, form
 	}
-	change := ShareLimitChange{Ratio: -1, Minutes: -1}
+	change := core.UnlimitedShareLimit()
 	if form.Ratio != "" {
 		v, err := strconv.ParseFloat(form.Ratio, 64)
 		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100000 {
@@ -496,9 +495,9 @@ func parseShareForm(r *http.Request) (ShareLimitChange, shareForm) {
 		if err != nil || v < 0 || v > maxShareMinutes {
 			form.MinutesError = "Enter a whole number of minutes, such as 1440 for a day, or leave it empty for no time limit."
 		}
-		change.Minutes = v
+		change.SeedingTime = time.Duration(v) * time.Minute
 	}
-	return change, form
+	return &change, form
 }
 
 // postShareLimit sets or clears the Share Limit of a torrent.
@@ -507,7 +506,7 @@ func (s *Server) postShareLimit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if d.SourceKind != core.SourceTorrent || s.Torrents == nil {
+	if d.SourceKind != core.SourceTorrent {
 		s.renderError(w, r, http.StatusConflict, "Not a torrent", "Only torrents have a share limit.")
 		return
 	}
@@ -521,7 +520,7 @@ func (s *Server) postShareLimit(w http.ResponseWriter, r *http.Request) {
 		s.shareFormAgain(w, r, d, &form)
 		return
 	}
-	if err := s.Torrents.SetShareLimit(r.Context(), d.ID, change); err != nil {
+	if err := s.Downloads.SetShareLimit(r.Context(), d.ID, change); err != nil {
 		if errors.Is(err, core.ErrNotFound) {
 			s.renderError(w, r, http.StatusNotFound, "Download not found", "It may have been removed.")
 			return

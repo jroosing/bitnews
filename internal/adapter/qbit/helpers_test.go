@@ -6,7 +6,6 @@ import (
 	"crypto/sha1" //nolint:gosec // an info hash, not a security hash
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -90,8 +89,7 @@ func (r *removed) list() []core.ID {
 }
 
 // torrent is what the fake engine knows of one torrent: the live facts the
-// view module reads through the engine's view.LiveSource, and the name and
-// paths the adapter's TorrentSource port gives.
+// view module reads through the engine's view.LiveSource.
 type torrent struct {
 	DownloadID core.ID
 	InfoHash   string
@@ -109,74 +107,74 @@ type torrent struct {
 	// leaves the global default.
 	OwnRatio   *float64
 	OwnSeeding *time.Duration
-	// SavePath and ContentPath are the engine's paths.
+	// SavePath and ContentPath are the engine's paths: the Download's
+	// directory is ContentPath, else SavePath/Name.
 	SavePath, ContentPath string
 }
 
-// engine is the in-memory fake of the ports the daemon implements, and the
-// live source of the view module.
+// engine is the in-memory fake of the torrent side: the live source of the
+// view module and the Share Limit setter of the app services. A torrent added
+// through the AddService is known by its stored source until a test puts
+// more facts.
 type engine struct {
-	t         testing.TB
-	downloads core.DownloadRepo
+	t       testing.TB
+	sources core.TorrentSourceRepo
 
 	mu       sync.Mutex
 	torrents map[string]torrent // by hash
 	byID     map[core.ID]string // hash by Download
-	files    map[string][]qbit.TorrentFile
-	added    []addCall
+	files    map[string][]core.TorrentFile
 	limits   map[core.ID]limitCall
-	// failAdd, when set, is returned by the next adds.
-	failAdd error
-	n       int
 }
 
 var (
-	_ view.LiveSource    = (*engine)(nil)
-	_ qbit.TorrentSource = (*engine)(nil)
-	_ qbit.FileSource    = (*engine)(nil)
-	_ qbit.ShareLimiter  = (*engine)(nil)
-	_ qbit.TorrentAdder  = (*engine)(nil)
+	_ view.LiveSource      = (*engine)(nil)
+	_ app.ShareLimitSetter = (*engine)(nil)
 )
 
-type addCall struct {
-	File bool
-	Data []byte
-	URL  string
-	Opts qbit.AddOptions
-	Hash string
-}
-
+// limitCall is the last Share Limit a Download got; Cleared means the
+// global default.
 type limitCall struct {
-	Ratio     float64
-	Seconds   int64
-	UseGlobal bool
+	Limit   core.ShareLimit
+	Cleared bool
 }
 
-func newEngine(t testing.TB, downloads core.DownloadRepo) *engine {
+func newEngine(t testing.TB, sources core.TorrentSourceRepo) *engine {
 	return &engine{
-		t: t, downloads: downloads, torrents: map[string]torrent{}, byID: map[core.ID]string{},
-		files: map[string][]qbit.TorrentFile{}, limits: map[core.ID]limitCall{},
+		t: t, sources: sources, torrents: map[string]torrent{}, byID: map[core.ID]string{},
+		files: map[string][]core.TorrentFile{}, limits: map[core.ID]limitCall{},
 	}
 }
 
 // of returns the torrent of a Download.
-func (e *engine) of(id core.ID) (torrent, bool) {
+func (e *engine) of(ctx context.Context, d core.Download) (torrent, bool) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	h, ok := e.byID[id]
-	if !ok {
+	h, ok := e.byID[d.ID]
+	t := e.torrents[h]
+	e.mu.Unlock()
+	if ok {
+		return t, true
+	}
+	src, err := e.sources.Get(ctx, d.ID)
+	if err != nil {
 		return torrent{}, false
 	}
-	t, ok := e.torrents[h]
-	return t, ok
+	return torrent{DownloadID: d.ID, InfoHash: src.InfoHash.String(), Name: d.Name}, true
 }
 
 // Live implements view.LiveSource.
-func (e *engine) Live(_ context.Context, d core.Download) view.Live {
-	t, ok := e.of(d.ID)
+func (e *engine) Live(ctx context.Context, d core.Download) view.Live {
+	t, ok := e.of(ctx, d)
 	if !ok {
 		return view.Live{}
 	}
+	dir := t.ContentPath
+	if dir == "" && t.SavePath != "" {
+		dir = filepath.Join(t.SavePath, t.Name)
+	}
+	e.mu.Lock()
+	files := e.files[t.InfoHash]
+	e.mu.Unlock()
 	return view.Live{
 		DownRate: t.DownRate, UpRate: t.UpRate,
 		Torrent: &view.TorrentLive{
@@ -184,43 +182,24 @@ func (e *engine) Live(_ context.Context, d core.Download) view.Live {
 			Peers: t.Peers, Seeds: t.Seeds, Private: t.Private,
 			Uploaded: t.Uploaded, SeedingTime: t.SeedingTime,
 			OwnRatio: t.OwnRatio, OwnSeedingTime: t.OwnSeeding, LimitPaused: t.Paused,
+			Name: t.Name, Dir: dir, Files: files,
 		},
 	}
 }
 
-func (e *engine) Lookup(ctx context.Context, hash string) (core.Download, bool, error) {
-	e.mu.Lock()
-	t, ok := e.torrents[hash]
-	e.mu.Unlock()
-	if !ok {
-		return core.Download{}, false, nil
-	}
-	d, err := e.downloads.Get(ctx, t.DownloadID)
-	if errors.Is(err, core.ErrNotFound) {
-		return core.Download{}, false, nil
-	}
-	return d, err == nil, err
-}
-
-func (e *engine) Torrent(_ context.Context, d core.Download, _ bool) (qbit.Torrent, bool, error) {
-	t, ok := e.of(d.ID)
-	return qbit.Torrent{Name: t.Name, SavePath: t.SavePath, ContentPath: t.ContentPath}, ok, nil
-}
-
-func (e *engine) Files(_ context.Context, id core.ID) ([]qbit.TorrentFile, bool, error) {
-	t, ok := e.of(id)
-	if !ok {
-		return nil, false, nil
-	}
+// SetShareLimit implements app.ShareLimitSetter.
+func (e *engine) SetShareLimit(_ context.Context, id core.ID, l core.ShareLimit) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.files[t.InfoHash], true, nil
+	e.limits[id] = limitCall{Limit: l}
+	return nil
 }
 
-func (e *engine) SetShareLimit(_ context.Context, id core.ID, ratio float64, seconds int64, useGlobal bool) error {
+// ClearShareLimit implements app.ShareLimitSetter.
+func (e *engine) ClearShareLimit(_ context.Context, id core.ID) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.limits[id] = limitCall{Ratio: ratio, Seconds: seconds, UseGlobal: useGlobal}
+	e.limits[id] = limitCall{Cleared: true}
 	return nil
 }
 
@@ -229,57 +208,6 @@ func (e *engine) limit(id core.ID) (limitCall, bool) {
 	defer e.mu.Unlock()
 	l, ok := e.limits[id]
 	return l, ok
-}
-
-func (e *engine) addCalls() []addCall {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return append([]addCall(nil), e.added...)
-}
-
-func (e *engine) AddTorrentFile(ctx context.Context, data []byte, opts qbit.AddOptions) (string, error) {
-	return e.add(ctx, addCall{File: true, Data: data, Opts: opts}, string(data))
-}
-
-func (e *engine) AddURL(ctx context.Context, u string, opts qbit.AddOptions) (string, error) {
-	return e.add(ctx, addCall{URL: u, Opts: opts}, u)
-}
-
-// add mimics the daemon: it creates the Download and the torrent.
-func (e *engine) add(ctx context.Context, c addCall, key string) (string, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.failAdd != nil {
-		return "", e.failAdd
-	}
-	sum := sha1.Sum([]byte(key)) //nolint:gosec
-	hash := hex.EncodeToString(sum[:])
-	if _, dup := e.torrents[hash]; dup {
-		return hash, fmt.Errorf("torrent exists: %w", core.ErrConflict)
-	}
-	e.n++
-	at := epoch.Add(time.Duration(e.n) * time.Minute)
-	state := core.StateQueued
-	if strings.HasPrefix(c.URL, "magnet:") {
-		state = core.StateFetchingMetadata
-	}
-	d := core.Download{
-		ID: core.NewID(), Name: "added " + hash[:6], SourceKind: core.SourceTorrent, State: state,
-		CategoryID: c.Opts.CategoryID, Paused: c.Opts.Paused, Priority: core.DownloadPriorityNormal,
-		QueuePosition: 1000 + e.n, AddedAt: at, UpdatedAt: at,
-	}
-	if err := e.downloads.Create(ctx, d); err != nil {
-		return "", err
-	}
-	t := torrent{DownloadID: d.ID, InfoHash: hash, Name: d.Name}
-	if l := c.Opts.ShareLimit; l != nil && !l.Global {
-		t.OwnRatio, t.OwnSeeding = new(l.Ratio), new(time.Duration(l.SeedingSeconds)*time.Second)
-	}
-	e.torrents[hash] = t
-	e.byID[d.ID] = hash
-	c.Hash = hash
-	e.added = append(e.added, c)
-	return hash, nil
 }
 
 // put registers a torrent for tests.
@@ -291,7 +219,7 @@ func (e *engine) put(t torrent) {
 }
 
 // setFiles gives a torrent its files.
-func (e *engine) setFiles(hash string, fs ...qbit.TorrentFile) {
+func (e *engine) setFiles(hash string, fs ...core.TorrentFile) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.files[hash] = fs
@@ -313,6 +241,8 @@ type stack struct {
 	limiter    *auth.LoginLimiter
 	remover    *removed
 	engine     *engine
+	sources    *store.TorrentSourceRepo
+	adder      *app.AddService
 	torrents   string // torrent complete root
 	incomplete string
 	user, pass string
@@ -324,10 +254,16 @@ type stack struct {
 type stackOption func(*stackConfig)
 
 type stackConfig struct {
-	deps func(*qbit.Deps)
+	deps    func(*qbit.Deps)
+	seeding *core.SeedingSettings
 }
 
 func withDeps(f func(*qbit.Deps)) stackOption { return func(c *stackConfig) { c.deps = f } }
+
+// withSeeding sets the Share Limit defaults of the Settings.
+func withSeeding(s core.SeedingSettings) stackOption {
+	return func(c *stackConfig) { c.seeding = &s }
+}
 
 func newStack(t testing.TB, opts ...stackOption) *stack {
 	t.Helper()
@@ -352,22 +288,31 @@ func newStack(t testing.TB, opts ...stackOption) *stack {
 	require.NoError(t, err)
 	cur := s.settings.Current()
 	cur.Paths.Torrent = core.Roots{Incomplete: s.incomplete, Complete: s.torrents}
+	if sc.seeding != nil {
+		cur.Seeding = *sc.seeding
+	}
 	require.NoError(t, s.settings.Update(ctx, cur))
 
-	appOpts := []app.Option{app.WithClock(s.clock.Now), app.WithLogger(logger), app.WithDataRemover(s.remover)}
+	key := store.GenerateKey()
+	s.sources = store.NewTorrentSourceRepo(db, key)
+	s.engine = newEngine(t, s.sources)
+	appOpts := []app.Option{
+		app.WithClock(s.clock.Now), app.WithLogger(logger), app.WithDataRemover(s.remover),
+		app.WithTorrentSources(s.sources), app.WithShareLimits(s.engine),
+	}
 	s.dls = app.NewDownloadService(s.downloads, s.cats, bus, appOpts...)
+	s.adder = app.NewAddService(s.dls, store.NewDownloadSourceRepo(db, key), s.settings, appOpts...)
 	s.categories = app.NewCategoryService(s.cats, s.downloads, bus, appOpts...)
 	s.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
 	s.user, s.pass = auth.QBitUsername, s.appKey.Current().Reveal()
-	s.engine = newEngine(t, s.downloads)
 	s.limiter = auth.NewLoginLimiter(auth.WithLimiterClock(s.clock.Now))
 	views, err := view.New(view.Config{Downloads: s.downloads, Live: s.engine, Settings: s.settings.Current})
 	require.NoError(t, err)
 
 	deps := qbit.Deps{
 		AppKey: s.appKey, Downloads: s.dls, Categories: s.categories, Settings: s.settings,
-		Torrents: s.engine, Adder: s.engine, ShareLimits: s.engine, Files: s.engine, View: views,
+		Adder: s.adder, View: views,
 		Limiter: s.limiter, Logger: logger, Clock: s.clock.Now,
 	}
 	if sc.deps != nil {
@@ -394,6 +339,7 @@ func (s *stack) seed(name string, mutate ...func(*core.Download, *torrent)) (cor
 	}
 	v.DownloadID = d.ID
 	require.NoError(s.t, s.downloads.Create(context.Background(), d))
+	s.addSource(d.ID, v.InfoHash)
 	s.engine.put(v)
 	return d, v
 }
@@ -590,8 +536,20 @@ func (s *stack) seedBulk(i int) {
 	}
 	require.NoError(s.t, s.downloads.Create(context.Background(), d))
 	sum := sha1.Sum([]byte(d.Name)) //nolint:gosec
+	s.addSource(d.ID, hex.EncodeToString(sum[:]))
 	s.engine.put(torrent{
 		DownloadID: d.ID, InfoHash: hex.EncodeToString(sum[:]), Name: d.Name, Size: d.TotalBytes,
 		DoneBytes: d.DoneBytes, DownRate: 1 << 20,
 	})
+}
+
+// addSource stores the torrent source of a Download, which the info hash
+// lookup reads. A hash that is not one (a test of bad engine data) has none.
+func (s *stack) addSource(id core.ID, hash string) {
+	s.t.Helper()
+	h, err := core.ParseInfoHash(hash)
+	if err != nil {
+		return
+	}
+	require.NoError(s.t, s.sources.Create(context.Background(), core.TorrentSource{DownloadID: id, InfoHash: h, TorrentPath: "/t/" + hash + ".torrent"}))
 }

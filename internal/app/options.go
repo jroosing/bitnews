@@ -49,13 +49,16 @@ type options struct {
 	shareLimits ShareLimitSetter
 }
 
-// ShareLimitSetter gives a torrent Download its own Share Limit.
+// ShareLimitSetter gives a torrent Download its own Share Limit, or removes
+// it so the global default applies again. The torrent runner is one.
 type ShareLimitSetter interface {
 	SetShareLimit(ctx context.Context, id core.ID, l core.ShareLimit) error
+	ClearShareLimit(ctx context.Context, id core.ID) error
 }
 
-// WithShareLimits sets where AddService.Add sends a new torrent's own Share
-// Limit. Without it the limit is ignored.
+// WithShareLimits sets where Share Limits go: a new torrent's own limit
+// (AddService.Add) and DownloadService.SetShareLimit. Without it AddService
+// ignores the limit and SetShareLimit is unavailable.
 func WithShareLimits(s ShareLimitSetter) Option {
 	return func(o *options) { o.shareLimits = s }
 }

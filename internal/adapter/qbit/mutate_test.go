@@ -6,11 +6,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jroosing/bitnews/internal/adapter/qbit"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -331,30 +331,23 @@ func TestSetShareLimits(t *testing.T) {
 		ratio    string
 		minutes  string
 		want     limitCall
-		globalOn *qbit.GlobalShare
+		defaults core.SeedingSettings
 	}{
-		{"both set", "2.5", "120", limitCall{Ratio: 2.5, Seconds: 7200}, nil},
-		{"both global", "-2", "-2", limitCall{UseGlobal: true}, nil},
-		{"both unlimited", "-1", "-1", limitCall{Ratio: -1, Seconds: -1}, nil},
-		{"only ratio", "1", "-1", limitCall{Ratio: 1, Seconds: -1}, nil},
-		{"only time", "-1", "30", limitCall{Ratio: -1, Seconds: 1800}, nil},
-		{"ratio global with the global limit off", "-2", "30", limitCall{Ratio: -1, Seconds: 1800}, nil},
-		{"ratio global with a global ratio", "-2", "30", limitCall{Ratio: 3, Seconds: 1800},
-			&qbit.GlobalShare{RatioEnabled: true, Ratio: 3}},
-		{"time global with a global time", "1.5", "-2", limitCall{Ratio: 1.5, Seconds: 600},
-			&qbit.GlobalShare{SeedingTimeEnabled: true, SeedingMinutes: 10}},
-		{"zero is a limit of zero", "0", "0", limitCall{Ratio: 0, Seconds: 0}, nil},
-		{"other negatives are unlimited", "-7", "-5", limitCall{Ratio: -1, Seconds: -1}, nil},
+		{"both set", "2.5", "120", limitOf(2.5, 120*time.Minute), core.SeedingSettings{}},
+		{"both global", "-2", "-2", limitCall{Cleared: true}, core.SeedingSettings{}},
+		{"both unlimited", "-1", "-1", limitOf(-1, -1), core.SeedingSettings{}},
+		{"only ratio", "1", "-1", limitOf(1, -1), core.SeedingSettings{}},
+		{"only time", "-1", "30", limitOf(-1, 30*time.Minute), core.SeedingSettings{}},
+		{"ratio global with the global limit off", "-2", "30", limitOf(-1, 30*time.Minute), core.SeedingSettings{}},
+		{"ratio global with a global ratio", "-2", "30", limitOf(3, 30*time.Minute), core.SeedingSettings{RatioLimit: 3}},
+		{"time global with a global time", "1.5", "-2", limitOf(1.5, 10*time.Minute), core.SeedingSettings{SeedingTimeMinutes: 10}},
+		{"zero is a limit of zero", "0", "0", limitOf(0, 0), core.SeedingSettings{}},
+		{"other negatives are unlimited", "-7", "-5", limitOf(-1, -1), core.SeedingSettings{}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s := newStack(t, withDeps(func(d *qbit.Deps) {
-				if tc.globalOn != nil {
-					g := *tc.globalOn
-					d.GlobalShare = func() qbit.GlobalShare { return g }
-				}
-			}))
+			s := newStack(t, withSeeding(tc.defaults))
 			d, v := s.seed("one", ready("/d/one"))
 			sid := s.login()
 
@@ -394,7 +387,12 @@ func TestAHugeSeedingTimeIsClampedNotOverflowed(t *testing.T) {
 	s.post(sid, "/api/v2/torrents/setShareLimits", url.Values{"hashes": {v.InfoHash}, "ratioLimit": {"1"}, "seedingTimeLimit": {"9223372036854775807"}})
 
 	got, _ := s.engine.limit(d.ID)
-	assert.Positive(t, got.Seconds)
+	assert.Positive(t, got.Limit.SeedingTime)
+}
+
+// limitOf is a Share Limit of the Download's own.
+func limitOf(ratio float64, seeding time.Duration) limitCall {
+	return limitCall{Limit: core.ShareLimit{Ratio: ratio, SeedingTime: seeding}}
 }
 
 func TestMutatingCallsNeedPOST(t *testing.T) {

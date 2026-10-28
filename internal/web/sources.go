@@ -1,8 +1,6 @@
 package web
 
 import (
-	"context"
-
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -25,17 +23,4 @@ type RuntimeSource interface {
 	// on restart. A Usenet Queue only has a download limit.
 	SpeedLimits(kind core.SourceKind) (down, up int64)
 	SetSpeedLimit(kind core.SourceKind, down, up int64)
-}
-
-// TorrentSource is what the UI asks about torrents that the view module does
-// not give: the file list, and setting the Share Limit. The detail page owns
-// this interface; internal/daemon implements it (web_torrents.go). The types
-// are in detail_source.go.
-type TorrentSource interface {
-	// Files lists the files of the torrent of a Download, nil when the
-	// torrent engine does not know them right now.
-	Files(ctx context.Context, id core.ID) ([]TorrentFile, error)
-	// SetShareLimit gives the torrent its own Share Limit, or with
-	// UseDefault removes it so the global default applies again.
-	SetShareLimit(ctx context.Context, id core.ID, change ShareLimitChange) error
 }

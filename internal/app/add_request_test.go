@@ -132,6 +132,8 @@ type recordedLimits struct {
 	got map[core.ID]core.ShareLimit
 }
 
+func (r *recordedLimits) ClearShareLimit(context.Context, core.ID) error { return nil }
+
 func (r *recordedLimits) SetShareLimit(_ context.Context, id core.ID, l core.ShareLimit) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -137,12 +137,10 @@ func TestPreferencesReportsTheTorrentNetworkSettings(t *testing.T) {
 
 func TestPreferencesReportsTheGlobalShareLimit(t *testing.T) {
 	t.Parallel()
-	for action, want := range map[string]int{"pause": 0, "remove": 1, "remove_files": 3, "": 0} {
-		s := newStack(t, withDeps(func(d *qbit.Deps) {
-			d.GlobalShare = func() qbit.GlobalShare {
-				return qbit.GlobalShare{RatioEnabled: true, Ratio: 1.5, SeedingTimeEnabled: true, SeedingMinutes: 600, Action: action}
-			}
-		}))
+	for action, want := range map[core.SeedingAction]int{
+		core.SeedingActionPause: 0, core.SeedingActionRemove: 1, core.SeedingActionRemoveData: 3, "": 0,
+	} {
+		s := newStack(t, withSeeding(core.SeedingSettings{RatioLimit: 1.5, SeedingTimeMinutes: 600, Action: action}))
 		sid := s.login()
 
 		var p prefsJSON

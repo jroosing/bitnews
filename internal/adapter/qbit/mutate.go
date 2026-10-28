@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
@@ -179,38 +180,29 @@ func shareArg(raw string, float bool) (v float64, ok bool) {
 	return float64(min(max(n, -2), maxLimitMinutes)), true
 }
 
-// resolveShare turns qBittorrent's limit codes into one call of the port. If
-// both are -2 the global default applies. If only one is, that one takes the
-// global value now (unlimited when the global limit is off), because the port
-// has a single "use global" flag.
-func (h *handler) resolveShare(ratio, minutes float64) (r float64, seconds int64, global bool) {
+// resolveShare turns qBittorrent's limit codes into a Share Limit; nil
+// means the global default. If both are -2 the global default applies. If
+// only one is, that one takes the global value now (unlimited when the global
+// limit is off), because a Download has its own limit or none.
+func (h *handler) resolveShare(ratio, minutes float64) *core.ShareLimit {
 	if ratio == -2 && minutes == -2 {
-		return 0, 0, true
+		return nil
 	}
-	var g GlobalShare
-	if h.GlobalShare != nil {
-		g = h.GlobalShare()
+	g := h.Settings.Current().Seeding.ShareLimit()
+	l := core.UnlimitedShareLimit()
+	switch {
+	case ratio == -2:
+		l.Ratio = g.Ratio
+	case ratio >= 0:
+		l.Ratio = ratio
 	}
-	if ratio == -2 {
-		ratio = -1
-		if g.RatioEnabled {
-			ratio = g.Ratio
-		}
+	switch {
+	case minutes == -2:
+		l.SeedingTime = g.SeedingTime
+	case minutes >= 0:
+		l.SeedingTime = time.Duration(minutes) * time.Minute
 	}
-	if minutes == -2 {
-		minutes = -1
-		if g.SeedingTimeEnabled {
-			minutes = float64(g.SeedingMinutes)
-		}
-	}
-	r, seconds = -1, -1
-	if ratio >= 0 {
-		r = ratio
-	}
-	if minutes >= 0 {
-		seconds = int64(minutes) * 60
-	}
-	return r, seconds, false
+	return &l
 }
 
 // setShareLimits serves torrents/setShareLimits. inactiveSeedingTimeLimit is
@@ -226,9 +218,9 @@ func (c *call) setShareLimits() {
 	if !ok {
 		return
 	}
-	r, secs, global := c.h.resolveShare(ratio, minutes)
+	limit := c.h.resolveShare(ratio, minutes)
 	if c.each(es, func(e entry) error {
-		return c.h.ShareLimits.SetShareLimit(c.ctx(), e.d.ID, r, secs, global)
+		return c.h.Downloads.SetShareLimit(c.ctx(), e.d.ID, limit)
 	}) {
 		c.ok()
 	}

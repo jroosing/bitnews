@@ -19,24 +19,10 @@ import (
 	"github.com/jroosing/bitnews/internal/view"
 )
 
-// nullEngine is a torrent engine with no torrents that accepts every add.
-type nullEngine struct{ urls []string }
+// nullEngine is a torrent engine with no torrents.
+type nullEngine struct{}
 
-func (*nullEngine) Lookup(context.Context, string) (core.Download, bool, error) {
-	return core.Download{}, false, nil
-}
-func (*nullEngine) Torrent(context.Context, core.Download, bool) (qbit.Torrent, bool, error) {
-	return qbit.Torrent{}, false, nil
-}
 func (*nullEngine) Live(context.Context, core.Download) view.Live { return view.Live{} }
-func (*nullEngine) AddTorrentFile(context.Context, []byte, qbit.AddOptions) (string, error) {
-	return strings.Repeat("a", 40), nil
-}
-func (n *nullEngine) AddURL(_ context.Context, u string, _ qbit.AddOptions) (string, error) {
-	n.urls = append(n.urls, u)
-	return strings.Repeat("b", 40), nil
-}
-func (*nullEngine) SetShareLimit(context.Context, core.ID, float64, int64, bool) error { return nil }
 
 // withQBit mounts the real qBittorrent adapter at /api/v2/.
 func withQBit(eng *nullEngine) envOption {
@@ -57,7 +43,7 @@ func mountQBit(e *env, c *api.Config, eng *nullEngine) {
 	views := viewsOf(e, eng)
 	c.QBit = qbit.New(qbit.Deps{
 		AppKey: c.AppKey, Downloads: c.Downloads, Categories: c.Categories, Settings: c.Settings,
-		Torrents: eng, Adder: eng, ShareLimits: eng, View: views, Logger: c.Logger,
+		Adder: c.Adder, View: views, Logger: c.Logger,
 	})
 }
 
@@ -241,7 +227,8 @@ func TestTheAccessLogOfQBitHoldsThePathAndNothingElse(t *testing.T) {
 
 	require.Equal(t, "Ok.", add.Body.String())
 	require.Equal(t, http.StatusOK, get.Code)
-	require.NotEmpty(t, eng.urls, "the adapter did get the URL")
+	_, err := e.downloads.Get(context.Background(), onlyDownload(t, e))
+	require.NoError(t, err, "the magnet link was added")
 	logs := e.log.String()
 	assert.NotContains(t, logs, passkey)
 	assert.NotContains(t, logs, "tr.example")
@@ -251,4 +238,13 @@ func TestTheAccessLogOfQBitHoldsThePathAndNothingElse(t *testing.T) {
 	assert.NotContains(t, logs, "/api/v2/torrents/add?")
 	assert.NotContains(t, logs, "/api/v2/torrents/info?")
 	assert.Contains(t, logs, user, "the login is logged by username")
+}
+
+// onlyDownload returns the ID of the one Download of the env.
+func onlyDownload(t *testing.T, e *env) core.ID {
+	t.Helper()
+	ds, _, err := e.downloads.List(context.Background(), core.DownloadQuery{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, ds, 1)
+	return ds[0].ID
 }

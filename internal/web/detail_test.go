@@ -13,7 +13,6 @@ import (
 
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/view"
-	"github.com/jroosing/bitnews/internal/web"
 )
 
 func TestDetailOfAReadyUsenetDownload(t *testing.T) {
@@ -22,7 +21,7 @@ func TestDetailOfAReadyUsenetDownload(t *testing.T) {
 	require.NoError(t, err)
 	dl := d.add(core.Download{Name: "Some.Movie.2024", CategoryID: cat.ID, TotalBytes: 3 << 30, DoneBytes: 3 << 30,
 		OutputPath: "/media/complete/Some.Movie.2024", Priority: core.DownloadPriorityHigh})
-	d.detail.reports[dl.ID] = web.FetchReport{MissingArticles: 3, MissingBytes: 2 << 20, DamagedArticles: 1, DamagedBytes: 1 << 20, MissingFiles: 2}
+	d.detail.reports[dl.ID] = core.FetchDetail{MissingArticles: 3, MissingBytes: 2 << 20, DamagedArticles: 1, DamagedBytes: 1 << 20, MissingFiles: 2}
 
 	rec := d.b.get("/downloads/" + string(dl.ID))
 
@@ -44,7 +43,7 @@ func TestDetailOfAReadyUsenetDownload(t *testing.T) {
 func TestDetailOfACleanFetchSaysSo(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{})
-	d.detail.reports[dl.ID] = web.FetchReport{}
+	d.detail.reports[dl.ID] = core.FetchDetail{}
 
 	rec := d.b.get("/downloads/" + string(dl.ID))
 
@@ -107,9 +106,8 @@ func TestDetailOfATorrentShowsFilesPeersRatioAndShareLimit(t *testing.T) {
 	d.live.set(dl.ID, view.Live{UpRate: 2 << 20, Torrent: &view.TorrentLive{
 		Hash: "0123456789abcdef0123456789abcdef01234567", Registered: true, Private: true,
 		Size: 6 << 30, DoneBytes: 6 << 30, Peers: 7, Seeds: 3, Uploaded: 12 << 30, SeedingTime: 49 * time.Hour,
-		OwnRatio: &two,
+		OwnRatio: &two, Files: []core.TorrentFile{{Path: "linux/disc1.iso", Size: 4 << 30}, {Path: "linux/<b>x</b>.txt", Size: 12}},
 	}})
-	d.torrents.files[dl.ID] = []web.TorrentFile{{Path: "linux/disc1.iso", Size: 4 << 30}, {Path: "linux/<b>x</b>.txt", Size: 12}}
 
 	rec := d.b.get("/downloads/" + string(dl.ID))
 
@@ -373,7 +371,7 @@ func TestShareLimitCustomValuesAreSet(t *testing.T) {
 	rec := d.act("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {"1.5"}, "minutes": {"1440"}})
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Equal(t, []web.ShareLimitChange{{Ratio: 1.5, Minutes: 1440}}, d.torrents.recorded())
+	assert.Equal(t, []shareCall{{Limit: core.ShareLimit{Ratio: 1.5, SeedingTime: 1440 * time.Minute}}}, d.torrents.recorded())
 	assert.Contains(t, rec.Header().Get("HX-Trigger"), "Share limit saved")
 	assert.NotNil(t, byID(parseHTML(t, rec.Body.String()), "share-card"))
 }
@@ -387,7 +385,11 @@ func TestShareLimitBlankFieldsMeanNoLimit(t *testing.T) {
 	d.act("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {"3"}, "minutes": {" "}})
 	d.act("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"mode": {"default"}, "ratio": {"9"}})
 
-	assert.Equal(t, []web.ShareLimitChange{{Ratio: -1, Minutes: 30}, {Ratio: 3, Minutes: -1}, {UseDefault: true}}, d.torrents.recorded())
+	assert.Equal(t, []shareCall{
+		{Limit: core.ShareLimit{Ratio: -1, SeedingTime: 30 * time.Minute}},
+		{Limit: core.ShareLimit{Ratio: 3, SeedingTime: -1}},
+		{Cleared: true},
+	}, d.torrents.recorded())
 }
 
 func TestShareLimitInvalidValuesAreRejectedWithFieldErrors(t *testing.T) {

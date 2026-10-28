@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jroosing/bitnews/internal/adapter/qbit"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -269,7 +268,7 @@ func TestPropertiesAndFiles(t *testing.T) {
 	_, v := s.seed("rel", inState(core.StateFetched), sized(300, 300), func(_ *core.Download, v *torrent) {
 		v.Private, v.SavePath = true, "/data/torrents/tv"
 	})
-	s.engine.setFiles(v.InfoHash, qbit.TorrentFile{Name: "rel/a.mkv", Size: 200}, qbit.TorrentFile{Name: "rel/../b.nfo", Size: 100})
+	s.engine.setFiles(v.InfoHash, core.TorrentFile{Path: "rel/a.mkv", Size: 200}, core.TorrentFile{Path: "rel/../b.nfo", Size: 100})
 	sid := s.login()
 
 	var props map[string]any
@@ -293,7 +292,7 @@ func TestFilesOfAReadyTorrentAreComplete(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	_, v := s.seed("rel", ready("/d/rel"), sized(100, 100))
-	s.engine.setFiles(v.InfoHash, qbit.TorrentFile{Name: "rel/a.mkv", Size: 100})
+	s.engine.setFiles(v.InfoHash, core.TorrentFile{Path: "rel/a.mkv", Size: 100})
 	sid := s.login()
 
 	var files []map[string]any
@@ -318,9 +317,9 @@ func TestPropertiesAndFilesOfAnUnknownOrBadHashAre404(t *testing.T) {
 	}
 }
 
-func TestFilesWithoutAFileSourceIsEmpty(t *testing.T) {
+func TestFilesOfATorrentWithoutMetadataIsEmpty(t *testing.T) {
 	t.Parallel()
-	s := newStack(t, withDeps(func(d *qbit.Deps) { d.Files = nil }))
+	s := newStack(t)
 	_, v := s.seed("x")
 	sid := s.login()
 

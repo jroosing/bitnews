@@ -2,6 +2,7 @@ package qbit
 
 import (
 	"cmp"
+	"errors"
 	"path"
 	"path/filepath"
 	"slices"
@@ -82,7 +83,7 @@ type torrentInfo struct {
 type entry struct {
 	d core.Download
 	v view.View
-	t Torrent
+	t torrentPaths
 	// hash is the info hash, from the view.
 	hash string
 }
@@ -129,16 +130,29 @@ func (c *call) loadAll() ([]entry, error) {
 	}
 }
 
-// entryOf describes the torrent of d; false means d has none. full is passed
-// to the TorrentSource.
+// torrentPaths are a torrent's name and paths. SavePath is the directory
+// that holds the torrent's content directory or file; ContentPath is the
+// content itself. Either may be empty when nothing is known.
+type torrentPaths struct {
+	Name        string
+	SavePath    string
+	ContentPath string
+}
+
+// entryOf describes the torrent of d; false means d has none. full also looks
+// on disk for the torrent's own root directory (Deps.ContentDir), which is
+// too slow for every torrent of every poll.
 func (c *call) entryOf(d core.Download, full bool) (entry, bool, error) {
-	t, ok, err := c.h.Torrents.Torrent(c.ctx(), d, full)
-	if err != nil || !ok {
-		return entry{}, false, err
-	}
 	v := c.h.View.Of(c.ctx(), d)
 	if v.Torrent == nil || !validHash(v.Torrent.Hash) {
 		return entry{}, false, nil
+	}
+	t := torrentPaths{Name: v.Torrent.Name}
+	if v.Torrent.Dir != "" {
+		t.ContentPath, t.SavePath = v.Torrent.Dir, filepath.Dir(v.Torrent.Dir)
+	}
+	if full && v.Torrent.Registered && c.h.ContentDir != nil {
+		t.ContentPath = c.h.ContentDir(d)
 	}
 	return entry{d: d, v: v, t: t, hash: v.Torrent.Hash}, true, nil
 }
@@ -159,8 +173,11 @@ func (c *call) loadHashes(hashes []string) ([]entry, error) {
 }
 
 func (c *call) loadOne(hash string) (entry, bool, error) {
-	d, ok, err := c.h.Torrents.Lookup(c.ctx(), hash)
-	if err != nil || !ok {
+	d, err := c.h.Downloads.ByInfoHash(c.ctx(), hash)
+	if errors.Is(err, core.ErrNotFound) {
+		return entry{}, false, nil
+	}
+	if err != nil {
 		return entry{}, false, err
 	}
 	if d.SourceKind != core.SourceTorrent {
@@ -273,7 +290,7 @@ func limitsOf(l view.ShareLimit) (ratio float64, minutes int64) {
 // contentAndSavePath are the content_path and save_path of a torrent. The
 // content path of a Ready Download is its output dir, which media managers
 // scan recursively. Without paths from the engine the torrent roots stand in.
-func contentAndSavePath(d core.Download, t Torrent, paths core.Paths) (content, save string) {
+func contentAndSavePath(d core.Download, t torrentPaths, paths core.Paths) (content, save string) {
 	content, save = t.ContentPath, t.SavePath
 	if content == "" && d.State == core.StateReady {
 		content = d.OutputPath

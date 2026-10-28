@@ -1,29 +1,57 @@
 package qbit_test
 
 import (
+	"context"
+	"crypto/sha1" //nolint:gosec // an info hash, not a security hash
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jroosing/bitnews/internal/adapter/qbit"
-	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/torrent/torrenttest"
 )
 
-const (
-	magnetSecret = "p4ssk3y-abc123"
-	magnet       = "magnet:?xt=urn:btih:c9e15763f722f23e98a29decdfae341b98d53056&dn=Show.S01E01&tr=https%3A%2F%2Ftracker.example%2Fannounce%3Fpasskey%3D" + magnetSecret
-	torrentBody  = "d4:infod6:lengthi1e4:name1:a12:piece lengthi16384e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"
-)
+const magnetSecret = "p4ssk3y-abc123"
+
+var magnet = magnetN(0)
+
+// magnetN is a distinct magnet link per n, with a passkey in its tracker.
+func magnetN(n int) string {
+	sum := sha1.Sum([]byte(fmt.Sprint("magnet", n))) //nolint:gosec
+	return "magnet:?xt=urn:btih:" + hex.EncodeToString(sum[:]) + "&dn=Show.S01E01&tr=https%3A%2F%2Ftracker.example%2Fannounce%3Fpasskey%3D" + magnetSecret
+}
+
+// torrentFile is a valid .torrent file named name.
+func torrentFile(t testing.TB, name string) string {
+	t.Helper()
+	return string(torrenttest.MakeRandom(t, name, map[string]int{"a.bin": 100}).Torrent)
+}
+
+// indexer serves .torrent files at /dl/<name>.torrent, as an indexer does,
+// and answers 404 for anything else.
+func (s *stack) indexer() string {
+	s.t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name, ok := strings.CutPrefix(r.URL.Path, "/dl/")
+		if !ok || !strings.HasSuffix(name, ".torrent") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(torrentFile(s.t, strings.TrimSuffix(name, ".torrent"))))
+	}))
+	s.t.Cleanup(srv.Close)
+	return srv.URL
+}
 
 func (s *stack) add(sid *http.Cookie, form url.Values) *httptest.ResponseRecorder {
 	s.t.Helper()
@@ -37,6 +65,15 @@ func (s *stack) upload(sid *http.Cookie, parts ...part) *httptest.ResponseRecord
 	return s.serve(r)
 }
 
+// added lists the stored Downloads in the order they were added.
+func (s *stack) added() []core.Download {
+	s.t.Helper()
+	ds, _, err := s.downloads.List(context.Background(), core.DownloadQuery{Limit: 1000})
+	require.NoError(s.t, err)
+	slices.SortFunc(ds, func(a, b core.Download) int { return a.QueuePosition - b.QueuePosition })
+	return ds
+}
+
 func TestAddAMagnetLink(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
@@ -46,9 +83,7 @@ func TestAddAMagnetLink(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "Ok.", rec.Body.String())
-	calls := s.engine.addCalls()
-	require.Len(t, calls, 1)
-	assert.Equal(t, magnet, calls[0].URL, "handed to the adder as it came")
+	require.Len(t, s.added(), 1)
 	got := s.info(sid, "")
 	require.Len(t, got, 1)
 	assert.Equal(t, "tv-sonarr", got[0].Category, "an unknown category is created")
@@ -59,14 +94,13 @@ func TestAddSeveralURLsOnSeparateLines(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	sid := s.login()
-	urls := magnet + "\r\nhttps://indexer.example/dl/1.torrent?apikey=k1\n\n  http://indexer.example/dl/2.torrent  \n" + magnet
+	base := s.indexer()
+	urls := magnet + "\r\n" + base + "/dl/one.torrent?apikey=k1\n\n  " + base + "/dl/two.torrent  \n" + magnet
 
 	rec := s.add(sid, url.Values{"urls": {urls}})
 
 	assert.Equal(t, "Ok.", rec.Body.String())
-	calls := s.engine.addCalls()
-	require.Len(t, calls, 3, "the duplicate line is dropped")
-	assert.Equal(t, "http://indexer.example/dl/2.torrent", calls[2].URL, "trimmed")
+	assert.Len(t, s.added(), 3, "the duplicate line is dropped, the spaces are trimmed")
 }
 
 func TestAddRefusesURLsThatAreNotMagnetOrHTTP(t *testing.T) {
@@ -82,18 +116,19 @@ func TestAddRefusesURLsThatAreNotMagnetOrHTTP(t *testing.T) {
 
 		assert.Equal(t, "Fails.", rec.Body.String(), "%q", u)
 	}
-	assert.Empty(t, s.engine.addCalls(), "nothing reached the adder")
+	assert.Empty(t, s.added(), "nothing was added")
 }
 
 func TestAddIsCaseInsensitiveAboutTheScheme(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	sid := s.login()
+	base := strings.Replace(s.indexer(), "http://", "HTTP://", 1)
 
-	rec := s.add(sid, url.Values{"urls": {"HTTPS://Indexer.example/a.torrent\nMagnet:?xt=urn:btih:" + strings.Repeat("a", 40)}})
+	rec := s.add(sid, url.Values{"urls": {base + "/dl/a.torrent\nMagnet:?xt=urn:btih:" + strings.Repeat("a", 40)}})
 
 	assert.Equal(t, "Ok.", rec.Body.String())
-	assert.Len(t, s.engine.addCalls(), 2)
+	assert.Len(t, s.added(), 2)
 }
 
 func TestAddARefusesTooManyURLsAndHugeOnes(t *testing.T) {
@@ -110,7 +145,7 @@ func TestAddARefusesTooManyURLsAndHugeOnes(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, tooMany.Code)
 	assert.Equal(t, "Fails.", huge.Body.String())
-	assert.Empty(t, s.engine.addCalls())
+	assert.Empty(t, s.added())
 }
 
 func TestAddATorrentFileUpload(t *testing.T) {
@@ -119,17 +154,15 @@ func TestAddATorrentFileUpload(t *testing.T) {
 	sid := s.login()
 
 	rec := s.upload(sid,
-		part{name: "torrents", filename: "Show.S01E01.torrent", content: torrentBody},
+		part{name: "torrents", filename: "Show.S01E01.torrent", content: torrentFile(t, "Show.S01E01")},
 		part{name: "category", content: "tv"},
 		part{name: "paused", content: "true"},
 	)
 
 	assert.Equal(t, "Ok.", rec.Body.String())
-	calls := s.engine.addCalls()
-	require.Len(t, calls, 1)
-	assert.True(t, calls[0].File)
-	assert.Equal(t, torrentBody, string(calls[0].Data))
-	assert.True(t, calls[0].Opts.Paused)
+	ds := s.added()
+	require.Len(t, ds, 1)
+	assert.True(t, ds[0].Paused)
 	got := s.info(sid, "")
 	require.Len(t, got, 1)
 	assert.Equal(t, "tv", got[0].Category)
@@ -143,12 +176,12 @@ func TestAddATorrentFileTogetherWithURLsInTheSameCall(t *testing.T) {
 
 	rec := s.upload(sid,
 		part{name: "urls", content: magnet},
-		part{name: "torrents", filename: "a.torrent", content: torrentBody},
-		part{name: "torrents", filename: "b.torrent", content: torrentBody + "x"},
+		part{name: "torrents", filename: "a.torrent", content: torrentFile(t, "a")},
+		part{name: "torrents", filename: "b.torrent", content: torrentFile(t, "b")},
 	)
 
 	assert.Equal(t, "Ok.", rec.Body.String())
-	assert.Len(t, s.engine.addCalls(), 3)
+	assert.Len(t, s.added(), 3)
 }
 
 func TestTheStoppedOptionOfNewerClientsPausesToo(t *testing.T) {
@@ -158,7 +191,7 @@ func TestTheStoppedOptionOfNewerClientsPausesToo(t *testing.T) {
 
 	s.add(sid, url.Values{"urls": {magnet}, "stopped": {"true"}})
 
-	assert.True(t, s.engine.addCalls()[0].Opts.Paused)
+	assert.True(t, s.added()[0].Paused)
 }
 
 func TestAddUsesAnExistingCategoryIgnoringCaseAndRefusesABadName(t *testing.T) {
@@ -168,18 +201,19 @@ func TestAddUsesAnExistingCategoryIgnoringCaseAndRefusesABadName(t *testing.T) {
 	sid := s.login()
 
 	ok := s.add(sid, url.Values{"urls": {magnet}, "category": {"TV"}})
-	bad := s.add(sid, url.Values{"urls": {magnet + "2"}, "category": {"not a valid/name"}})
+	bad := s.add(sid, url.Values{"urls": {magnetN(1)}, "category": {"not a valid/name"}})
 
 	assert.Equal(t, "Ok.", ok.Body.String())
-	assert.Equal(t, tv.ID, s.engine.addCalls()[0].Opts.CategoryID)
 	assert.Equal(t, "Fails.", bad.Body.String())
-	assert.Len(t, s.engine.addCalls(), 1)
+	ds := s.added()
+	require.Len(t, ds, 1)
+	assert.Equal(t, tv.ID, ds[0].CategoryID)
 	cats, err := s.categories.List(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, cats, 1, "no stray Category")
 }
 
-func TestAddIgnoresTagsAndTheOtherOptions(t *testing.T) {
+func TestAddIgnoresTagsTheSavePathAndTheOtherOptions(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	sid := s.login()
@@ -187,42 +221,15 @@ func TestAddIgnoresTagsAndTheOtherOptions(t *testing.T) {
 	rec := s.add(sid, url.Values{
 		"urls": {magnet}, "tags": {"sonarr,hd"}, "sequentialDownload": {"true"}, "firstLastPiecePrio": {"true"},
 		"autoTMM": {"true"}, "rename": {"Other Name"}, "dlLimit": {"1"}, "upLimit": {"1"}, "contentLayout": {"Original"},
+		"savepath": {"/elsewhere"},
 	})
 
 	assert.Equal(t, "Ok.", rec.Body.String())
-	assert.Equal(t, qbit.AddOptions{}, s.engine.addCalls()[0].Opts)
-}
-
-func TestAddSavePathOnlyUnderATorrentRoot(t *testing.T) {
-	t.Parallel()
-	s := newStack(t)
-	sid := s.login()
-	require.NoError(t, os.MkdirAll(filepath.Join(s.torrents, "tv"), 0o755))
-	outside := t.TempDir()
-	require.NoError(t, os.MkdirAll(s.incomplete, 0o755))
-	require.NoError(t, os.Symlink(outside, filepath.Join(s.torrents, "escape")))
-	tests := []struct {
-		name, path, want string
-	}{
-		{"the complete root", s.torrents, s.torrents},
-		{"below the complete root", filepath.Join(s.torrents, "tv", "new"), filepath.Join(s.torrents, "tv", "new")},
-		{"below the incomplete root", filepath.Join(s.incomplete, "x"), filepath.Join(s.incomplete, "x")},
-		{"unclean but inside", s.torrents + "/tv/../tv//x/", filepath.Join(s.torrents, "tv", "x")},
-		{"outside", outside, ""},
-		{"traversal out of the root", s.torrents + "/../../etc", ""},
-		{"a sibling with the same prefix", s.torrents + "-evil", ""},
-		{"relative", "downloads/tv", ""},
-		{"through a symlink out of the root", filepath.Join(s.torrents, "escape", "x"), ""},
-		{"root of the disk", "/", ""},
-		{"with a NUL", s.torrents + "/a\x00b", ""},
-	}
-	for i, tc := range tests {
-		rec := s.add(sid, url.Values{"urls": {fmt.Sprintf("%s%d", magnet, i)}, "savepath": {tc.path}})
-
-		assert.Equal(t, "Ok.", rec.Body.String(), "%s: the add still works, the path is ignored", tc.name)
-		calls := s.engine.addCalls()
-		assert.Equal(t, tc.want, calls[len(calls)-1].Opts.SavePath, tc.name)
-	}
+	d := s.added()[0]
+	assert.Empty(t, d.CategoryID)
+	assert.False(t, d.Paused)
+	_, limited := s.engine.limit(d.ID)
+	assert.False(t, limited, "no Share Limit of its own")
 }
 
 func TestAddShareLimits(t *testing.T) {
@@ -230,14 +237,14 @@ func TestAddShareLimits(t *testing.T) {
 	tests := []struct {
 		name string
 		form url.Values
-		want *qbit.ShareLimit
+		want *core.ShareLimit
 	}{
 		{"none given", url.Values{}, nil},
 		{"both global", url.Values{"ratioLimit": {"-2"}, "seedingTimeLimit": {"-2"}}, nil},
-		{"both set", url.Values{"ratioLimit": {"2"}, "seedingTimeLimit": {"60"}}, &qbit.ShareLimit{Ratio: 2, SeedingSeconds: 3600}},
-		{"only a ratio", url.Values{"ratioLimit": {"1.5"}}, &qbit.ShareLimit{Ratio: 1.5, SeedingSeconds: -1}},
-		{"only a time", url.Values{"seedingTimeLimit": {"10"}}, &qbit.ShareLimit{Ratio: -1, SeedingSeconds: 600}},
-		{"unlimited", url.Values{"ratioLimit": {"-1"}, "seedingTimeLimit": {"-1"}}, &qbit.ShareLimit{Ratio: -1, SeedingSeconds: -1}},
+		{"both set", url.Values{"ratioLimit": {"2"}, "seedingTimeLimit": {"60"}}, &core.ShareLimit{Ratio: 2, SeedingTime: time.Hour}},
+		{"only a ratio", url.Values{"ratioLimit": {"1.5"}}, &core.ShareLimit{Ratio: 1.5, SeedingTime: -1}},
+		{"only a time", url.Values{"seedingTimeLimit": {"10"}}, &core.ShareLimit{Ratio: -1, SeedingTime: 10 * time.Minute}},
+		{"unlimited", url.Values{"ratioLimit": {"-1"}, "seedingTimeLimit": {"-1"}}, &core.ShareLimit{Ratio: -1, SeedingTime: -1}},
 		{"garbage is ignored", url.Values{"ratioLimit": {"lots"}, "seedingTimeLimit": {"NaN"}}, nil},
 	}
 	for _, tc := range tests {
@@ -249,7 +256,12 @@ func TestAddShareLimits(t *testing.T) {
 
 			require.Equal(t, "Ok.", s.add(sid, tc.form).Body.String())
 
-			assert.Equal(t, tc.want, s.engine.addCalls()[0].Opts.ShareLimit)
+			got, ok := s.engine.limit(s.added()[0].ID)
+			if tc.want == nil {
+				assert.False(t, ok, "the global default applies")
+				return
+			}
+			assert.Equal(t, limitCall{Limit: *tc.want}, got)
 		})
 	}
 }
@@ -262,7 +274,7 @@ func TestAddWithNothingToAddFails(t *testing.T) {
 	assert.Equal(t, "Fails.", s.add(sid, url.Values{"category": {"tv"}}).Body.String())
 	assert.Equal(t, "Fails.", s.upload(sid, part{name: "category", content: "tv"}).Body.String())
 	assert.Equal(t, "Fails.", s.upload(sid, part{name: "torrents", filename: "empty.torrent", content: ""}).Body.String())
-	assert.Empty(t, s.engine.addCalls())
+	assert.Empty(t, s.added())
 	cats, err := s.categories.List(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, cats, "no category is made for a call that adds nothing")
@@ -287,21 +299,21 @@ func TestAddWithOneGoodOneBadURLIsOk(t *testing.T) {
 	sid := s.login()
 	require.Equal(t, "Ok.", s.add(sid, url.Values{"urls": {magnet}}).Body.String())
 
-	rec := s.add(sid, url.Values{"urls": {magnet + "\nhttps://indexer.example/new.torrent"}})
+	rec := s.add(sid, url.Values{"urls": {magnet + "\n" + s.indexer() + "/dl/new.torrent"}})
 
 	assert.Equal(t, "Ok.", rec.Body.String(), "partial success is success")
 }
 
-func TestAnAdderErrorIsFailsAndNeverLogsTheURL(t *testing.T) {
+func TestAFailedAddIsFailsAndNeverLogsTheURL(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	sid := s.login()
-	secretURL := "https://indexer.example/dl/1.torrent?apikey=hunter2secret&file=a"
-	s.engine.failAdd = fmt.Errorf("fetch %s: %w", secretURL, app.ErrInvalidInput)
+	secretURL := s.indexer() + "/missing?apikey=hunter2secret&file=a"
+	require.Equal(t, "Ok.", s.add(sid, url.Values{"urls": {magnet}}).Body.String())
 
 	rec := s.add(sid, url.Values{"urls": {secretURL + "\n" + magnet}})
 
-	assert.Equal(t, "Fails.", rec.Body.String())
+	assert.Equal(t, "Fails.", rec.Body.String(), "a 404 and a duplicate")
 	logs := s.log.String()
 	assert.NotContains(t, logs, "hunter2secret")
 	assert.NotContains(t, logs, magnetSecret)
@@ -314,8 +326,7 @@ func TestAddedURLsNeverReachTheLogs(t *testing.T) {
 	sid := s.login()
 
 	s.add(sid, url.Values{"urls": {magnet + "\nfile:///etc/passwd?passkey=" + magnetSecret}, "category": {"tv"}})
-	s.engine.failAdd = errors.New("boom " + magnet)
-	s.add(sid, url.Values{"urls": {magnet + "2"}})
+	s.add(sid, url.Values{"urls": {magnet}})
 
 	assert.NotContains(t, s.log.String(), magnetSecret)
 	assert.NotContains(t, s.log.String(), "tracker.example")
@@ -324,13 +335,13 @@ func TestAddedURLsNeverReachTheLogs(t *testing.T) {
 func TestAddRefusesAnUnauthenticatedUploadWithoutReadingIt(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	r := multipartRequest(t, "/api/v2/torrents/add", part{name: "torrents", filename: "a.torrent", content: torrentBody})
+	r := multipartRequest(t, "/api/v2/torrents/add", part{name: "torrents", filename: "a.torrent", content: torrentFile(t, "a")})
 	r.Body = &tripwire{t: t}
 
 	rec := s.serve(r)
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
-	assert.Empty(t, s.engine.addCalls())
+	assert.Empty(t, s.added())
 }
 
 type tripwire struct{ t *testing.T }
@@ -349,17 +360,18 @@ func TestAddRefusesAHugeTorrentFile(t *testing.T) {
 	rec := s.upload(sid, part{name: "torrents", filename: "big.torrent", content: strings.Repeat("x", 10<<20+1)})
 
 	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-	assert.Empty(t, s.engine.addCalls())
+	assert.Empty(t, s.added())
 }
 
-func TestAddAcceptsATorrentFileOfTheLimitSize(t *testing.T) {
+func TestAddReadsATorrentFileOfTheLimitSize(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	sid := s.login()
 
 	rec := s.upload(sid, part{name: "torrents", filename: "big.torrent", content: strings.Repeat("x", 10<<20)})
 
-	assert.Equal(t, "Ok.", rec.Body.String())
+	assert.Equal(t, http.StatusOK, rec.Code, "read in full; it is no torrent, so the answer is Fails.")
+	assert.Equal(t, "Fails.", rec.Body.String())
 }
 
 func TestAddRefusesAHugeBodyManyFilesAndManyParts(t *testing.T) {
@@ -373,7 +385,7 @@ func TestAddRefusesAHugeBodyManyFilesAndManyParts(t *testing.T) {
 		part{name: "torrents", filename: "3.torrent", content: big}, part{name: "torrents", filename: "4.torrent", content: big})
 	var files, fields []part
 	for i := range 17 {
-		files = append(files, part{name: "torrents", filename: fmt.Sprintf("%d.torrent", i), content: torrentBody})
+		files = append(files, part{name: "torrents", filename: fmt.Sprintf("%d.torrent", i), content: "d4:infodee"})
 	}
 	for i := range 70 {
 		fields = append(fields, part{name: fmt.Sprintf("f%d", i), content: "x"})
@@ -383,7 +395,7 @@ func TestAddRefusesAHugeBodyManyFilesAndManyParts(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, s.upload(sid, files...).Code, "17 files")
 	assert.Equal(t, http.StatusBadRequest, s.upload(sid, fields...).Code, "70 parts")
 	assert.Equal(t, http.StatusRequestEntityTooLarge, s.upload(sid, part{name: "urls", content: strings.Repeat("a", 300<<10)}).Code, "a huge text field")
-	assert.Empty(t, s.engine.addCalls())
+	assert.Empty(t, s.added())
 }
 
 func TestAddWithABrokenMultipartBodyIs400(t *testing.T) {
@@ -397,7 +409,7 @@ func TestAddWithABrokenMultipartBodyIs400(t *testing.T) {
 	rec := s.serve(r)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Empty(t, s.engine.addCalls())
+	assert.Empty(t, s.added())
 }
 
 func TestAddedDownloadAppearsWithTheRightCategoryAndPausedFlag(t *testing.T) {
@@ -406,11 +418,13 @@ func TestAddedDownloadAppearsWithTheRightCategoryAndPausedFlag(t *testing.T) {
 	sid := s.login()
 
 	s.add(sid, url.Values{"urls": {magnet}, "category": {"Radarr"}, "paused": {"true"}})
-	hash := s.info(sid, "")[0].Hash
+	got := s.info(sid, "")
 
-	assert.Equal(t, 40, len(hash))
-	d, err := s.dls.Get(t.Context(), s.engine.torrents[hash].DownloadID)
+	require.Len(t, got, 1)
+	assert.Equal(t, 40, len(got[0].Hash))
+	d, err := s.dls.ByInfoHash(t.Context(), got[0].Hash)
 	require.NoError(t, err)
 	assert.True(t, d.Paused)
 	assert.Equal(t, core.SourceTorrent, d.SourceKind)
+	assert.Equal(t, "radarr", got[0].Category)
 }

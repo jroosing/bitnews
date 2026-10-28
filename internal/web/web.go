@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -42,16 +43,16 @@ type Deps struct {
 	// AppKey is the one API key of the app, shown on Settings → Security.
 	AppKey *auth.AppKeyService
 	// Runtime reports what the Queues are doing right now (speeds, pause
-	// state, limits). Torrents gives a torrent's files and sets its Share
-	// Limit. Both are filled in by the daemon; see sources.go. They may be
-	// nil in tests, and pages must cope with that.
-	Runtime  RuntimeSource
-	Torrents TorrentSource
+	// state, limits). It is filled in by the daemon; see sources.go. It may
+	// be nil in tests, and pages must cope with that.
+	Runtime RuntimeSource
 	// Live tunes the /ui/events stream (queue_events.go); the zero value is
 	// what production uses.
 	Live LiveConfig
-	// Detail reports Usenet fetch details for the Download detail page.
-	Detail DetailSource
+	// Detail reports what the fetch of an NZB Download learned about its
+	// Articles, for the Download detail page; an error means there is no
+	// report (not fetched yet, or a torrent). Optional.
+	Detail func(ctx context.Context, id core.ID) (core.FetchDetail, error)
 	// Config reports what the daemon runs with right now: the settings it
 	// started with (for the "restart needed" notes) and the live status of
 	// the network bindings. Optional; the settings pages cope without it.

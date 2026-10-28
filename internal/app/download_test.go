@@ -11,6 +11,7 @@ import (
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/store"
 )
 
 func (s *stack) downloadService(opts ...app.Option) *app.DownloadService {
@@ -607,4 +608,67 @@ func outputFor(to core.State) string {
 		return "/data/complete/release"
 	}
 	return ""
+}
+
+// shareLimits records what DownloadService.SetShareLimit sends to the
+// torrent side.
+type shareLimits struct {
+	set     map[core.ID]core.ShareLimit
+	cleared []core.ID
+}
+
+func (s *shareLimits) SetShareLimit(_ context.Context, id core.ID, l core.ShareLimit) error {
+	if s.set == nil {
+		s.set = map[core.ID]core.ShareLimit{}
+	}
+	s.set[id] = l
+	return nil
+}
+
+func (s *shareLimits) ClearShareLimit(_ context.Context, id core.ID) error {
+	s.cleared = append(s.cleared, id)
+	return nil
+}
+
+func TestSetShareLimitSetsOrClearsTheTorrentsOwnLimit(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	limits := &shareLimits{}
+	svc := s.downloadService(app.WithShareLimits(limits))
+	d := s.addReady(t, core.SourceTorrent)
+
+	require.NoError(t, svc.SetShareLimit(ctx, d.ID, &core.ShareLimit{Ratio: 2, SeedingTime: -1}))
+	require.NoError(t, svc.SetShareLimit(ctx, d.ID, nil))
+
+	assert.Equal(t, core.ShareLimit{Ratio: 2, SeedingTime: -1}, limits.set[d.ID])
+	assert.Equal(t, []core.ID{d.ID}, limits.cleared, "nil means the global default")
+}
+
+func TestSetShareLimitWithoutTorrentsIsUnavailable(t *testing.T) {
+	s := newStack(t)
+	d := s.addReady(t, core.SourceTorrent)
+
+	err := s.downloadService().SetShareLimit(context.Background(), d.ID, nil)
+
+	assert.ErrorIs(t, err, app.ErrUnavailable)
+}
+
+func TestByInfoHashFindsTheTorrentDownload(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	sources := store.NewTorrentSourceRepo(s.db, store.GenerateKey())
+	svc := s.downloadService(app.WithTorrentSources(sources))
+	d := s.addReady(t, core.SourceTorrent)
+	h, err := core.ParseInfoHash("0123456789abcdef0123456789abcdef01234567")
+	require.NoError(t, err)
+	require.NoError(t, sources.Create(ctx, core.TorrentSource{DownloadID: d.ID, InfoHash: h, TorrentPath: "/x.torrent"}))
+
+	got, err := svc.ByInfoHash(ctx, "0123456789ABCDEF0123456789abcdef01234567")
+	require.NoError(t, err)
+	assert.Equal(t, d.ID, got.ID)
+
+	for _, hash := range []string{"ffffffffffffffffffffffffffffffffffffffff", "junk", ""} {
+		_, err := svc.ByInfoHash(ctx, hash)
+		assert.ErrorIs(t, err, core.ErrNotFound, hash)
+	}
 }

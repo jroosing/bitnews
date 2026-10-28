@@ -109,6 +109,7 @@ func TestATorrentViewAddsTheEnginesCountersAndTheRatio(t *testing.T) {
 	m := newModule(t, fakeLive{"d1": {Torrent: &view.TorrentLive{
 		Hash: "abc", Registered: true, Size: 2000, DoneBytes: 1500, Peers: 4, Seeds: 2,
 		Uploaded: 3000, SeedingTime: time.Hour,
+		Name: "Some.Release", Dir: "/data/torrents/Some.Release", Files: []core.TorrentFile{{Path: "a/b.mkv", Size: 2000}},
 	}}})
 
 	v := m.Of(context.Background(), dl(core.StateFetching, func(d *core.Download) { d.SourceKind = core.SourceTorrent; d.DoneBytes = 10 }))
@@ -121,6 +122,9 @@ func TestATorrentViewAddsTheEnginesCountersAndTheRatio(t *testing.T) {
 	assert.Equal(t, "abc", v.Torrent.Hash)
 	assert.Equal(t, 4, v.Torrent.Peers)
 	assert.Equal(t, time.Hour, v.Torrent.SeedingTime)
+	assert.Equal(t, "Some.Release", v.Torrent.Name)
+	assert.Equal(t, "/data/torrents/Some.Release", v.Torrent.Dir)
+	assert.Equal(t, []core.TorrentFile{{Path: "a/b.mkv", Size: 2000}}, v.Torrent.Files)
 }
 
 func TestARegularDownloadHasNoTorrentFacts(t *testing.T) {

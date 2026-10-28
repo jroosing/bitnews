@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jroosing/bitnews/internal/adapter/adaptertest"
-	"github.com/jroosing/bitnews/internal/adapter/qbit"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -125,9 +124,9 @@ func seedFixture(t *testing.T, s *stack, fx *adaptertest.Fixture) map[string]str
 			vars["hash."+op.Ref] = v.InfoHash
 			vars["id."+op.Ref] = string(d.ID)
 		case "files":
-			var fs []qbit.TorrentFile
+			var fs []core.TorrentFile
 			for _, f := range op.Files {
-				fs = append(fs, qbit.TorrentFile{Name: f.Name, Size: f.Size})
+				fs = append(fs, core.TorrentFile{Path: f.Name, Size: f.Size})
 			}
 			s.engine.setFiles(hashes[op.Ref], fs...)
 		default:
@@ -145,11 +144,7 @@ func TestContractFixturesReplay(t *testing.T) {
 	for _, fx := range fixtures {
 		t.Run(filepath.Base(fx.Path), func(t *testing.T) {
 			t.Parallel()
-			s := newStack(t, withDeps(func(d *qbit.Deps) {
-				d.GlobalShare = func() qbit.GlobalShare {
-					return qbit.GlobalShare{RatioEnabled: true, Ratio: 2, SeedingTimeEnabled: true, SeedingMinutes: 1440, Action: "pause"}
-				}
-			}))
+			s := newStack(t, withSeeding(core.SeedingSettings{RatioLimit: 2, SeedingTimeMinutes: 1440, Action: core.SeedingActionPause}))
 			vars := seedFixture(t, s, fx)
 			mux := http.NewServeMux()
 			mux.Handle("/api/v2/", s.handler)

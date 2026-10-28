@@ -67,6 +67,36 @@ func (s *DownloadService) setPaused(ctx context.Context, id core.ID, paused bool
 	return d, nil
 }
 
+// ByInfoHash returns the torrent Download with the (hex) info hash. An
+// unknown or malformed hash is an error matching core.ErrNotFound, as is any
+// hash without WithTorrentSources.
+func (s *DownloadService) ByInfoHash(ctx context.Context, hash string) (core.Download, error) {
+	h, err := core.ParseInfoHash(hash)
+	if err != nil || s.opts.torrentSources == nil {
+		return core.Download{}, fmt.Errorf("app: info hash %q: %w", hash, core.ErrNotFound)
+	}
+	src, err := s.opts.torrentSources.GetByInfoHash(ctx, h)
+	// A source whose magnet link cannot be unsealed still names its Download.
+	if err != nil && !(errors.Is(err, core.ErrSecretUnavailable) && src.DownloadID != "") {
+		return core.Download{}, err
+	}
+	return s.downloads.Get(ctx, src.DownloadID)
+}
+
+// SetShareLimit gives a torrent Download its own Share Limit; nil removes it,
+// so the global default applies again. A negative ratio or seeding time is
+// unlimited. It takes effect at once. Without WithShareLimits it is an error
+// of kind ErrUnavailable.
+func (s *DownloadService) SetShareLimit(ctx context.Context, id core.ID, l *core.ShareLimit) error {
+	if s.opts.shareLimits == nil {
+		return unavailable("torrents_unavailable", "torrents are not available on this instance")
+	}
+	if l == nil {
+		return s.opts.shareLimits.ClearShareLimit(ctx, id)
+	}
+	return s.opts.shareLimits.SetShareLimit(ctx, id, *l)
+}
+
 // pausable reports whether Paused acts on d: it is still waiting for or
 // receiving data, or it is a torrent that is Ready and so only Seeding.
 func pausable(d core.Download) bool {

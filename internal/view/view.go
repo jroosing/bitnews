@@ -68,6 +68,12 @@ type TorrentLive struct {
 	OwnSeedingTime *time.Duration
 	// LimitPaused says a Share Limit paused the torrent.
 	LimitPaused bool
+	// Name is the torrent's name: the engine's, else the Download's. Dir is
+	// the Download's directory (empty when nothing is known). Files are the
+	// torrent's files, empty while the metadata is not known.
+	Name  string
+	Dir   string
+	Files []core.TorrentFile
 }
 
 // LiveSource provides Live for a Download. The daemon implements it.
@@ -141,6 +147,10 @@ type Torrent struct {
 	ShareLimit  ShareLimit
 	// LimitPaused says a Share Limit paused the torrent.
 	LimitPaused bool
+	// Name, Dir and Files are as in TorrentLive.
+	Name  string
+	Dir   string
+	Files []core.TorrentFile
 }
 
 // ShareLimit is the Share Limit in force for a torrent. Global says the
@@ -241,6 +251,7 @@ func (m *Module) torrentOf(t *TorrentLive, size int64) *Torrent {
 	out := &Torrent{
 		Hash: t.Hash, Registered: t.Registered, Peers: t.Peers, Seeds: t.Seeds, Private: t.Private,
 		Uploaded: t.Uploaded, SeedingTime: t.SeedingTime, LimitPaused: t.LimitPaused,
+		Name: t.Name, Dir: t.Dir, Files: t.Files,
 	}
 	if size > 0 {
 		out.Ratio = float64(t.Uploaded) / float64(size)

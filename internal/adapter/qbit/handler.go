@@ -61,25 +61,24 @@ type SettingsReader interface {
 }
 
 // Deps is everything the adapter needs. AppKey, Downloads, Categories,
-// Settings, Torrents, Adder, ShareLimits and View are required; the rest are
-// optional.
+// Settings, Adder and View are required; the rest are optional.
+//
+// Downloads needs torrents enabled (app.WithTorrentSources for the info hash
+// lookup, app.WithShareLimits for torrents/setShareLimits); Adder too.
 type Deps struct {
-	AppKey      *auth.AppKeyService
-	Downloads   *app.DownloadService
-	Categories  *app.CategoryService
-	Settings    SettingsReader
-	Torrents    TorrentSource
-	Adder       TorrentAdder
-	ShareLimits ShareLimiter
-	// View gives each torrent's phase, progress, rates, ETA, ratio, counters
-	// and effective Share Limit.
+	AppKey     *auth.AppKeyService
+	Downloads  *app.DownloadService
+	Categories *app.CategoryService
+	Settings   SettingsReader
+	Adder      *app.AddService
+	// View gives each torrent's phase, progress, rates, ETA, ratio, counters,
+	// effective Share Limit, name, directory and files.
 	View *view.Module
 
-	// Files answers torrents/files. Without it the list is empty.
-	Files FileSource
-	// GlobalShare reports the global Share Limit default for preferences.
-	// Without it no global limit is reported.
-	GlobalShare func() GlobalShare
+	// ContentDir finds a torrent's own root directory on disk, for the one
+	// torrent a properties or files call names. Without it the Download's
+	// directory stands in.
+	ContentDir func(d core.Download) string
 	// Limiter throttles failed logins per client IP. The default is a
 	// limiter of the adapter's own, so that failures here never lock the UI
 	// or another adapter; pass the shared one to count them together.
@@ -102,7 +101,7 @@ type Deps struct {
 // missing, since that is a wiring bug found at startup.
 func New(d Deps) http.Handler {
 	if d.AppKey == nil || d.Downloads == nil || d.Categories == nil || d.Settings == nil ||
-		d.Torrents == nil || d.Adder == nil || d.ShareLimits == nil || d.View == nil {
+		d.Adder == nil || d.View == nil {
 		panic("qbit: Deps is missing a required service")
 	}
 	if d.Logger == nil {

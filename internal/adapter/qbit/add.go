@@ -1,17 +1,16 @@
 package qbit
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"mime"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"unicode"
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
-	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
 // add serves torrents/add: the urls field (magnet links and http(s) URLs of
@@ -21,11 +20,12 @@ import (
 // checked before the body is read.
 //
 // Of the options, category (created when unknown), paused or stopped,
-// savepath (only under a torrent root), ratioLimit and seedingTimeLimit are
-// honoured. tags, sequentialDownload, firstLastPiecePrio, autoTMM, rename,
-// the speed limits and the rest are ignored.
+// ratioLimit and seedingTimeLimit are honoured. savepath is ignored (a
+// Download goes to its Category's directory), and so are tags,
+// sequentialDownload, firstLastPiecePrio, autoTMM, rename, the speed limits
+// and the rest.
 //
-// URLs can hold passkeys: they are handed to the TorrentAdder and are never
+// URLs can hold passkeys: they are handed to the AddService and are never
 // logged, stored or echoed here.
 func (c *call) add() {
 	if !c.readAddBody() {
@@ -45,20 +45,18 @@ func (c *call) add() {
 	}
 	added := false
 	for _, data := range c.uploads {
-		hash, err := c.h.Adder.AddTorrentFile(c.ctx(), data, opts)
-		if c.addFailed(err, "file") {
-			continue
+		up, err := c.h.Adder.Receive(c.ctx(), bytes.NewReader(data), "", core.SourceTorrent)
+		if err == nil {
+			req := opts
+			req.Upload = up
+			err = c.addOne(req, "file")
 		}
-		added = true
-		c.h.log.Info("qbit: torrent added", "hash", hash, "source", "file")
+		added = !c.addFailed(err, "file") || added
 	}
 	for _, u := range urls {
-		hash, err := c.h.Adder.AddURL(c.ctx(), u, opts)
-		if c.addFailed(err, "url") {
-			continue
-		}
-		added = true
-		c.h.log.Info("qbit: torrent added", "hash", hash, "source", "url")
+		req := opts
+		req.URL = u
+		added = !c.addFailed(c.addOne(req, "url"), "url") || added
 	}
 	if c.ctx().Err() != nil {
 		return
@@ -68,6 +66,15 @@ func (c *call) add() {
 		return
 	}
 	c.text(200, "Fails.")
+}
+
+// addOne adds one torrent and logs it.
+func (c *call) addOne(req app.AddRequest, kind string) error {
+	d, err := c.h.Adder.Add(c.ctx(), req)
+	if err == nil {
+		c.h.log.Info("qbit: torrent added", "id", d.ID, "source", kind)
+	}
+	return err // a duplicate matches core.ErrConflict
 }
 
 // addFailed logs a failed add (the error text is masked: it may quote the
@@ -188,30 +195,27 @@ func acceptableURL(u string) bool {
 	return false
 }
 
-// addOptions reads the options of an add call. A Category that cannot be
-// created fails the call ("Fails.").
-func (c *call) addOptions() (AddOptions, bool) {
-	var o AddOptions
+// addOptions reads the options of an add call into the request every torrent
+// of the call is added with. A Category that cannot be created fails the call
+// ("Fails.").
+func (c *call) addOptions() (app.AddRequest, bool) {
+	req := app.AddRequest{Only: core.SourceTorrent}
 	if name := c.get("category"); name != "" {
 		id, err := c.h.ensureCategory(c, name)
 		if err != nil {
 			if errors.Is(err, app.ErrInvalidInput) {
 				c.h.log.Info("qbit: add refused, bad category", "category", printable(name, 40))
 				c.text(200, "Fails.")
-				return o, false
+				return req, false
 			}
 			c.appFail(err)
-			return o, false
+			return req, false
 		}
-		o.CategoryID = id
+		req.CategoryID = id
 	}
-	o.Paused = isTrue(c.get("paused")) || isTrue(c.get("stopped"))
-	if p := c.get("savepath"); p != "" {
-		if safe, ok := c.h.safeSavePath(p); ok {
-			o.SavePath = safe
-		} else {
-			c.h.log.Info("qbit: savepath ignored, not under a torrent root", "savepath", printable(p, 120))
-		}
+	req.Paused = isTrue(c.get("paused")) || isTrue(c.get("stopped"))
+	if c.get("savepath") != "" {
+		c.h.log.Debug("qbit: the save path of a torrent add is ignored; the Download goes to its Category's directory")
 	}
 	ratio, okR := shareArg(c.params.Get("ratioLimit"), true)
 	minutes, okM := shareArg(c.params.Get("seedingTimeLimit"), false)
@@ -221,33 +225,6 @@ func (c *call) addOptions() (AddOptions, bool) {
 	if !okM {
 		minutes = -2
 	}
-	if r, secs, global := c.h.resolveShare(ratio, minutes); !global {
-		o.ShareLimit = &ShareLimit{Ratio: r, SeedingSeconds: secs}
-	}
-	return o, true
-}
-
-// safeSavePath accepts an absolute path that lies in one of the two torrent
-// roots, checked lexically and against symlinks (fsutil.SafeJoin). Anything
-// else is not accepted.
-func (h *handler) safeSavePath(p string) (string, bool) {
-	if !filepath.IsAbs(p) || strings.IndexByte(p, 0) >= 0 {
-		return "", false
-	}
-	p = filepath.Clean(p)
-	roots := h.Settings.Current().Paths.Torrent
-	for _, root := range []string{roots.Complete, roots.Incomplete} {
-		if root == "" {
-			continue
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			continue
-		}
-		if _, err := fsutil.SafeJoin(root, rel); err != nil {
-			continue
-		}
-		return p, true
-	}
-	return "", false
+	req.ShareLimit = c.h.resolveShare(ratio, minutes)
+	return req, true
 }

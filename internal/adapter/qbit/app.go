@@ -88,23 +88,21 @@ func (h *handler) preferences() preferences {
 		DHT: s.Torrent.DHTEnabled(), PeX: s.Torrent.PEXEnabled(), LSD: s.Torrent.LSD,
 		Encryption: encryptionOf(s.Torrent.EffectiveMSE()), ListenPort: s.Torrent.EffectivePort(),
 	}
-	if h.GlobalShare != nil {
-		g := h.GlobalShare()
-		p.MaxRatioEnabled, p.MaxSeedingTimeOn = g.RatioEnabled, g.SeedingTimeEnabled
-		if g.RatioEnabled {
-			p.MaxRatio = g.Ratio
-		}
-		if g.SeedingTimeEnabled {
-			p.MaxSeedingTime = g.SeedingMinutes
-		}
-		switch g.Action {
-		case "remove":
-			p.MaxRatioAct = ratioActRemove
-		case "remove_files":
-			p.MaxRatioAct = ratioActFiles
-		default:
-			p.MaxRatioAct = ratioActPause
-		}
+	g := s.Seeding
+	p.MaxRatioEnabled, p.MaxSeedingTimeOn = g.RatioLimit > 0, g.SeedingTimeMinutes > 0
+	if p.MaxRatioEnabled {
+		p.MaxRatio = g.RatioLimit
+	}
+	if p.MaxSeedingTimeOn {
+		p.MaxSeedingTime = g.SeedingTimeMinutes
+	}
+	switch g.EffectiveAction() {
+	case core.SeedingActionRemove:
+		p.MaxRatioAct = ratioActRemove
+	case core.SeedingActionRemoveData:
+		p.MaxRatioAct = ratioActFiles
+	default:
+		p.MaxRatioAct = ratioActPause
 	}
 	return p
 }

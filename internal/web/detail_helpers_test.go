@@ -27,22 +27,30 @@ import (
 	"github.com/jroosing/bitnews/internal/web"
 )
 
-// fakeTorrents is a TorrentSource the tests fill. The other torrent facts
-// come from the view module (env.live).
+// shareCall is one Share Limit the detail page sent to the torrent side;
+// Cleared means the Download's own limit was removed.
+type shareCall struct {
+	Limit   core.ShareLimit
+	Cleared bool
+}
+
+// fakeTorrents is the torrent side's Share Limit setter (app.ShareLimitSetter)
+// the tests read. The torrent facts come from the view module (env.live).
 type fakeTorrents struct {
 	mu    sync.Mutex
-	files map[core.ID][]web.TorrentFile
-	calls []web.ShareLimitChange
+	calls []shareCall
 	err   error
 }
 
-func (f *fakeTorrents) Files(_ context.Context, id core.ID) ([]web.TorrentFile, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.files[id], nil
+func (f *fakeTorrents) SetShareLimit(_ context.Context, _ core.ID, l core.ShareLimit) error {
+	return f.record(shareCall{Limit: l})
 }
 
-func (f *fakeTorrents) SetShareLimit(_ context.Context, _ core.ID, c web.ShareLimitChange) error {
+func (f *fakeTorrents) ClearShareLimit(context.Context, core.ID) error {
+	return f.record(shareCall{Cleared: true})
+}
+
+func (f *fakeTorrents) record(c shareCall) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
@@ -52,20 +60,23 @@ func (f *fakeTorrents) SetShareLimit(_ context.Context, _ core.ID, c web.ShareLi
 	return nil
 }
 
-func (f *fakeTorrents) recorded() []web.ShareLimitChange {
+func (f *fakeTorrents) recorded() []shareCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]web.ShareLimitChange(nil), f.calls...)
+	return append([]shareCall(nil), f.calls...)
 }
 
-// fakeDetail is a DetailSource the tests fill.
+// fakeDetail holds the fetch reports the tests fill.
 type fakeDetail struct {
-	reports map[core.ID]web.FetchReport
+	reports map[core.ID]core.FetchDetail
 }
 
-func (f *fakeDetail) FetchReport(_ context.Context, id core.ID) (web.FetchReport, bool) {
+func (f *fakeDetail) fetch(_ context.Context, id core.ID) (core.FetchDetail, error) {
 	r, ok := f.reports[id]
-	return r, ok
+	if !ok {
+		return core.FetchDetail{}, core.ErrNotFound
+	}
+	return r, nil
 }
 
 // denv is the stack for the history, detail and add tests: real store,
@@ -138,8 +149,8 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 
 	d := &denv{
 		remover:  &fakeRemover{},
-		torrents: &fakeTorrents{files: map[core.ID][]web.TorrentFile{}},
-		detail:   &fakeDetail{reports: map[core.ID]web.FetchReport{}},
+		torrents: &fakeTorrents{},
+		detail:   &fakeDetail{reports: map[core.ID]core.FetchDetail{}},
 		root:     t.TempDir(),
 	}
 	e := &env{t: t, clock: &clock{t: epoch.Add(24 * time.Hour)}, log: &syncBuffer{}, live: newFakeLive()}
@@ -170,7 +181,11 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 	require.NoError(t, err)
 
 	appOpts := []app.Option{app.WithClock(e.clock.Now), app.WithDataRemover(d.remover)}
-	d.svc = app.NewDownloadService(d.repo, cats, bus, appOpts...)
+	dlOpts := appOpts
+	if !cfg.noTorrentSrc {
+		dlOpts = append(dlOpts[:len(dlOpts):len(dlOpts)], app.WithShareLimits(d.torrents))
+	}
+	d.svc = app.NewDownloadService(d.repo, cats, bus, dlOpts...)
 	sources := store.NewDownloadSourceRepo(db, key)
 	appKey, err := auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
@@ -190,11 +205,8 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 	if !cfg.noAdder {
 		deps.Adder = adder
 	}
-	if !cfg.noTorrentSrc {
-		deps.Torrents = d.torrents
-	}
 	if !cfg.noDetail {
-		deps.Detail = d.detail
+		deps.Detail = d.detail.fetch
 	}
 	webUI, err := web.New(deps)
 	require.NoError(t, err)
@@ -351,9 +363,9 @@ func downloadHTMLResponses(t *testing.T) map[string]*httptest.ResponseRecorder {
 	failed := d.add(core.Download{Name: "Failed.One", State: core.StateFailed, FailureReason: core.FailureRepairInsufficient, FailureDetail: "needs 4 blocks"})
 	active := d.add(core.Download{Name: "Active.One", State: core.StateFetching, TotalBytes: 1000, DoneBytes: 400})
 	tor := d.add(core.Download{Name: "Torrent.One", SourceKind: core.SourceTorrent, TotalBytes: 100})
-	d.detail.reports[ready.ID] = web.FetchReport{MissingArticles: 1, DamagedArticles: 2, MissingFiles: 1}
-	d.live.set(tor.ID, view.Live{Torrent: &view.TorrentLive{Hash: "0123456789abcdef0123456789abcdef01234567", Registered: true, Peers: 3}})
-	d.torrents.files[tor.ID] = []web.TorrentFile{{Path: "a/b.mkv", Size: 100}}
+	d.detail.reports[ready.ID] = core.FetchDetail{MissingArticles: 1, DamagedArticles: 2, MissingFiles: 1}
+	d.live.set(tor.ID, view.Live{Torrent: &view.TorrentLive{Hash: "0123456789abcdef0123456789abcdef01234567", Registered: true, Peers: 3,
+		Files: []core.TorrentFile{{Path: "a/b.mkv", Size: 100}}}})
 	out["GET /history (rows)"] = d.b.get("/history")
 	out["GET /history (empty filter)"] = d.b.get("/history?kind=torrent&state=failed")
 	out["GET /history (htmx)"] = d.b.get("/history?state=failed", htmx())

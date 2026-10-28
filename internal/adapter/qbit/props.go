@@ -109,7 +109,7 @@ type fileInfo struct {
 }
 
 // files serves torrents/files?hash=: 404 for an unknown torrent; an empty
-// list when the engine cannot list files (no FileSource, or no metadata yet).
+// list while the engine cannot list files (no metadata yet).
 // The engine knows no progress per file, so every file shows the progress of
 // the whole torrent.
 func (c *call) files() {
@@ -127,27 +127,16 @@ func (c *call) files() {
 		return
 	}
 	out := []fileInfo{}
-	if c.h.Files != nil {
-		fs, known, err := c.h.Files.Files(c.ctx(), e.d.ID)
-		if err != nil {
-			c.appFail(err)
-			return
-		}
-		if !known {
-			c.text(404, "Not Found")
-			return
-		}
-		ready := e.d.State == core.StateReady
-		p := min(max(e.v.Progress, 0), 1)
-		if !ready {
-			p = min(p, holdOffProgress) // only Ready is complete
-		}
-		for i, f := range fs {
-			out = append(out, fileInfo{
-				Index: i, Name: fileName(f.Name), Size: f.Size, Progress: p, Priority: 1,
-				IsSeed: ready && p == 1, Availability: -1,
-			})
-		}
+	ready := e.d.State == core.StateReady
+	p := min(max(e.v.Progress, 0), 1)
+	if !ready {
+		p = min(p, holdOffProgress) // only Ready is complete
+	}
+	for i, f := range e.v.Torrent.Files {
+		out = append(out, fileInfo{
+			Index: i, Name: fileName(f.Path), Size: f.Size, Progress: p, Priority: 1,
+			IsSeed: ready && p == 1, Availability: -1,
+		})
 	}
 	c.json(out)
 }

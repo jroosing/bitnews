@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jroosing/bitnews/internal/adapter/qbit"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -84,11 +83,7 @@ type sonarrCategory struct {
 
 func TestSonarrAndRadarrCanDecodeEveryAnswer(t *testing.T) {
 	t.Parallel()
-	s := newStack(t, withDeps(func(d *qbit.Deps) {
-		d.GlobalShare = func() qbit.GlobalShare {
-			return qbit.GlobalShare{RatioEnabled: true, Ratio: 2, SeedingTimeEnabled: true, SeedingMinutes: 60}
-		}
-	}))
+	s := newStack(t, withSeeding(core.SeedingSettings{RatioLimit: 2, SeedingTimeMinutes: 60}))
 	tv := s.category("tv")
 	// A fractional ratio and a limit that is not a whole number of minutes
 	// exercise the number types.
@@ -101,7 +96,7 @@ func TestSonarrAndRadarrCanDecodeEveryAnswer(t *testing.T) {
 	s.seed("Show.S01E02", inState(core.StateFetching), sized(1<<30, 1<<20), func(_ *core.Download, v *torrent) { v.DownRate = 3 })
 	s.seed("Show.S01E03", inState(core.StateFetchingMetadata))
 	s.seed("Show.S01E04", inState(core.StatePostProcessing), sized(1000, 1000))
-	s.engine.setFiles(seeding.InfoHash, qbit.TorrentFile{Name: "Show.S01E01/a.mkv", Size: 1 << 40})
+	s.engine.setFiles(seeding.InfoHash, core.TorrentFile{Path: "Show.S01E01/a.mkv", Size: 1 << 40})
 	sid := s.login()
 
 	var torrents []sonarrTorrent

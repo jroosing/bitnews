@@ -303,7 +303,11 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		settings: settings.Current, categories: categories, holder: queueHolder{run.Queue()}, dirFor: dirFor, log: log,
 		torrentHolder: torrentHolder, torrentDir: torrentDir,
 	}
-	downloadService := app.NewDownloadService(downloads, categories, bus, app.WithDataRemover(remover))
+	dlOpts := []app.Option{app.WithDataRemover(remover)}
+	if trun != nil {
+		dlOpts = append(dlOpts, app.WithTorrentSources(torrentSources), app.WithShareLimits(trun))
+	}
+	downloadService := app.NewDownloadService(downloads, categories, bus, dlOpts...)
 	shareLimits.downloads = downloadService
 	track := newTracker()
 	var facts torrentFacts // a nil interface when torrents are off
@@ -332,15 +336,10 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	adder := app.NewAddService(downloadService, sources, settings, addOpts...)
 	categoryService := app.NewCategoryService(categories, downloads, bus)
 	var qbitHandler http.Handler
-	var webTorrentSource web.TorrentSource
 	if trun != nil {
-		torrents := newQBitTorrents(downloads, torrentSources, trun)
-		webTorrentSource = newWebTorrents(trun)
 		qbitHandler = qbit.New(qbit.Deps{
 			AppKey: appKey, Downloads: downloadService, Categories: categoryService, Settings: settings,
-			Torrents: torrents, Files: torrents, ShareLimits: torrents, View: views,
-			Adder:       &qbitAdder{add: adder, sources: torrentSources, log: log},
-			GlobalShare: qbitGlobalShare(settings.Current), Logger: log,
+			Adder: adder, View: views, ContentDir: trun.ContentDir, Logger: log,
 		})
 	}
 	serverService := app.NewServerService(servers, bus, prober)
@@ -355,8 +354,8 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
 		Adder: adder, AppKey: appKey, View: views,
-		Runtime: runtime, Torrents: webTorrentSource, Config: &webConfig{started: started, portOverride: deps.Torrent.Port, port: tport},
-		Detail: webDetail{run: run},
+		Runtime: runtime, Config: &webConfig{started: started, portOverride: deps.Torrent.Port, port: tport},
+		Detail: run.FetchDetailOf,
 	})
 	if err != nil {
 		return nil, err

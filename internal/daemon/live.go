@@ -42,6 +42,7 @@ func (l liveSource) Live(ctx context.Context, d core.Download) view.Live {
 		Size: f.Size, DoneBytes: f.DoneBytes, Peers: f.Peers, Seeds: f.Seeds, Private: f.Private,
 		Uploaded: f.Uploaded, SeedingTime: f.SeedingTime,
 		OwnRatio: f.OwnRatioLimit, OwnSeedingTime: f.OwnSeedingTimeLimit, LimitPaused: f.LimitPaused,
+		Name: f.Name, Dir: f.Dir, Files: f.Files,
 	}
 	return live
 }

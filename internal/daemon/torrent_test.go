@@ -8,12 +8,10 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jroosing/bitnews/internal/adapter/qbit"
 	"github.com/jroosing/bitnews/internal/core"
 	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
 )
@@ -126,22 +124,4 @@ func countOf(s, sub string) int {
 		}
 	}
 	return n
-}
-
-func TestCoreShareLimitMapsMinusOneToUnlimited(t *testing.T) {
-	assert.Equal(t, core.UnlimitedShareLimit(), shareLimit(-1, -1, time.Second))
-	assert.Equal(t, core.ShareLimit{Ratio: 1.25, SeedingTime: 90 * time.Second}, shareLimit(1.25, 90, time.Second))
-	assert.Equal(t, core.ShareLimit{Ratio: 0, SeedingTime: -1}, shareLimit(0, -1, time.Second), "a ratio of zero is a limit that is reached at once")
-}
-
-func TestQBitGlobalShareReportsTheSeedingDefaults(t *testing.T) {
-	s := core.DefaultSettings()
-	got := qbitGlobalShare(func() core.Settings { return s })()
-	assert.Equal(t, qbit.GlobalShare{Action: "pause"}, got, "no default limit, pause")
-
-	s.Seeding = core.SeedingSettings{RatioLimit: 1.5, SeedingTimeMinutes: 120, Action: core.SeedingActionRemoveData}
-	got = qbitGlobalShare(func() core.Settings { return s })()
-	assert.Equal(t, qbit.GlobalShare{RatioEnabled: true, Ratio: 1.5, SeedingTimeEnabled: true, SeedingMinutes: 120, Action: "remove_files"}, got)
-	s.Seeding.Action = core.SeedingActionRemove
-	assert.Equal(t, "remove", qbitGlobalShare(func() core.Settings { return s })().Action)
 }
