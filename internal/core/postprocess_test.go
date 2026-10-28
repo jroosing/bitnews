@@ -26,51 +26,47 @@ func TestCleanUsenetDownloadBecomesReady(t *testing.T) {
 	got := h.get(d.ID)
 	assert.Equal(t, core.StateReady, got.State)
 	assert.Equal(t, "/complete/Show.S01E01", got.OutputPath)
-	assert.Equal(t, []string{"verify", "detect", "finish"}, h.log.all())
+	assert.Equal(t, []string{"repair", "detect", "finish"}, h.log.all())
 }
 
 func TestEventsAreDownloadUpdatedStagesThenReady(t *testing.T) {
 	h := newPPHarness(t)
 	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
-	h.verifier.fn = func(context.Context, string) (core.VerifyOutcome, error) {
-		return core.VerifyOutcome{HasPAR2: true, NeedsRepair: true, DamagedSlices: 2, RecoveryOnDisk: 5, Repairable: true}, nil
-	}
+	h.repairer.fn = damaged()
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
 	require.NoError(t, h.pp.Process(context.Background(), d.ID))
 
 	evs := h.events()
-	require.Len(t, evs, 7, "%#v", evs)
+	require.Len(t, evs, 6, "%#v", evs)
 	assert.Equal(t, core.StatePostProcessing, evs[0].(core.DownloadUpdated).Download.State)
-	assert.Equal(t, core.PostProcessStage{ID: d.ID, Stage: core.StageVerifying}, evs[1])
-	assert.Equal(t, core.PostProcessStage{ID: d.ID, Stage: core.StageRepairing}, evs[2])
-	assert.Equal(t, core.PostProcessStage{ID: d.ID, Stage: core.StageUnpacking}, evs[3])
-	assert.Equal(t, core.PostProcessStage{ID: d.ID, Stage: core.StageFinishing}, evs[4])
-	assert.Equal(t, core.StateReady, evs[5].(core.DownloadUpdated).Download.State)
-	assert.Equal(t, core.Ready{ID: d.ID, OutputPath: "/complete/x"}, evs[6])
+	assert.Equal(t, core.PostProcessStage{ID: d.ID, Stage: core.StageVerifying}, evs[1], "verify and repair are one pass")
+	assert.Equal(t, core.PostProcessStage{ID: d.ID, Stage: core.StageUnpacking}, evs[2])
+	assert.Equal(t, core.PostProcessStage{ID: d.ID, Stage: core.StageFinishing}, evs[3])
+	assert.Equal(t, core.StateReady, evs[4].(core.DownloadUpdated).Download.State)
+	assert.Equal(t, core.Ready{ID: d.ID, OutputPath: "/complete/x"}, evs[5])
 	assert.Equal(t, core.KindPostProcessStage, evs[1].Kind())
 }
 
-func damaged() func(context.Context, string) (core.VerifyOutcome, error) {
-	return func(context.Context, string) (core.VerifyOutcome, error) {
-		return core.VerifyOutcome{HasPAR2: true, NeedsRepair: true, DamagedSlices: 3, RecoveryOnDisk: 10, Repairable: true}, nil
+func damaged() func(context.Context, string) (core.RepairOutcome, error) {
+	return func(context.Context, string) (core.RepairOutcome, error) {
+		return core.RepairOutcome{HasPAR2: true, RepairedSlices: 3}, nil
 	}
 }
 
 func TestDamagedDownloadIsRepairedThenReady(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = damaged()
+	h.repairer.fn = damaged()
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
 	require.NoError(t, h.pp.Process(context.Background(), d.ID))
 
 	assert.Equal(t, core.StateReady, h.get(d.ID).State)
-	assert.Equal(t, []string{"verify", "repair", "detect", "finish"}, h.log.all())
+	assert.Equal(t, []string{"repair", "detect", "finish"}, h.log.all())
 }
 
 func TestFailedRepairFailsTheDownloadAndPublishesFailed(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = damaged()
 	h.repairer.fn = func(context.Context, string) (core.RepairOutcome, error) {
 		return core.RepairOutcome{}, fmt.Errorf("solve: %w", core.ErrRepairFailed)
 	}
@@ -89,21 +85,21 @@ func TestFailedRepairFailsTheDownloadAndPublishesFailed(t *testing.T) {
 	assert.Equal(t, core.Failed{ID: d.ID, Reason: core.FailureRepairInsufficient, Detail: got.FailureDetail}, f)
 }
 
-func shortfall() func(context.Context, string) (core.VerifyOutcome, error) {
-	return func(context.Context, string) (core.VerifyOutcome, error) {
-		return core.VerifyOutcome{HasPAR2: true, NeedsRepair: true, DamagedSlices: 12, RecoveryOnDisk: 5}, nil
+func shortfall() func(context.Context, string) (core.RepairOutcome, error) {
+	return func(context.Context, string) (core.RepairOutcome, error) {
+		return core.RepairOutcome{}, &core.RecoveryShortfall{Needed: 12, Available: 5}
 	}
 }
 
 func TestShortOfRecoveryAsksForDeferredVolumesAndHandsOff(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = shortfall()
+	h.repairer.fn = shortfall()
 	h.deferred.more = true
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
 	require.NoError(t, h.pp.Process(context.Background(), d.ID))
 
-	assert.Equal(t, []string{"verify", "deferred"}, h.log.all(), "no repair attempt, no unpack, no finish")
+	assert.Equal(t, []string{"repair", "deferred"}, h.log.all(), "no unpack, no finish")
 	assert.Equal(t, []int{7}, h.deferred.minBlocks, "the missing blocks: 12 damaged - 5 on disk")
 	// The fetch side moves the Download back to Fetching; here the fake does
 	// not, so it stays PostProcessing, and nothing failed.
@@ -116,7 +112,7 @@ func TestShortOfRecoveryAsksForDeferredVolumesAndHandsOff(t *testing.T) {
 
 func TestShortOfRecoveryWithNoMoreVolumesFailsRepairInsufficient(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = shortfall()
+	h.repairer.fn = shortfall()
 	h.deferred.more = false
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
@@ -125,28 +121,12 @@ func TestShortOfRecoveryWithNoMoreVolumesFailsRepairInsufficient(t *testing.T) {
 	got := h.get(d.ID)
 	assert.Equal(t, core.StateFailed, got.State)
 	assert.Equal(t, core.FailureRepairInsufficient, got.FailureReason)
-	assert.Equal(t, []string{"verify", "deferred"}, h.log.all())
-}
-
-func TestRepairShortfallErrorAlsoAsksForDeferredVolumes(t *testing.T) {
-	h := newPPHarness(t)
-	h.verifier.fn = damaged() // the verifier thought it repairable
-	h.repairer.fn = func(context.Context, string) (core.RepairOutcome, error) {
-		return core.RepairOutcome{}, &core.RecoveryShortfall{Needed: 9, Available: 4}
-	}
-	h.deferred.more = true
-	d := h.add("x", core.StateFetched, core.SourceNZB)
-
-	require.NoError(t, h.pp.Process(context.Background(), d.ID))
-
-	assert.Equal(t, []int{5}, h.deferred.minBlocks)
-	assert.Equal(t, core.StatePostProcessing, h.get(d.ID).State)
-	assert.NotContains(t, h.log.all(), "finish")
+	assert.Equal(t, []string{"repair", "deferred"}, h.log.all())
 }
 
 func TestDeferredVolumesErrorFailsInternal(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = shortfall()
+	h.repairer.fn = shortfall()
 	h.deferred.err = errors.New("boom")
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
@@ -159,7 +139,7 @@ func TestDeferredVolumesErrorFailsInternal(t *testing.T) {
 
 func TestShortOfRecoveryWithoutDeferredPortIsFinal(t *testing.T) {
 	h := newPPHarness(t, func(c *core.PostProcessorConfig) { c.DeferredVolumes = nil })
-	h.verifier.fn = shortfall()
+	h.repairer.fn = shortfall()
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
 	require.NoError(t, h.pp.Process(context.Background(), d.ID))
@@ -167,9 +147,9 @@ func TestShortOfRecoveryWithoutDeferredPortIsFinal(t *testing.T) {
 	assert.Equal(t, core.FailureRepairInsufficient, h.get(d.ID).FailureReason)
 }
 
-func noPAR2() func(context.Context, string) (core.VerifyOutcome, error) {
-	return func(context.Context, string) (core.VerifyOutcome, error) {
-		return core.VerifyOutcome{HasPAR2: false}, nil
+func noPAR2() func(context.Context, string) (core.RepairOutcome, error) {
+	return func(context.Context, string) (core.RepairOutcome, error) {
+		return core.RepairOutcome{HasPAR2: false}, nil
 	}
 }
 
@@ -180,7 +160,7 @@ func TestNoPAR2WithMissingOrDamagedArticlesFailsMissingArticles(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newPPHarness(t)
-			h.verifier.fn = noPAR2()
+			h.repairer.fn = noPAR2()
 			h.reporter.report = report
 			d := h.add("x", core.StateFetched, core.SourceNZB)
 
@@ -189,20 +169,20 @@ func TestNoPAR2WithMissingOrDamagedArticlesFailsMissingArticles(t *testing.T) {
 			got := h.get(d.ID)
 			assert.Equal(t, core.StateFailed, got.State)
 			assert.Equal(t, core.FailureMissingArticles, got.FailureReason)
-			assert.Equal(t, []string{"verify", "fetchreport"}, h.log.all())
+			assert.Equal(t, []string{"repair", "fetchreport"}, h.log.all())
 		})
 	}
 }
 
 func TestNoPAR2CleanFetchContinuesToReady(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = noPAR2()
+	h.repairer.fn = noPAR2()
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
 	require.NoError(t, h.pp.Process(context.Background(), d.ID))
 
 	assert.Equal(t, core.StateReady, h.get(d.ID).State)
-	assert.Equal(t, []string{"verify", "fetchreport", "detect", "finish"}, h.log.all())
+	assert.Equal(t, []string{"repair", "fetchreport", "detect", "finish"}, h.log.all())
 }
 
 func TestPAR2CleanIgnoresTheFetchReport(t *testing.T) {
@@ -218,7 +198,7 @@ func TestPAR2CleanIgnoresTheFetchReport(t *testing.T) {
 
 func TestFetchReportErrorFailsInternal(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = noPAR2()
+	h.repairer.fn = noPAR2()
 	h.reporter.err = errors.New("db down")
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
@@ -234,7 +214,7 @@ func TestUnpackRunsOnlyWhenArchivesAreDetected(t *testing.T) {
 
 		require.NoError(t, h.pp.Process(context.Background(), d.ID))
 
-		assert.Equal(t, []string{"verify", "detect", "finish"}, h.log.all())
+		assert.Equal(t, []string{"repair", "detect", "finish"}, h.log.all())
 		assert.Empty(t, h.finisher.gotUnpacked)
 		assert.Equal(t, "/work/x", h.finisher.gotDir)
 	})
@@ -246,7 +226,7 @@ func TestUnpackRunsOnlyWhenArchivesAreDetected(t *testing.T) {
 
 		require.NoError(t, h.pp.Process(context.Background(), d.ID))
 
-		assert.Equal(t, []string{"verify", "detect", "unpack", "finish"}, h.log.all())
+		assert.Equal(t, []string{"repair", "detect", "unpack", "finish"}, h.log.all())
 		assert.Equal(t, sets, h.unpacker.gotSets)
 		assert.Equal(t, d.ID, h.unpacker.gotDLID)
 		assert.Equal(t, "/work/x", h.unpacker.gotDir)
@@ -275,11 +255,7 @@ func TestEachSentinelMapsToItsFailureReason(t *testing.T) {
 	}
 	// Each sentinel is returned from every port that can return it.
 	ports := map[string]func(h *ppHarness, err error){
-		"verify": func(h *ppHarness, err error) {
-			h.verifier.fn = func(context.Context, string) (core.VerifyOutcome, error) { return core.VerifyOutcome{}, err }
-		},
 		"repair": func(h *ppHarness, err error) {
-			h.verifier.fn = damaged()
 			h.deferred.more = false
 			h.repairer.fn = func(context.Context, string) (core.RepairOutcome, error) {
 				return core.RepairOutcome{}, err
@@ -354,8 +330,8 @@ func TestUnknownErrorDetailIsRedactedAndTruncated(t *testing.T) {
 	assert.Equal(t, `unpacking: open <dir>: permission denied; also "<dir>" and <dir> failed`, got.FailureDetail)
 
 	h2 := newPPHarness(t)
-	h2.verifier.fn = func(context.Context, string) (core.VerifyOutcome, error) {
-		return core.VerifyOutcome{}, errors.New(strings.Repeat("é", 500))
+	h2.repairer.fn = func(context.Context, string) (core.RepairOutcome, error) {
+		return core.RepairOutcome{}, errors.New(strings.Repeat("é", 500))
 	}
 	d2 := h2.add("y", core.StateFetched, core.SourceNZB)
 	require.NoError(t, h2.pp.Process(context.Background(), d2.ID))
@@ -378,7 +354,7 @@ func TestEmptyOutputPathFromFinisherFailsInternal(t *testing.T) {
 
 func TestTorrentWithoutArchivesIsReadyViaFinisherWithoutVerify(t *testing.T) {
 	h := newPPHarness(t)
-	h.verifier.fn = damaged() // must never be consulted
+	h.repairer.fn = damaged() // must never be consulted
 	d := h.add("Movie", core.StateFetched, core.SourceTorrent)
 
 	require.NoError(t, h.pp.Process(context.Background(), d.ID))
@@ -511,7 +487,6 @@ func TestNewPostProcessorRejectsMissingRequiredPorts(t *testing.T) {
 	mods := map[string]func(*core.PostProcessorConfig){
 		"Downloads":     func(c *core.PostProcessorConfig) { c.Downloads = nil },
 		"Bus":           func(c *core.PostProcessorConfig) { c.Bus = nil },
-		"Verifier":      func(c *core.PostProcessorConfig) { c.Verifier = nil },
 		"Repairer":      func(c *core.PostProcessorConfig) { c.Repairer = nil },
 		"Unpacker":      func(c *core.PostProcessorConfig) { c.Unpacker = nil },
 		"Finisher":      func(c *core.PostProcessorConfig) { c.Finisher = nil },
@@ -523,7 +498,7 @@ func TestNewPostProcessorRejectsMissingRequiredPorts(t *testing.T) {
 			log := &ppLog{}
 			cfg := core.PostProcessorConfig{
 				Downloads: newPPRepo(), Bus: core.NewBus(),
-				Verifier: &ppVerifier{log: log}, Repairer: &ppRepairer{log: log}, Unpacker: &ppUnpacker{log: log},
+				Repairer: &ppRepairer{log: log}, Unpacker: &ppUnpacker{log: log},
 				Finisher: &ppFinisher{log: log}, FetchReporter: &ppReporter{log: log},
 				DirFor: func(core.Download) string { return "" },
 			}

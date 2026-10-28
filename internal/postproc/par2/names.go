@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/fsutil"
 )
 
@@ -18,7 +19,7 @@ import (
 // directory or is not a plain relative path, or a file that is built to make
 // the name reader work without end. par2 writes files under the names the set
 // gives it, and the set is attacker controlled.
-var ErrUnsafeSet = errors.New("par2: unsafe PAR2 set")
+var ErrUnsafeSet = fmt.Errorf("par2: unsafe PAR2 set: %w", core.ErrPathViolation)
 
 // Limits of the name reader and of the name check.
 const (

@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"math"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/usenet/nzb"
@@ -140,25 +138,6 @@ func (r *Runner) Undefer(ctx context.Context, id core.ID, fileIndexes []int) err
 		return fmt.Errorf("runner: undefer volumes of %s: %w", id, err)
 	}
 	return nil
-}
-
-// DeferredBlocks returns how many recovery blocks the Download's volumes
-// that are not fetched yet hold (the MM of their names). It is the supplier
-// par2.Verifier.DeferredBlocks wants. Any error counts as none, and is
-// logged.
-func (r *Runner) DeferredBlocks(id core.ID) int {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	n, idx, err := r.deferredFiles(ctx, id)
-	if err != nil {
-		r.log.Debug("usenet runner: cannot count deferred blocks", "id", id, "err", err)
-		return 0
-	}
-	total := 0
-	for _, fi := range idx {
-		total = min(total+max(n.Files[fi].RecoveryBlocks, 0), math.MaxInt32)
-	}
-	return total
 }
 
 var _ core.DeferredVolumes = (*Runner)(nil)

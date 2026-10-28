@@ -87,8 +87,8 @@
 // # Deferred recovery volumes
 //
 // The runner owns deferred recovery volumes (M3-07): nzb.File.Deferred says
-// which files the first fetch leaves out, DeferredBlocks supplies
-// par2.Verifier, and FetchDeferred (core.DeferredVolumes) plans the cheapest
+// which files the first fetch leaves out, and FetchDeferred
+// (core.DeferredVolumes) plans the cheapest
 // volumes that cover what Repair needs, un-defers them (Undefer, allowed only
 // while the Download is PostProcessing, recorded through Config.Volumes) and
 // moves the Download from PostProcessing back to Fetching. The next fetch is a

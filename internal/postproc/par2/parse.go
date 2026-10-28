@@ -12,23 +12,16 @@ import (
 // and CheckName refuses names with line breaks) cannot fake one of these
 // lines.
 type output struct {
-	// total is "There are a total of N data blocks." or the Y of "You have X
-	// out of Y data blocks available."; haveAvail says the X was seen.
-	total      int
-	available  int
-	haveAvail  bool
-	recovery   int // "You have Z recovery blocks available."; absent means loaded
-	haveRecov  bool
-	loaded     int // sum of "Loaded N new packets including M recovery blocks."
-	possible   bool
-	impossible bool
-	needMore   int  // "You need N more recovery blocks to be able to repair."
-	willUse    int  // "N recovery blocks will be used to repair."
-	allCorrect bool // "All files are correct, repair is not required."
-	required   bool // "Repair is required."
-	complete   bool // "Repair complete."
-	renames    int  // `File: "x" - is a match for "y".` lines
-	noMain     bool // "Main packet not found."
+	// total and available come from "You have X out of Y data blocks
+	// available."; haveAvail says it was seen.
+	total     int
+	available int
+	haveAvail bool
+	recovery  int // "You have Z recovery blocks available."; absent means loaded
+	haveRecov bool
+	loaded    int // sum of "Loaded N new packets including M recovery blocks."
+	needMore  int // "You need N more recovery blocks to be able to repair."
+	willUse   int // "N recovery blocks will be used to repair."
 	// partials are the names of extra files par2 found parts of a target in:
 	// `File: "x" - found 9 of 10 data blocks from "a.bin".` They are
 	// untrusted until checked against the directory listing.
@@ -36,14 +29,12 @@ type output struct {
 }
 
 var (
-	reTotal     = regexp.MustCompile(`^There are a total of (\d+) data blocks\.$`)
 	reAvailable = regexp.MustCompile(`^You have (\d+) out of (\d+) data blocks available\.$`)
 	reRecovery  = regexp.MustCompile(`^You have (\d+) recovery blocks available\.$`)
 	reLoaded    = regexp.MustCompile(`^Loaded \d+ new packets? including (\d+) recovery blocks?$`)
 	reNeedMore  = regexp.MustCompile(`^You need (\d+) more recovery blocks to be able to repair\.$`)
 	reWillUse   = regexp.MustCompile(`^(\d+) recovery blocks will be used to repair\.$`)
 	rePartial   = regexp.MustCompile(`^File: "(.*?)" - found \d+ of \d+ data blocks from ".*"\.$`)
-	reMatch     = regexp.MustCompile(`^File: ".*" - is a match for ".*"\.$`)
 )
 
 // parseOutput reads par2's stdout. Progress lines end in a carriage return,
@@ -53,30 +44,8 @@ func parseOutput(b []byte) output {
 	b = bytes.ReplaceAll(b, []byte{'\r'}, []byte{'\n'})
 	for line := range bytes.SplitSeq(b, []byte{'\n'}) {
 		s := string(line)
-		switch s {
-		case "All files are correct, repair is not required.":
-			o.allCorrect = true
-			continue
-		case "Repair is required.":
-			o.required = true
-			continue
-		case "Repair is possible.":
-			o.possible = true
-			continue
-		case "Repair is not possible.":
-			o.impossible = true
-			continue
-		case "Repair complete.":
-			o.complete = true
-			continue
-		case "Main packet not found.":
-			o.noMain = true
-			continue
-		}
 		if m := reAvailable.FindStringSubmatch(s); m != nil {
 			o.available, o.total, o.haveAvail = atoi(m[1]), atoi(m[2]), true
-		} else if m := reTotal.FindStringSubmatch(s); m != nil {
-			o.total = atoi(m[1])
 		} else if m := reRecovery.FindStringSubmatch(s); m != nil {
 			o.recovery, o.haveRecov = atoi(m[1]), true
 		} else if m := reLoaded.FindStringSubmatch(s); m != nil {
@@ -87,8 +56,6 @@ func parseOutput(b []byte) output {
 			o.willUse = atoi(m[1])
 		} else if m := rePartial.FindStringSubmatch(s); m != nil {
 			o.partials = append(o.partials, m[1])
-		} else if reMatch.MatchString(s) {
-			o.renames++
 		}
 	}
 	return o

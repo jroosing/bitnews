@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/fsutil"
 	"github.com/jroosing/bitnews/internal/postproc/tool"
 )
@@ -34,7 +35,7 @@ const (
 // par2 exit codes (par2cmdline-turbo 1.5.0; `par2 -h` does not list them).
 const (
 	exitOK                = 0
-	exitRepairRequired    = 1 // verify: damaged, and repairable
+	exitRepairRequired    = 1 // verify only: damaged, and repairable
 	exitRepairImpossible  = 2 // not enough recovery blocks
 	exitInvalidArgs       = 3
 	exitInsufficientCrit  = 4 // no usable main packet / critical packets
@@ -46,57 +47,12 @@ const (
 	maxBackupSuffixDigits = 4
 )
 
-// ErrRepairFailed: par2 ran the repair and could not produce correct files.
-var ErrRepairFailed = errors.New("par2: repair failed")
-
-// ErrNoSet is returned by Repair when the directory holds no usable PAR2 set.
-var ErrNoSet = errors.New("par2: no usable PAR2 set")
-
-// InsufficientError is returned by Repair when the recovery blocks on disk do
-// not cover the damaged data blocks.
-type InsufficientError struct {
-	// Needed is the number of recovery blocks the damage requires.
-	Needed int
-	// Available is the number of recovery blocks on disk.
-	Available int
-}
-
-func (e *InsufficientError) Error() string {
-	return fmt.Sprintf("par2: need %d recovery blocks, have %d", e.Needed, e.Available)
-}
-
-// Report is what Verify found.
-type Report struct {
-	// HasSet says dir holds a usable PAR2 set. When false nothing else is
-	// meaningful.
-	HasSet bool
-	// Clean says every file matches the set (after any renames).
-	Clean bool
-	// NeedsRepair says data blocks are damaged or missing.
-	NeedsRepair bool
-	// TotalBlocks is the number of data blocks of the set.
-	TotalBlocks int
-	// DamagedBlocks is the number of data blocks that are missing or damaged
-	// (and not found in another file): the recovery blocks a repair needs.
-	DamagedBlocks int
-	// RecoveryBlocks is the number of recovery blocks par2 found on disk.
-	RecoveryBlocks int
-	// Repairable is par2's verdict: RecoveryBlocks cover DamagedBlocks.
-	Repairable bool
-	// Renamed is how many files Verify renamed to their PAR2 names.
-	Renamed int
-}
-
-// RepairResult is what Repair did.
-type RepairResult struct {
-	// RepairedBlocks is the number of data blocks rebuilt.
-	RepairedBlocks int
-}
-
-// Tool runs the par2 program (par2cmdline-turbo).
+// Repairer implements core.Repairer with one run of `par2 r` (ADR-0007),
+// which verifies the files, renames obfuscated ones to their PAR2 names and
+// rebuilds damaged and missing ones from the recovery blocks.
 //
 // The zero value works: par2 is looked up on PATH at each call.
-type Tool struct {
+type Repairer struct {
 	// Path is the par2 program; empty means tool.Locate("par2").
 	Path string
 	// Threads is par2's -t. Zero means GOMAXPROCS (container aware), at
@@ -106,21 +62,23 @@ type Tool struct {
 	MemoryMB int
 }
 
-func (t Tool) path() (string, error) {
+var _ core.Repairer = Repairer{}
+
+func (t Repairer) path() (string, error) {
 	if t.Path != "" {
 		return t.Path, nil
 	}
 	return tool.Locate("par2")
 }
 
-func (t Tool) threads() int {
+func (t Repairer) threads() int {
 	if t.Threads > 0 {
 		return t.Threads
 	}
 	return min(max(runtime.GOMAXPROCS(0), 1), maxThreads)
 }
 
-func (t Tool) memoryMB() int {
+func (t Repairer) memoryMB() int {
 	if t.MemoryMB > 0 {
 		return t.MemoryMB
 	}
@@ -228,19 +186,16 @@ func listable(name string) bool {
 	return true
 }
 
-// run starts par2 with the given mode ("v" or "r") and options.
-func (t Tool) run(ctx context.Context, si *setInfo, mode string, renameOnly bool) (tool.Result, error) {
+// run starts `par2 r`.
+func (t Repairer) run(ctx context.Context, si *setInfo) (tool.Result, error) {
 	p, err := t.path()
 	if err != nil {
 		return tool.Result{}, err
 	}
-	// -B keeps par2 to dir: it ignores files outside the basepath. Verify and
-	// repair never use -N (block skipping), -p (purge: it would delete the
-	// .par2 files) or -S.
-	args := []string{mode, "-B" + si.dir, "-t" + strconv.Itoa(t.threads()), "-m" + strconv.Itoa(t.memoryMB())}
-	if renameOnly {
-		args = append(args, "-O")
-	}
+	// -B keeps par2 to dir: it ignores files outside the basepath. Never
+	// used: -N (block skipping), -p (purge: it would delete the .par2 files)
+	// or -S.
+	args := []string{"r", "-B" + si.dir, "-t" + strconv.Itoa(t.threads()), "-m" + strconv.Itoa(t.memoryMB())}
 	// The extra files go through stdin (`@`), so a directory with many files
 	// cannot overflow the argument list.
 	args = append(args, "--", si.main, "@")
@@ -252,144 +207,59 @@ func (t Tool) run(ctx context.Context, si *setInfo, mode string, renameOnly bool
 	})
 }
 
-// Verify checks the files in dir (top level only) against its PAR2 set.
+// Repair checks the files in dir (top level, plus the subdirectories the set
+// names) against its PAR2 set and repairs them in one run of `par2 r`, which
+// verifies first, renames files that match a target by content (obfuscated
+// names), rebuilds damaged and missing files from the recovery blocks and
+// checks the result. The damaged originals par2 keeps as name.1, name.2, ...
+// and the damaged copies under obfuscated names are removed afterwards, also
+// when nothing needed repairing (the leftovers of an interrupted repair).
 //
-// A directory without a .par2 file, or whose .par2 files have no usable main
-// packet, yields Report{HasSet: false} and no error. A set with an unsafe
-// file name is refused before par2 runs, with ErrUnsafeSet.
+// A directory without a usable PAR2 set (no .par2 file, or none with a main
+// packet) is not an error: it yields HasPAR2 false.
 //
-// Files that are not called what the set says but match one by content
-// (obfuscated names) are found by par2 through its extra-file list and
-// renamed to their set names with `par2 r -O`; Report.Renamed counts them. A
-// file renamed over a damaged one leaves that one as name.1, which is removed
-// again. Verify then runs again, so the report describes the directory after
-// the renames. Leftover name.N backups of an interrupted repair are removed
-// when the directory is clean.
-func (t Tool) Verify(ctx context.Context, dir string) (*Report, error) {
+// Errors: *core.RecoveryShortfall when the recovery blocks on disk do not
+// cover the damage (par2 changes nothing then); core.ErrRepairFailed when
+// par2 failed to produce correct files; core.ErrPathViolation (ErrUnsafeSet)
+// for a hostile set, refused before par2 runs; the context's error when it is
+// cancelled (the process group is killed). A cancelled repair may leave name.N
+// files and half-written targets; the next Repair picks them up as data
+// sources. Anything else, including par2 not being installed, is a plain
+// error.
+func (t Repairer) Repair(ctx context.Context, dir string) (core.RepairOutcome, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return core.RepairOutcome{}, err
 	}
 	si, err := inspect(dir)
+	if err != nil || si == nil {
+		return core.RepairOutcome{}, err
+	}
+	res, err := t.run(ctx, si)
 	if err != nil {
-		return nil, err
-	}
-	if si == nil {
-		return &Report{}, nil
-	}
-	rep, out, err := t.verifyOnce(ctx, si)
-	if err != nil || !rep.HasSet {
-		return rep, err
-	}
-	if out.renames > 0 {
-		res, err := t.run(ctx, si, "r", true)
-		if err != nil {
-			return nil, err
-		}
-		if res.ExitCode != exitOK {
-			return nil, exitError("rename", res)
-		}
-		if err := removeBackups(si); err != nil {
-			return nil, err
-		}
-		// Renamed files are now targets and no longer extras; list again.
-		if si, err = inspect(dir); err != nil || si == nil {
-			return nil, errors.Join(err, ErrNoSet)
-		}
-		renamed := out.renames
-		if rep, _, err = t.verifyOnce(ctx, si); err != nil {
-			return nil, err
-		}
-		rep.Renamed = renamed
-	}
-	if rep.Clean {
-		if err := removeBackups(si); err != nil {
-			return nil, err
-		}
-	}
-	return rep, nil
-}
-
-// verifyOnce runs `par2 v` and turns its exit code and text into a Report.
-func (t Tool) verifyOnce(ctx context.Context, si *setInfo) (*Report, output, error) {
-	res, err := t.run(ctx, si, "v", false)
-	if err != nil {
-		return nil, output{}, err
-	}
-	out := parseOutput(res.Stdout)
-	rep := &Report{HasSet: true, TotalBlocks: out.total, RecoveryBlocks: out.recoveryBlocks()}
-	switch res.ExitCode {
-	case exitOK:
-		rep.Clean = true
-		rep.Repairable = true
-	case exitRepairRequired, exitRepairImpossible:
-		if !out.haveAvail && out.renames == 0 {
-			return nil, out, exitError("verify (unreadable report)", res)
-		}
-		rep.DamagedBlocks = out.damaged()
-		rep.NeedsRepair = true
-		// "Repair is not possible" comes with exit code 2. par2 says
-		// "possible" for exit code 1.
-		rep.Repairable = res.ExitCode == exitRepairRequired && !out.impossible
-		if rep.DamagedBlocks == 0 && out.renames > 0 {
-			// Only misnamed files: the rename pass fixes them.
-			rep.Repairable = true
-		}
-	case exitInsufficientCrit:
-		return &Report{}, out, nil // "Main packet not found": no usable set
-	default:
-		return nil, out, exitError("verify", res)
-	}
-	return rep, out, nil
-}
-
-// Repair repairs the files in dir with par2 (`par2 r`), which verifies first,
-// renames matching files, rebuilds damaged and missing files from the
-// recovery blocks and checks the result. The damaged originals that par2
-// keeps as name.1, name.2, ... are removed afterwards.
-//
-// Errors: *InsufficientError when the recovery blocks on disk do not cover the
-// damage (par2 changes nothing then); ErrRepairFailed when par2 failed to
-// produce correct files; ErrUnsafeSet for a hostile set (refused before par2
-// runs); ErrNoSet; the context's error when it is cancelled (the process
-// group is killed). A cancelled repair may leave name.N files and half-written
-// targets; calling Verify and Repair again picks them up as data sources.
-func (t Tool) Repair(ctx context.Context, dir string) (RepairResult, error) {
-	if err := ctx.Err(); err != nil {
-		return RepairResult{}, err
-	}
-	si, err := inspect(dir)
-	if err != nil {
-		return RepairResult{}, err
-	}
-	if si == nil {
-		return RepairResult{}, ErrNoSet
-	}
-	res, err := t.run(ctx, si, "r", false)
-	if err != nil {
-		return RepairResult{}, err
+		return core.RepairOutcome{}, err
 	}
 	out := parseOutput(res.Stdout)
 	switch res.ExitCode {
 	case exitOK:
 		if err := removeBackups(si); err != nil {
-			return RepairResult{}, err
+			return core.RepairOutcome{}, err
 		}
 		if err := removePartials(si, out.partials); err != nil {
-			return RepairResult{}, err
+			return core.RepairOutcome{}, err
 		}
-		return RepairResult{RepairedBlocks: out.willUse}, nil
+		return core.RepairOutcome{HasPAR2: true, RepairedSlices: out.willUse}, nil
 	case exitRepairImpossible:
-		short := &InsufficientError{Needed: out.damaged(), Available: out.recoveryBlocks()}
+		short := &core.RecoveryShortfall{Needed: out.damaged(), Available: out.recoveryBlocks()}
 		if !out.haveAvail {
 			short.Needed = out.recoveryBlocks() + out.needMore
 		}
-		return RepairResult{}, short
+		return core.RepairOutcome{}, short
 	case exitRepairFailed:
-		return RepairResult{}, fmt.Errorf("%w: %w", ErrRepairFailed, exitError("repair", res))
+		return core.RepairOutcome{}, fmt.Errorf("%w: %w", core.ErrRepairFailed, exitError("repair", res))
 	case exitInsufficientCrit:
-		return RepairResult{}, fmt.Errorf("%w: %w", ErrNoSet, exitError("repair", res))
+		return core.RepairOutcome{}, nil // "Main packet not found": no usable set
 	}
-	return RepairResult{}, exitError("repair", res)
+	return core.RepairOutcome{}, exitError("repair", res)
 }
 
 // exitError describes an unexpected par2 exit with the tail of its output.

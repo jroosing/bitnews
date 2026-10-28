@@ -102,8 +102,8 @@ func TestE2EDamagedReleaseIsRepairedWithDeferredRecoveryVolumes(t *testing.T) {
 	}
 	evs := e.sse.names(added.ID)
 	assert.True(t, subsequence(evs, []string{
-		"fetched", "postprocess_stage:verifying", "postprocess_stage:repairing", "download_updated",
-		"fetched", "postprocess_stage:verifying", "postprocess_stage:repairing", "postprocess_stage:finishing", "ready",
+		"fetched", "postprocess_stage:verifying", "download_updated",
+		"fetched", "postprocess_stage:verifying", "postprocess_stage:finishing", "ready",
 	}), "events seen: %v", evs)
 	assert.NoDirExists(t, filepath.Join(e.incomplete, string(added.ID)))
 }

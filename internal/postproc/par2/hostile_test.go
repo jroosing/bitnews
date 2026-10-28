@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/postproc/par2"
 )
 
@@ -58,12 +59,11 @@ func TestAHostileSetIsRefusedBeforePar2Starts(t *testing.T) {
 			before := tree(t, root)
 			// A program that does not exist: if the check let the set through,
 			// the error would be a start failure, not ErrUnsafeSet.
-			tl := par2.Tool{Path: "/nonexistent/par2"}
+			tl := par2.Repairer{Path: "/nonexistent/par2"}
 
-			_, err := tl.Verify(context.Background(), dl)
-			assert.ErrorIs(t, err, par2.ErrUnsafeSet, "verify")
-			_, err = tl.Repair(context.Background(), dl)
-			assert.ErrorIs(t, err, par2.ErrUnsafeSet, "repair")
+			_, err := tl.Repair(context.Background(), dl)
+			assert.ErrorIs(t, err, par2.ErrUnsafeSet)
+			assert.ErrorIs(t, err, core.ErrPathViolation)
 
 			assert.Equal(t, before, tree(t, root), "nothing moved, nothing created")
 		})
@@ -74,9 +74,7 @@ func TestAHostileSetIsRefusedWithTheRealPar2AndNothingLandsOutside(t *testing.T)
 	root, dl := hostileDir(t, "../escaped.bin", func(s *testSet) []byte { return s.index() })
 	before := tree(t, root)
 
-	_, err := toolFor(t).Verify(context.Background(), dl)
-	require.ErrorIs(t, err, par2.ErrUnsafeSet)
-	_, err = toolFor(t).Repair(context.Background(), dl)
+	_, err := toolFor(t).Repair(context.Background(), dl)
 	require.ErrorIs(t, err, par2.ErrUnsafeSet)
 
 	assert.Equal(t, before, tree(t, root))
@@ -96,7 +94,7 @@ func TestAHostileNameHiddenInARecoveryVolumeIsFound(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dl, "set.par2"), good.index(), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dl, "set.vol0+1.par2"), good.volume(evil.fileDescPacket(0)), 0o644))
 
-	_, err := par2.Tool{Path: "/nonexistent/par2"}.Verify(context.Background(), dl)
+	_, err := par2.Repairer{Path: "/nonexistent/par2"}.Repair(context.Background(), dl)
 
 	assert.ErrorIs(t, err, par2.ErrUnsafeSet)
 }
@@ -106,11 +104,10 @@ func TestASafeHandWrittenSetWorksWithPar2(t *testing.T) {
 	// obfuscated file is renamed by par2 to the name in the set.
 	root, dl := hostileDir(t, "renamed.bin", func(s *testSet) []byte { return s.index() })
 
-	rep, err := toolFor(t).Verify(context.Background(), dl)
+	out, err := toolFor(t).Repair(context.Background(), dl)
 
 	require.NoError(t, err)
-	assert.True(t, rep.Clean)
-	assert.Equal(t, 1, rep.Renamed)
+	assert.True(t, out.HasPAR2)
 	assert.FileExists(t, filepath.Join(dl, "renamed.bin"))
 	assert.NoFileExists(t, filepath.Join(dl, "obfuscated"))
 	assert.FileExists(t, filepath.Join(root, "bystander.txt"))
@@ -121,7 +118,7 @@ func TestASymlinkedTargetIsRefused(t *testing.T) {
 	outside := filepath.Join(root, "bystander.txt")
 	require.NoError(t, os.Symlink(outside, filepath.Join(dl, "target.bin")))
 
-	_, err := par2.Tool{Path: "/nonexistent/par2"}.Verify(context.Background(), dl)
+	_, err := par2.Repairer{Path: "/nonexistent/par2"}.Repair(context.Background(), dl)
 
 	assert.ErrorIs(t, err, par2.ErrUnsafeSet)
 }

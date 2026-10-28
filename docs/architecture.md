@@ -44,7 +44,7 @@ Domain terms (**Download**, **Source**, **Fetched**, **Ready**, …) are defined
                          │  Download · Source · Category · Queue            │
                          │  lifecycle state machine · scheduler · event bus │
                          │  ports: UsenetFetcher, TorrentEngine,            │
-                         │         Verifier, Repairer, Unpacker, Store, FS  │
+                         │         Repairer, Unpacker, Store, FS            │
                          └──┬──────────────┬──────────────┬──────────────┬──┘
                 ┌───────────▼───┐ ┌────────▼──────┐ ┌─────▼───────┐ ┌────▼─────┐
                 │ usenet        │ │ torrent       │ │ postproc    │ │ store    │

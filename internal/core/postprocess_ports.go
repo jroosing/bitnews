@@ -17,11 +17,9 @@ import (
 // the first stage, so every port method must be safe to call again on a
 // directory a previous, interrupted call left half-done:
 //
-//   - Verify only reads (apart from renaming obfuscated files to their PAR2
-//     names and removing leftover name.N backups, which a second run finds
-//     already done).
-//   - Repair rewrites damaged files in a way a second run can redo from the
-//     start.
+//   - Repair renames obfuscated files to their PAR2 names and rewrites
+//     damaged ones in a way a second run can redo from the start (a clean
+//     set is only read).
 //   - Unpack clears its staging directory first and replaces dst atomically.
 //   - Finish tolerates a half-done cleanup or move (for example the
 //     destination already existing from the interrupted run).
@@ -57,8 +55,7 @@ var (
 	ErrDiskFull = errors.New("disk full")
 )
 
-// RecoveryShortfall is the error Repair (or a Verifier that already knows)
-// returns when the recovery data on disk is too small. It wraps
+// RecoveryShortfall is the error Repair returns when the recovery data on disk is too small. It wraps
 // ErrInsufficientRecovery.
 type RecoveryShortfall struct {
 	// Needed is the number of recovery blocks the damage requires.
@@ -75,45 +72,22 @@ func (e *RecoveryShortfall) Error() string {
 // Unwrap lets errors.Is match ErrInsufficientRecovery.
 func (e *RecoveryShortfall) Unwrap() error { return ErrInsufficientRecovery }
 
-// VerifyOptions carries what a Verifier may need beyond the directory.
-type VerifyOptions struct {
-	// DownloadID is the Download being verified.
-	DownloadID ID
-}
-
-// VerifyOutcome is what Verify found.
-type VerifyOutcome struct {
-	// HasPAR2 says the directory holds a usable PAR2 set. When false the
-	// other fields are meaningless and the orchestrator asks the
-	// FetchReport instead.
-	HasPAR2 bool
-	// Clean says every file matched the PAR2 set.
-	Clean bool
-	// NeedsRepair says some slices are damaged or missing.
-	NeedsRepair bool
-	// DamagedSlices is the number of recovery blocks the damage needs.
-	DamagedSlices int
-	// RecoveryOnDisk is the number of recovery blocks already on disk.
-	RecoveryOnDisk int
-	// Repairable says RecoveryOnDisk covers DamagedSlices.
-	Repairable bool
-}
-
-// Verifier checks a Download's files against its PAR2 set.
-type Verifier interface {
-	Verify(ctx context.Context, dir string, opts VerifyOptions) (VerifyOutcome, error)
-}
-
-// RepairOutcome is what Repair did.
+// RepairOutcome is what Repair found and did.
 type RepairOutcome struct {
-	// RepairedSlices is the number of slices rebuilt.
+	// HasPAR2 says the directory holds a usable PAR2 set. When false
+	// nothing was checked and the orchestrator asks the FetchReport instead.
+	HasPAR2 bool
+	// RepairedSlices is the number of slices rebuilt; zero when the files
+	// were intact.
 	RepairedSlices int
 }
 
-// Repairer rebuilds damaged files from recovery data. It verifies again
-// itself (the directory may have changed since Verify). It returns
-// ErrInsufficientRecovery (typically a *RecoveryShortfall) or ErrRepairFailed
-// in the cases those say.
+// Repairer checks a Download's files against its PAR2 set and repairs them
+// in one pass: it renames obfuscated files to their set names and rebuilds
+// damaged ones from the recovery data. It returns a *RecoveryShortfall
+// (which wraps ErrInsufficientRecovery) when the recovery data on disk does
+// not cover the damage, ErrRepairFailed when the repair could not produce
+// correct files, and ErrPathViolation for a set with unsafe file names.
 type Repairer interface {
 	Repair(ctx context.Context, dir string) (RepairOutcome, error)
 }

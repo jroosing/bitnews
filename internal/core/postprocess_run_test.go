@@ -12,7 +12,7 @@ import (
 	"github.com/jroosing/bitnews/internal/core"
 )
 
-// ppGate is a verifier body that blocks until released and records how many
+// ppGate is a repairer body that blocks until released and records how many
 // callers were inside at once.
 type ppGate struct {
 	mu      sync.Mutex
@@ -26,7 +26,7 @@ func newPPGate() *ppGate {
 	return &ppGate{entered: make(chan core.ID, 100), release: make(chan struct{})}
 }
 
-func (g *ppGate) verify(ctx context.Context, dir string) (core.VerifyOutcome, error) {
+func (g *ppGate) repair(ctx context.Context, dir string) (core.RepairOutcome, error) {
 	g.mu.Lock()
 	g.cur++
 	g.max = max(g.max, g.cur)
@@ -40,9 +40,9 @@ func (g *ppGate) verify(ctx context.Context, dir string) (core.VerifyOutcome, er
 	select {
 	case <-g.release:
 	case <-ctx.Done():
-		return core.VerifyOutcome{}, ctx.Err()
+		return core.RepairOutcome{}, ctx.Err()
 	}
-	return core.VerifyOutcome{HasPAR2: true, Clean: true}, nil
+	return core.RepairOutcome{HasPAR2: true}, nil
 }
 
 func (g *ppGate) maxSeen() int {
@@ -74,7 +74,7 @@ func assertNoneEntered(t *testing.T, g *ppGate) {
 func TestProcessEnforcesTheConcurrencyLimit(t *testing.T) {
 	h := newPPHarness(t, func(c *core.PostProcessorConfig) { c.Concurrency = 2 })
 	g := newPPGate()
-	h.verifier.fn = g.verify
+	h.repairer.fn = g.repair
 	var ids []core.ID
 	for _, n := range []string{"a", "b", "c", "d", "e"} {
 		ids = append(ids, h.add(n, core.StateFetched, core.SourceNZB).ID)
@@ -106,7 +106,7 @@ func TestProcessEnforcesTheConcurrencyLimit(t *testing.T) {
 func TestProcessWaitingForASlotStopsWhenCancelled(t *testing.T) {
 	h := newPPHarness(t) // concurrency 1
 	g := newPPGate()
-	h.verifier.fn = g.verify
+	h.repairer.fn = g.repair
 	first := h.add("a", core.StateFetched, core.SourceNZB)
 	second := h.add("b", core.StateFetched, core.SourceNZB)
 	go func() { _ = h.pp.Process(context.Background(), first.ID) }()
@@ -125,7 +125,7 @@ func TestProcessWaitingForASlotStopsWhenCancelled(t *testing.T) {
 func TestProcessRefusesADownloadAlreadyBeingProcessed(t *testing.T) {
 	h := newPPHarness(t, func(c *core.PostProcessorConfig) { c.Concurrency = 2 })
 	g := newPPGate()
-	h.verifier.fn = g.verify
+	h.repairer.fn = g.repair
 	d := h.add("a", core.StateFetched, core.SourceNZB)
 	go func() { _ = h.pp.Process(context.Background(), d.ID) }()
 	waitEntered(t, g, 1)
@@ -146,7 +146,7 @@ func TestRecoverReprocessesStuckDownloadsFromTheFirstStage(t *testing.T) {
 	require.NoError(t, h.pp.Recover(context.Background()))
 
 	assert.Equal(t, core.StateReady, h.get(stuck.ID).State)
-	assert.Equal(t, []string{"verify", "detect", "unpack", "finish"}, h.log.all(), "from verifying, once")
+	assert.Equal(t, []string{"repair", "detect", "unpack", "finish"}, h.log.all(), "from verifying, once")
 	assert.Equal(t, core.StateFetched, h.get(fetched.ID).State, "Recover only touches PostProcessing")
 	assert.Equal(t, core.StateReady, h.get(ready.ID).State)
 	// No second Fetched -> PostProcessing for the stuck Download.
@@ -178,14 +178,14 @@ func TestRestartInTheMiddleOfAStageReentersAtVerifying(t *testing.T) {
 
 	assert.Equal(t, core.StateReady, h.get(d.ID).State)
 	assert.Equal(t,
-		[]string{"verify", "detect", "unpack", "verify", "detect", "unpack", "finish"},
+		[]string{"repair", "detect", "unpack", "repair", "detect", "unpack", "finish"},
 		h.log.all())
 }
 
 func TestRecoverHonoursTheConcurrencyLimit(t *testing.T) {
 	h := newPPHarness(t, func(c *core.PostProcessorConfig) { c.Concurrency = 2 })
 	g := newPPGate()
-	h.verifier.fn = g.verify
+	h.repairer.fn = g.repair
 	for _, n := range []string{"a", "b", "c", "d"} {
 		h.add(n, core.StatePostProcessing, core.SourceNZB)
 	}
@@ -257,7 +257,7 @@ func TestRunProcessesFetchedDownloadsAndThoseThatBecomeFetchedLater(t *testing.T
 func TestRunNeverExceedsTheConcurrencyLimitAndDrainsTheBacklog(t *testing.T) {
 	h := newPPHarness(t, func(c *core.PostProcessorConfig) { c.Concurrency = 2; c.PollInterval = time.Hour })
 	g := newPPGate()
-	h.verifier.fn = g.verify
+	h.repairer.fn = g.repair
 	var ids []core.ID
 	for _, n := range []string{"a", "b", "c", "d", "e"} {
 		ids = append(ids, h.add(n, core.StateFetched, core.SourceNZB).ID)
@@ -285,7 +285,7 @@ func TestRunPollsForFetchedDownloadsItWasNotToldAbout(t *testing.T) {
 func TestRunStopsRunningDownloadsOnCancelAndLeavesThemPostProcessing(t *testing.T) {
 	h := newPPHarness(t, func(c *core.PostProcessorConfig) { c.PollInterval = time.Hour })
 	g := newPPGate()
-	h.verifier.fn = g.verify
+	h.repairer.fn = g.repair
 	d := h.add("a", core.StateFetched, core.SourceNZB)
 	stop := startRun(t, h)
 	waitEntered(t, g, 1)

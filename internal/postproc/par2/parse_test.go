@@ -28,26 +28,20 @@ func TestParseOutput(t *testing.T) {
 		assert.Equal(t, 3, o.damaged())
 		assert.Equal(t, 8, o.recoveryBlocks())
 		assert.Equal(t, 3, o.willUse)
-		assert.True(t, o.possible)
-		assert.False(t, o.impossible)
 	})
 	t.Run("impossible", func(t *testing.T) {
 		o := parseOutput([]byte(outImpossible))
 		assert.Equal(t, 10, o.damaged())
 		assert.Equal(t, 8, o.recoveryBlocks())
 		assert.Equal(t, 2, o.needMore)
-		assert.True(t, o.impossible)
 	})
 	t.Run("clean takes the recovery blocks from the loaded files", func(t *testing.T) {
 		o := parseOutput([]byte(outClean))
-		assert.True(t, o.allCorrect)
 		assert.Equal(t, 8, o.recoveryBlocks())
 		assert.Zero(t, o.damaged())
-		assert.Equal(t, 17, o.total)
 	})
 	t.Run("renamed", func(t *testing.T) {
 		o := parseOutput([]byte(outRenamed))
-		assert.Equal(t, 1, o.renames)
 		assert.Zero(t, o.damaged())
 	})
 	t.Run("no recovery blocks line means none", func(t *testing.T) {
@@ -63,13 +57,9 @@ func TestParseOutput(t *testing.T) {
 		// Names come first on their line, after a fixed word and a quote.
 		o := parseOutput([]byte("Target: \"x\" - missing.\nTarget: \"You have 1 out of 1 data blocks available.\" - found.\n"))
 		assert.False(t, o.haveAvail)
-		assert.Zero(t, o.renames)
 	})
 	t.Run("partial matches", func(t *testing.T) {
 		o := parseOutput([]byte("File: \"x7f3a9\" - found 9 of 10 data blocks from \"a.bin\".\nFile: \"junk.dat\" - no data found.\n"))
 		assert.Equal(t, []string{"x7f3a9"}, o.partials)
-	})
-	t.Run("no main packet", func(t *testing.T) {
-		assert.True(t, parseOutput([]byte("No new packets found\n\nMain packet not found.\n")).noMain)
 	})
 }

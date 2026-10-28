@@ -13,13 +13,12 @@ import (
 	"unicode/utf8"
 )
 
-// PostProcessorConfig wires a PostProcessor. Downloads, Bus, Verifier,
-// Repairer, Unpacker, Finisher, FetchReporter and DirFor are required.
+// PostProcessorConfig wires a PostProcessor. Downloads, Bus, Repairer,
+// Unpacker, Finisher, FetchReporter and DirFor are required.
 type PostProcessorConfig struct {
 	Downloads DownloadRepo
 	Bus       *Bus
 
-	Verifier      Verifier
 	Repairer      Repairer
 	Unpacker      Unpacker
 	Finisher      Finisher
@@ -72,7 +71,6 @@ func NewPostProcessor(cfg PostProcessorConfig) (*PostProcessor, error) {
 	}{
 		{"Downloads", cfg.Downloads == nil},
 		{"Bus", cfg.Bus == nil},
-		{"Verifier", cfg.Verifier == nil},
 		{"Repairer", cfg.Repairer == nil},
 		{"Unpacker", cfg.Unpacker == nil},
 		{"Finisher", cfg.Finisher == nil},
@@ -112,12 +110,16 @@ func NewPostProcessor(cfg PostProcessorConfig) (*PostProcessor, error) {
 const KindPostProcessStage EventKind = "postprocess_stage"
 
 // Stage is a step of the Post-processing pipeline, in the order they run.
-// Verify, repair and unpack are conditional.
+// Verify and unpack are conditional.
 type Stage string
 
 // The stages of Post-processing.
 const (
+	// StageVerifying covers the Repairer: one pass that checks the files
+	// against the PAR2 set and repairs them.
 	StageVerifying Stage = "verifying"
+	// StageRepairing is not entered as a stage of its own (the repair is
+	// part of the verifying pass); it names the failures of the repair.
 	StageRepairing Stage = "repairing"
 	StageUnpacking Stage = "unpacking"
 	// StageFinishing covers the Finisher: cleanup and move to complete.
@@ -435,29 +437,31 @@ func (p *PostProcessor) finish(ctx context.Context, d Download, dir, unpacked st
 	return out, nil
 }
 
-// verifyAndRepair runs the verifying stage and, when it found damage that
-// recovery data can fix, the repairing stage.
+// verifyAndRepair runs the verifying stage: one Repair that checks the
+// files against the PAR2 set and repairs what it can. Without a PAR2 set
+// any damage the fetch side saw is final.
 func (p *PostProcessor) verifyAndRepair(ctx context.Context, d Download, dir string) error {
-	id := d.ID
-	p.stage(id, StageVerifying)
-	vo, err := p.cfg.Verifier.Verify(ctx, dir, VerifyOptions{DownloadID: id})
+	p.stage(d.ID, StageVerifying)
+	out, err := p.cfg.Repairer.Repair(ctx, dir)
+	var short *RecoveryShortfall
+	switch {
+	case errors.As(err, &short):
+		return p.shortfall(ctx, d, short)
+	case errors.Is(err, ErrRepairFailed):
+		return &stageError{StageRepairing, err}
+	case err != nil:
+		return &stageError{StageVerifying, err}
+	}
+	if out.HasPAR2 {
+		return nil
+	}
+	rep, err := p.cfg.FetchReporter.FetchReport(ctx, d)
 	if err != nil {
 		return &stageError{StageVerifying, err}
 	}
-	if !vo.HasPAR2 {
-		// Nothing to recover with: any damage is final.
-		rep, err := p.cfg.FetchReporter.FetchReport(ctx, d)
-		if err != nil {
-			return &stageError{StageVerifying, err}
-		}
-		if rep.Damaged() {
-			return &stageError{StageVerifying, fmt.Errorf("%w: %d missing, %d damaged and no PAR2 set",
-				ErrMissingArticles, rep.MissingArticles, rep.DamagedArticles)}
-		}
-	} else if vo.NeedsRepair {
-		if err := p.repair(ctx, d, dir, vo); err != nil {
-			return err
-		}
+	if rep.Damaged() {
+		return &stageError{StageVerifying, fmt.Errorf("%w: %d missing, %d damaged and no PAR2 set",
+			ErrMissingArticles, rep.MissingArticles, rep.DamagedArticles)}
 	}
 	return nil
 }
@@ -466,27 +470,6 @@ func (p *PostProcessor) verifyAndRepair(ctx context.Context, d Download, dir str
 // side took the Download back (deferred recovery volumes) and re-enters
 // Post-processing when it is Fetched again.
 var errHandoff = errors.New("handed back to the fetch side")
-
-// repair runs the repairing stage. When the recovery data on disk is too
-// small it asks the fetch side for deferred recovery volumes.
-func (p *PostProcessor) repair(ctx context.Context, d Download, dir string, vo VerifyOutcome) error {
-	if !vo.Repairable {
-		return p.shortfall(ctx, d, &RecoveryShortfall{Needed: vo.DamagedSlices, Available: vo.RecoveryOnDisk})
-	}
-	p.stage(d.ID, StageRepairing)
-	_, err := p.cfg.Repairer.Repair(ctx, dir)
-	if err == nil {
-		return nil
-	}
-	var short *RecoveryShortfall
-	switch {
-	case errors.As(err, &short):
-		return p.shortfall(ctx, d, short)
-	case errors.Is(err, ErrInsufficientRecovery):
-		return p.shortfall(ctx, d, &RecoveryShortfall{Needed: vo.DamagedSlices, Available: vo.RecoveryOnDisk})
-	}
-	return &stageError{StageRepairing, err}
-}
 
 // shortfall handles too little recovery data: it returns errHandoff when
 // the fetch side will fetch more, and the shortfall itself otherwise.

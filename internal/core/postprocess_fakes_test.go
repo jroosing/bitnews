@@ -157,19 +157,6 @@ func (r *ppRepo) changes() []core.StateChange {
 // Fakes for the ports. Each has an optional fn to script behaviour; the
 // default is the happy path.
 
-type ppVerifier struct {
-	log *ppLog
-	fn  func(ctx context.Context, dir string) (core.VerifyOutcome, error)
-}
-
-func (v *ppVerifier) Verify(ctx context.Context, dir string, _ core.VerifyOptions) (core.VerifyOutcome, error) {
-	v.log.add("verify")
-	if v.fn != nil {
-		return v.fn(ctx, dir)
-	}
-	return core.VerifyOutcome{HasPAR2: true, Clean: true}, nil
-}
-
 type ppRepairer struct {
 	log *ppLog
 	fn  func(ctx context.Context, dir string) (core.RepairOutcome, error)
@@ -180,7 +167,7 @@ func (r *ppRepairer) Repair(ctx context.Context, dir string) (core.RepairOutcome
 	if r.fn != nil {
 		return r.fn(ctx, dir)
 	}
-	return core.RepairOutcome{RepairedSlices: 1}, nil
+	return core.RepairOutcome{HasPAR2: true}, nil
 }
 
 type ppUnpacker struct {
@@ -273,7 +260,6 @@ type ppHarness struct {
 	bus      *core.Bus
 	sub      *core.Subscription
 	log      *ppLog
-	verifier *ppVerifier
 	repairer *ppRepairer
 	unpacker *ppUnpacker
 	finisher *ppFinisher
@@ -290,7 +276,6 @@ func newPPHarness(t *testing.T, mods ...func(*core.PostProcessorConfig)) *ppHarn
 		repo:     newPPRepo(),
 		bus:      core.NewBus(),
 		log:      log,
-		verifier: &ppVerifier{log: log},
 		repairer: &ppRepairer{log: log},
 		unpacker: &ppUnpacker{log: log},
 		finisher: &ppFinisher{log: log},
@@ -302,7 +287,6 @@ func newPPHarness(t *testing.T, mods ...func(*core.PostProcessorConfig)) *ppHarn
 	cfg := core.PostProcessorConfig{
 		Downloads:       h.repo,
 		Bus:             h.bus,
-		Verifier:        h.verifier,
 		Repairer:        h.repairer,
 		Unpacker:        h.unpacker,
 		Finisher:        h.finisher,

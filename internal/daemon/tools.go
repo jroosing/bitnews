@@ -13,7 +13,7 @@ import (
 // failing the first Download.
 type postprocTools struct {
 	sevenZip string
-	par2     par2.Tool
+	par2     par2.Repairer
 }
 
 // locateTools finds 7zz and par2 on PATH. The error names every missing
@@ -29,7 +29,7 @@ func locateTools() (postprocTools, error) {
 	if p, err := tool.Locate("par2"); err != nil {
 		errs = append(errs, err)
 	} else {
-		t.par2 = par2.Tool{Path: p}
+		t.par2 = par2.Repairer{Path: p}
 	}
 	if len(errs) > 0 {
 		return postprocTools{}, fmt.Errorf("daemon: post-processing tools are missing: %w", errors.Join(errs...))

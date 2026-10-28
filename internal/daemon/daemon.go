@@ -22,7 +22,6 @@ import (
 	"github.com/jroosing/bitnews/internal/fsutil"
 	"github.com/jroosing/bitnews/internal/netbind"
 	"github.com/jroosing/bitnews/internal/postproc/finalize"
-	"github.com/jroosing/bitnews/internal/postproc/par2"
 	"github.com/jroosing/bitnews/internal/postproc/unpack"
 	"github.com/jroosing/bitnews/internal/store"
 	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
@@ -467,8 +466,7 @@ func newPostProcessor(
 	}
 	return core.NewPostProcessor(core.PostProcessorConfig{
 		Downloads: downloads, Bus: bus,
-		Verifier: par2.Verifier{DeferredBlocks: run.DeferredBlocks, Par2: tools.par2},
-		Repairer: par2.Repairer{Par2: tools.par2},
+		Repairer: tools.par2,
 		Unpacker: unpack.Unpacker{SevenZip: tools.sevenZip, Passwords: passwords, MinFreeFunc: func() uint64 { v, _ := minFree(context.Background()); return v }, FreeSpace: tune.FreeSpace},
 		// Torrents never reach the FetchReport: it is asked only when
 		// there is no PAR2 set to verify, and torrents skip Verify.

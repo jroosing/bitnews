@@ -18,10 +18,10 @@ import (
 // Block size and recovery count of the test sets: small, so par2 is fast.
 const blockSize = 1000
 
-// toolFor returns a Tool that runs the pinned par2.
-func toolFor(t testing.TB) par2.Tool {
+// toolFor returns a Repairer that runs the pinned par2.
+func toolFor(t testing.TB) par2.Repairer {
 	t.Helper()
-	return par2.Tool{Path: tooltest.Path(t, "par2"), Threads: 2, MemoryMB: 64}
+	return par2.Repairer{Path: tooltest.Path(t, "par2"), Threads: 2, MemoryMB: 64}
 }
 
 // payload returns n deterministic pseudo-random bytes.

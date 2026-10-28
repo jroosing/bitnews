@@ -117,10 +117,10 @@ func TestUndeferFetchesOnlyTheChosenVolumesOnceAndReturnsToFetched(t *testing.T)
 	require.Len(t, deferred, 2)
 	assert.Equal(t, 2, deferred[0].RecoveryBlocks)
 	assert.Equal(t, 4, deferred[1].RecoveryBlocks)
-	assert.Equal(t, 6, r.DeferredBlocks(d.ID))
+	assert.Equal(t, 6, deferredBlocks(t, r, d.ID))
 
 	require.NoError(t, r.Undefer(ctx, d.ID, []int{1})) // movie.vol002+04.par2
-	assert.Equal(t, 6, r.DeferredBlocks(d.ID), "a volume counts as deferred until it is fetched")
+	assert.Equal(t, 6, deferredBlocks(t, r, d.ID), "a volume counts as deferred until it is fetched")
 	h.requeueForVolumes(d.ID)
 	got := h.waitState(d.ID, core.StateFetched)
 
@@ -143,7 +143,7 @@ func TestUndeferFetchesOnlyTheChosenVolumesOnceAndReturnsToFetched(t *testing.T)
 	require.NoError(t, err)
 	require.Len(t, deferred, 1)
 	assert.Equal(t, 2, deferred[0].RecoveryBlocks)
-	assert.Equal(t, 2, r.DeferredBlocks(d.ID))
+	assert.Equal(t, 2, deferredBlocks(t, r, d.ID))
 }
 
 func TestUndeferSecondRoundFetchesOnlyTheNewVolume(t *testing.T) {
@@ -174,7 +174,7 @@ func TestUndeferSecondRoundFetchesOnlyTheNewVolume(t *testing.T) {
 		}
 	}
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))
-	assert.Zero(t, r.DeferredBlocks(d.ID))
+	assert.Zero(t, deferredBlocks(t, r, d.ID))
 }
 
 func TestUndeferIsRefusedOutsidePostProcessing(t *testing.T) {
@@ -203,7 +203,7 @@ func TestUndeferRejectsAnIndexOutsideTheDeferredList(t *testing.T) {
 
 	assert.Error(t, r.Undefer(context.Background(), d.ID, []int{2}))
 	assert.Error(t, r.Undefer(context.Background(), d.ID, []int{-1}))
-	assert.Equal(t, 6, r.DeferredBlocks(d.ID), "nothing was recorded")
+	assert.Equal(t, 6, deferredBlocks(t, r, d.ID), "nothing was recorded")
 }
 
 func TestListDeferredOfAnUnknownDownloadIsAnError(t *testing.T) {
@@ -213,7 +213,6 @@ func TestListDeferredOfAnUnknownDownloadIsAnError(t *testing.T) {
 	_, err := r.ListDeferred(context.Background(), core.NewID())
 
 	assert.ErrorIs(t, err, core.ErrNotFound)
-	assert.Zero(t, r.DeferredBlocks(core.NewID()))
 }
 
 func TestUndeferredVolumesSurviveARestartOfTheRunner(t *testing.T) {
@@ -244,7 +243,7 @@ func TestUndeferredVolumesSurviveARestartOfTheRunner(t *testing.T) {
 		assert.Equal(t, 1, srv.Requests(id))
 	}
 	assert.Equal(t, files["movie.mkv"], readDir(t, h.dirFor(d))["movie.mkv"], "the data file is untouched")
-	assert.Equal(t, 2, r.DeferredBlocks(d.ID))
+	assert.Equal(t, 2, deferredBlocks(t, r, d.ID))
 }
 
 func TestSupplementRunKeepsTheStoredFetchReport(t *testing.T) {
@@ -351,4 +350,16 @@ func TestResumeWithTheSQLiteStoreRefetchesOnlyWhatWasNotSavedAfterACrash(t *test
 	assert.Less(t, refetched, firstRun-10, "most Articles of the first run were skipped")
 	_, err = store.NewUsenetProgressRepo(h.db).Load(context.Background(), d.ID)
 	assert.ErrorIs(t, err, core.ErrNotFound, "the blob is deleted once Fetched")
+}
+
+// deferredBlocks sums the recovery blocks of the volumes not fetched yet.
+func deferredBlocks(t *testing.T, r *runner.Runner, id core.ID) int {
+	t.Helper()
+	files, err := r.ListDeferred(context.Background(), id)
+	require.NoError(t, err)
+	total := 0
+	for _, f := range files {
+		total += f.RecoveryBlocks
+	}
+	return total
 }
