@@ -11,7 +11,7 @@ templ ErrorPage(v *View, p errorPage) {
 				<h1 class="mt-3 text-xl">{ p.Heading }</h1>
 				<p class="mt-2 text-sm text-fg-muted">{ p.Message }</p>
 				<div class="mt-6 flex justify-center gap-2">
-					<a href={ templ.SafeURL(p.Href) } class="btn btn-primary">{ p.HrefLabel }</a>
+					<a href={ templ.URL(p.Href) } class="btn btn-primary">{ p.HrefLabel }</a>
 				</div>
 			</div>
 		</div>

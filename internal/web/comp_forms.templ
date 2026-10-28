@@ -299,7 +299,7 @@ templ SettingsLayout(nav []settingsNavItem) {
 		<nav aria-label="Settings sections" x-data="settingsNav" class="relative -mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:-mx-6 sm:px-6 md:sticky md:top-20 md:mx-0 md:mb-0 md:flex-col md:gap-1 md:overflow-visible md:px-0 md:pb-0">
 			for _, n := range nav {
 				<a
-					href={ templ.SafeURL(n.Path) }
+					href={ templ.URL(n.Path) }
 					class="settings-link"
 					if n.Active {
 						aria-current="page"
@@ -356,7 +356,7 @@ templ SettingsForm(p SettingsFormProps) {
 		<form
 			id={ p.ID }
 			method="post"
-			action={ templ.SafeURL(p.Action) }
+			action={ templ.URL(p.Action) }
 			{ Hx{Post: p.Action, Target: "#" + p.ID + "-card", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
 			x-data="settingsForm"
 			@input="touch"

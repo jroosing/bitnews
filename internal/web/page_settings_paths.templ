@@ -185,7 +185,7 @@ templ CategoryEditRow(r categoryRow) {
 		<td colspan="3" data-label="" class="bg-surface-2">
 			<form
 				method="post"
-				action={ templ.SafeURL("/settings/categories/" + r.ID) }
+				action={ templ.URL("/settings/categories/" + r.ID) }
 				{ Hx{Post: "/settings/categories/" + r.ID, Target: "closest tr", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
 				class="w-full text-left"
 			>

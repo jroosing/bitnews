@@ -12,7 +12,7 @@ templ HistoryRow(r historyRow) {
 					<span class="sr-only">{ r.KindLabel }</span>
 				</span>
 				<div class="min-w-0 flex-1">
-					<a href={ templ.SafeURL("/downloads/" + r.ID) } class="block break-words font-medium text-fg hover:text-accent-text">{ r.Name }</a>
+					<a href={ templ.URL("/downloads/" + r.ID) } class="block break-words font-medium text-fg hover:text-accent-text">{ r.Name }</a>
 					if r.Failed {
 						<p class="mt-1 text-sm">
 							<span class="font-medium text-bad-fg">{ r.Reason }</span>
@@ -69,7 +69,7 @@ templ HistoryRow(r historyRow) {
 					@Icon(IconMore, "size-4")
 				</button>
 				<div x-ref="panel" x-show="open" x-cloak x-transition.opacity.duration.100ms class="menu-panel text-left" role="menu" aria-label={ "Actions for " + r.ShortName } @keydown="onPanelKey" @click="closeQuiet">
-					<a role="menuitem" class="menu-item" href={ templ.SafeURL("/downloads/" + r.ID) }>
+					<a role="menuitem" class="menu-item" href={ templ.URL("/downloads/" + r.ID) }>
 						@Icon(IconInfo, "size-5 text-fg-subtle")
 						{ "View details" }
 					</a>

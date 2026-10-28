@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/a-h/templ"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
@@ -259,33 +260,36 @@ func assertInert(t *testing.T, body, ctx string) {
 
 // ---- components with hostile data ---------------------------------------
 
+func renderComponent(t *testing.T, c templ.Component) string {
+	t.Helper()
+	var buf strings.Builder
+	require.NoError(t, c.Render(context.Background(), &buf))
+	return buf.String()
+}
+
 func TestComponentsEscapeHostileData(t *testing.T) {
 	for _, v := range hostile {
-		for _, c := range []struct {
-			name string
-			data map[string]any
-		}{
-			{"badge", map[string]any{"State": "ready", "Label": v}},
-			{"field", map[string]any{"ID": "f", "Label": v, "Value": v, "Help": v, "Error": v, "Placeholder": v}},
-			{"alert", map[string]any{"Variant": "danger", "Title": v, "Body": v}},
-			{"empty_state", map[string]any{"Title": v, "Body": v, "ActionLabel": v, "ActionHref": v}},
-			{"pagination", map[string]any{"Summary": v, "NextHref": v, "PrevHref": v}},
-			{"progress", map[string]any{"Value": 5, "Label": v}},
-			{"copy_button", map[string]any{"Text": v}},
-			{"button", map[string]any{"Label": v}},
-			{"card_start", map[string]any{"Title": v, "Subtitle": v, "Class": v}},
-			{"table_start", map[string]any{"Caption": v, "Class": v}},
-			{"modal_start", map[string]any{"ID": "m", "Title": v, "Description": v}},
+		for name, c := range map[string]templ.Component{
+			"badge":       web.Badge(web.BadgeReady, v),
+			"field":       web.Field(web.FieldProps{ID: "f", Label: v, Value: v, Help: v, Error: v, Placeholder: v}),
+			"alert":       web.Alert(web.AlertProps{Variant: web.AlertDanger, Title: v, Body: v}),
+			"empty_state": web.EmptyState(web.EmptyProps{Title: v, Body: v, ActionLabel: v, ActionHref: v}),
+			"pagination":  web.Pagination(web.PaginationProps{Summary: v, NextHref: v, PrevHref: v}),
+			"progress":    web.Progress(web.ProgressProps{Value: 5, Label: v}),
+			"copy_button": web.CopyButton(v),
+			"button":      web.Button(web.ButtonProps{Label: v}),
+			"card":        web.Card(web.CardProps{Title: v, Subtitle: v, Class: v}),
+			"table":       web.TableShell(v, v),
+			"modal":       web.Modal(web.ModalProps{ID: "m", Title: v, Description: v}),
 		} {
-			out, err := web.RenderTemplate("styleguide.html", c.name, c.data)
-			require.NoError(t, err, c.name)
+			out := renderComponent(t, c)
 
-			assertInert(t, "<div>"+out+"</div></dialog></table></section>", c.name+" "+v)
-			assert.NotContains(t, out, "<script", c.name)
+			assertInert(t, "<div>"+out+"</div></dialog></table></section>", name+" "+v)
+			assert.NotContains(t, out, "<script", name)
 			walk(parseHTML(t, out), func(n *html.Node) {
 				for _, a := range n.Attr {
 					if n.Type == html.ElementNode && (a.Key == "href" || a.Key == "src" || a.Key == "action") {
-						assert.NotContains(t, strings.ToLower(a.Val), "javascript:", "%s: %s attribute must be neutralised", c.name, a.Key)
+						assert.NotContains(t, strings.ToLower(a.Val), "javascript:", "%s: %s attribute must be neutralised", name, a.Key)
 					}
 				}
 			})
@@ -294,60 +298,19 @@ func TestComponentsEscapeHostileData(t *testing.T) {
 }
 
 func TestSelectOptionsAreEscaped(t *testing.T) {
-	type option struct{ Value, Label string }
 	for _, v := range hostile {
-		out, err := web.RenderTemplate("styleguide.html", "select_field", map[string]any{
-			"ID": "s", "Label": "Priority", "Selected": v, "Options": []option{{v, v}, {"b", "B"}},
-		})
-		require.NoError(t, err)
+		out := renderComponent(t, web.SelectField(web.SelectProps{
+			ID: "s", Label: "Priority", Selected: v,
+			Options: []web.SelectOption{{Value: v, Label: v}, {Value: "b", Label: "B"}},
+		}))
 
 		assertInert(t, "<div>"+out+"</div>", "select "+v)
 	}
 }
 
-func TestIDsInHXValsAreValidatedNotTrusted(t *testing.T) {
-	funcs := web.TemplateFuncs()
-	hxVals := funcs["hxVals"].(func(...string) (htmlAttr, error))
-
-	attr, err := hxVals("id", "abc123_-")
-	require.NoError(t, err)
-	assert.Equal(t, `hx-vals="{&#34;id&#34;:&#34;abc123_-&#34;}"`, string(attr))
-
-	for _, bad := range hostile {
-		_, err := hxVals("id", bad)
-		assert.Error(t, err, bad)
-	}
-	_, err = hxVals("id")
-	assert.Error(t, err)
-}
-
-func TestAttrsRefusesHandlersStyleAndForeignURLs(t *testing.T) {
-	attrs := web.TemplateFuncs()["attrs"].(func(...string) (htmlAttr, error))
-
-	got, err := attrs("hx-post", "/queue/pause", "hx-target", `#row"><x`)
-	require.NoError(t, err)
-	assert.Equal(t, `hx-post="/queue/pause" hx-target="#row&#34;&gt;&lt;x"`, string(got))
-
-	for _, bad := range [][]string{
-		{"onclick", "alert(1)"}, {"hx-on:click", "alert(1)"}, {"hx-on", "x"}, {"style", "color:red"}, {"srcdoc", "x"},
-		{"x-on:click", "x"}, {"href", "javascript:alert(1)"}, {"hx-get", "https://evil.test/"}, {"hx-get", "//evil.test"},
-		{"hx-post", `\evil`}, {`bad name`, "x"}, {`a"b`, "x"}, {"href"},
-	} {
-		_, err := attrs(bad...)
-		assert.Error(t, err, "%q", bad)
-	}
-}
-
-func TestUnknownIconAndAssetFailTheRender(t *testing.T) {
-	funcs := web.TemplateFuncs()
-	icon := funcs["icon"].(func(string, ...string) (htmlHTML, error))
-	_, err := icon("no-such-icon")
-	assert.Error(t, err)
-	asset := funcs["asset"].(func(string) (string, error))
-	_, err = asset("nope.css")
-	assert.Error(t, err)
-	_, err = asset("../../etc/passwd")
-	assert.Error(t, err)
+func TestUnknownIconFailsTheRender(t *testing.T) {
+	var buf strings.Builder
+	assert.Error(t, web.Icon(web.IconName("no-such-icon"), "size-5").Render(context.Background(), &buf))
 }
 
 var _ = context.Background

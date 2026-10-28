@@ -14,7 +14,6 @@
 
 @import "tailwindcss";
 
-@source "../assets/templates";
 @source "../assets/static/js";
 @source "../*.go";
 @source "../*.templ";

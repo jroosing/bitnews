@@ -10,15 +10,12 @@ import (
 
 // Page is one full-page route behind the sign-in. To add a page, append a
 // Page to builtinPages (or call Server.addPage from a routes_<name>.go
-// file), create assets/templates/pages/<Template> and run `make css`.
+// file), write its .templ component and run `make generate` and `make css`.
 type Page struct {
 	// Path is the GET route, e.g. "/queue".
 	Path string
-	// Template is the file below assets/templates/pages/. Ignored when
-	// Component is set.
-	Template string
 	// Component builds the page from the layout data and what Data
-	// returned (ADR-0011). It replaces Template.
+	// returned (ADR-0011).
 	Component func(v *View, data any) templ.Component
 	// Title is the page heading and the document title.
 	Title string
@@ -54,11 +51,7 @@ func (s *Server) addPage(p Page) {
 			}
 			v.Page = data
 		}
-		if p.Component != nil {
-			s.renderComponent(w, r, http.StatusOK, p.Component(v, v.Page))
-			return
-		}
-		s.render(w, r, http.StatusOK, p.Template, "layout_app", v)
+		s.renderComponent(w, r, http.StatusOK, p.Component(v, v.Page))
 	})
 }
 

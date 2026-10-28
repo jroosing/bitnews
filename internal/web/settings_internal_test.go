@@ -78,6 +78,6 @@ func TestMovePriorities(t *testing.T) {
 
 func TestEverySettingsSectionHasAView(t *testing.T) {
 	for _, sec := range settingsSections() {
-		assert.True(t, sec.Template != "" || sec.Component != nil, sec.Slug)
+		assert.NotNil(t, sec.Component, sec.Slug)
 	}
 }

@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"crypto/tls"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -392,11 +391,6 @@ func text(n *html.Node) string {
 }
 
 var tlsState = tls.ConnectionState{}
-
-type (
-	htmlAttr = template.HTMLAttr
-	htmlHTML = template.HTML
-)
 
 // swapRepo is the ServerRepo of the test stack. breakKey makes it read with
 // a different key from then on, so stored passwords become unreadable the

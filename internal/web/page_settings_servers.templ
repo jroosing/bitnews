@@ -144,7 +144,7 @@ templ ServerForm(v serverFormView) {
 	<form
 		id="server-form"
 		method="post"
-		action={ templ.SafeURL(v.action()) }
+		action={ templ.URL(v.action()) }
 		{ Hx{Post: v.action(), Target: "#server-dialog-body", Swap: "innerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
 		x-data="serverForm"
 		@input="clearResult"

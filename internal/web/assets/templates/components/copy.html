@@ -1,9 +1,0 @@
-{{/* copy_button: copies Text to the clipboard (hidden without JS). */}}
-{{define "copy_button"}}
-<span x-data="clipboard" x-cloak>
-  <button type="button" class="btn btn-secondary btn-sm" data-copy="{{.Text}}" @click="copy">
-    <span x-show="!copied" class="inline-flex items-center gap-1.5">{{icon "copy" "size-4"}}Copy</span>
-    <span x-show="copied" x-cloak class="inline-flex items-center gap-1.5 text-ok-fg">{{icon "check" "size-4"}}Copied</span>
-  </button>
-</span>
-{{end}}

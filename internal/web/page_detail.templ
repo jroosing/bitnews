@@ -87,7 +87,7 @@ templ detailSubtitle(p detailPage) {
 }
 
 templ detailActions(p detailPage) {
-	<a href={ templ.SafeURL(detailBackHref(p)) } class="btn btn-secondary">
+	<a href={ templ.URL(detailBackHref(p)) } class="btn btn-secondary">
 		@Icon(IconChevronLeft, "size-4")
 		{ detailBackLabel(p) }
 	</a>
@@ -300,7 +300,7 @@ templ ShareCard(p detailPage) {
 			</header>
 			<form
 				method="post"
-				action={ templ.SafeURL("/downloads/" + p.ID + "/share-limit") }
+				action={ templ.URL("/downloads/" + p.ID + "/share-limit") }
 				{ Hx{Post: "/downloads/" + p.ID + "/share-limit", Target: "#share-card", Swap: "outerHTML"}.MustAttrs()... }
 				class="card-body space-y-4"
 			>
@@ -395,7 +395,7 @@ templ detailRemove(p detailPage) {
 		<div class="card-body flex flex-wrap gap-3">
 			<form
 				method="post"
-				action={ templ.SafeURL("/downloads/" + p.ID + "/delete") }
+				action={ templ.URL("/downloads/" + p.ID + "/delete") }
 				{ Hx{Post: "/downloads/" + p.ID + "/delete", Confirm: "Remove this download from bitnews? Files already downloaded stay on disk."}.MustAttrs()... }
 				data-confirm-label="Remove"
 				data-confirm-tone="danger"
@@ -415,7 +415,7 @@ templ detailRemove(p detailPage) {
 			</form>
 			<form
 				method="post"
-				action={ templ.SafeURL("/downloads/" + p.ID + "/delete") }
+				action={ templ.URL("/downloads/" + p.ID + "/delete") }
 				{ Hx{Post: "/downloads/" + p.ID + "/delete", Confirm: "Remove this download and delete its files? This cannot be undone."}.MustAttrs()... }
 				data-confirm-label="Delete files"
 				data-confirm-tone="danger"

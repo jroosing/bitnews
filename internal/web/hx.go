@@ -3,7 +3,9 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
+	"strings"
 
 	"github.com/a-h/templ"
 )
@@ -30,9 +32,9 @@ type Hx struct {
 
 var (
 	hxValName = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
-	// hxValValue is what a server-validated ID or fixed word looks like
-	// (core.ID is lowercase base32).
-	hxValValue = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	// idValue is what a server-validated ID or fixed word looks like
+	// (core.ID is lowercase base32); hx-vals only ever take such values.
+	idValue = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 )
 
 // hxError is the panic value of MustAttrs, so render can turn it into a 500.
@@ -82,7 +84,7 @@ func (h Hx) Attrs() (templ.Attributes, error) {
 	}
 	if len(h.Vals) > 0 {
 		for k, v := range h.Vals {
-			if !hxValName.MatchString(k) || !hxValValue.MatchString(v) {
+			if !hxValName.MatchString(k) || !idValue.MatchString(v) {
 				return nil, hxError{fmt.Sprintf("web: hx vals take names and IDs, got %q=%q", k, v)}
 			}
 		}
@@ -103,4 +105,14 @@ func (h Hx) MustAttrs() templ.Attributes {
 		panic(err)
 	}
 	return a
+}
+
+// relativeURL reports whether s is a same-origin path, query or fragment
+// reference: no scheme, no host, no backslash or control characters.
+func relativeURL(s string) bool {
+	if s == "" || strings.HasPrefix(s, "//") || strings.ContainsAny(s, "\\\x00\r\n\t") {
+		return false
+	}
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme == "" && u.Host == "" && u.User == nil
 }

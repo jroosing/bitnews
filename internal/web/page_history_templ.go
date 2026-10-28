@@ -157,9 +157,9 @@ func HistoryPage(v *View, p historyPage) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var5 templ.SafeURL
-						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(p.NewestHref))
+						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(p.NewestHref))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_history.templ`, Line: 78, Col: 78}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_history.templ`, Line: 78, Col: 74}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 						if templ_7745c5c3_Err != nil {
@@ -176,9 +176,9 @@ func HistoryPage(v *View, p historyPage) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var6 templ.SafeURL
-						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(p.NextHref))
+						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(p.NextHref))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_history.templ`, Line: 83, Col: 41}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_history.templ`, Line: 83, Col: 37}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 						if templ_7745c5c3_Err != nil {

@@ -3,10 +3,7 @@ package web
 import (
 	"bytes"
 	"fmt"
-	"html/template"
-	"io/fs"
 	"net/http"
-	"path"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -15,75 +12,6 @@ import (
 
 	"github.com/jroosing/bitnews/internal/auth"
 )
-
-// templates holds one parsed set per page file. Every set contains the
-// layouts, the shared partials and all components, plus that one page, so
-// pages can each define "content" without clashing.
-type templates struct {
-	sets map[string]*template.Template
-}
-
-// sharedTemplates are parsed into every set, besides components/*.html.
-var sharedTemplates = []string{"head.html", "nav.html", "layout_app.html", "layout_bare.html"}
-
-func loadTemplates(fsys fs.FS, funcs template.FuncMap) (*templates, error) {
-	base := template.New("base").Funcs(funcs).Option("missingkey=zero")
-	for _, f := range sharedTemplates {
-		if err := parseFile(base, fsys, f); err != nil {
-			return nil, err
-		}
-	}
-	components, err := fs.Glob(fsys, "components/*.html")
-	if err != nil {
-		return nil, err
-	}
-	for _, f := range components {
-		if err := parseFile(base, fsys, f); err != nil {
-			return nil, err
-		}
-	}
-	pages, err := fs.Glob(fsys, "pages/*.html")
-	if err != nil {
-		return nil, err
-	}
-	t := &templates{sets: map[string]*template.Template{}}
-	for _, f := range pages {
-		set, err := base.Clone()
-		if err != nil {
-			return nil, err
-		}
-		if err := parseFile(set, fsys, f); err != nil {
-			return nil, err
-		}
-		t.sets[path.Base(f)] = set
-	}
-	return t, nil
-}
-
-func parseFile(t *template.Template, fsys fs.FS, name string) error {
-	b, err := fs.ReadFile(fsys, name)
-	if err != nil {
-		return err
-	}
-	if _, err := t.New(name).Parse(string(b)); err != nil {
-		return fmt.Errorf("web: parse %s: %w", name, err)
-	}
-	return nil
-}
-
-// execute renders the layout of a page ("layout_app" or "layout_bare"), or a
-// named fragment of it when fragment is not empty.
-func (t *templates) execute(page, name string, data any) ([]byte, error) {
-	set, ok := t.sets[page]
-	if !ok {
-		return nil, fmt.Errorf("web: unknown page template %q", page)
-	}
-	var buf bytes.Buffer
-	if err := set.ExecuteTemplate(&buf, name, data); err != nil {
-		return nil, fmt.Errorf("web: render %s/%s: %w", page, name, err)
-	}
-	return buf.Bytes(), nil
-}
 
 // View is the data every layout receives. Page holds the page's own data.
 type View struct {
@@ -172,27 +100,6 @@ func setHTMLHeaders(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	h.Set("Cache-Control", "no-store")
-}
-
-// render writes a full page. Rendering happens into a buffer first, so a
-// template error becomes a clean 500 instead of a half-written page.
-func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page, layout string, v *View) {
-	out, err := s.tpl.execute(page, layout, v)
-	if err != nil {
-		s.Logger.Error("render failed", "page", page, "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	setHTMLHeaders(w)
-	w.WriteHeader(status)
-	if r.Method != http.MethodHead {
-		_, _ = w.Write(out)
-	}
-}
-
-// renderFragment writes one named template of a page, for htmx swaps.
-func (s *Server) renderFragment(w http.ResponseWriter, r *http.Request, status int, page, fragment string, v *View) {
-	s.render(w, r, status, page, fragment, v)
 }
 
 // renderComponent writes a templ component as a full response (a page or an

@@ -133,7 +133,7 @@ templ SecurityConfirm(c *confirmView) {
 			<form
 				id={ c.ID + "-confirm-form" }
 				method="post"
-				action={ templ.SafeURL(c.Action) }
+				action={ templ.URL(c.Action) }
 				{ Hx{Post: c.Action, Target: "#" + c.ID + "-card", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
 			>
 				@CSRFField(c.CSRF)
@@ -154,7 +154,7 @@ templ SecurityConfirm(c *confirmView) {
 					</div>
 				</div>
 				<footer class="card-footer">
-					<a href={ templ.SafeURL(c.Cancel) } class="btn btn-secondary" { Hx{Get: c.Action, Target: "#" + c.ID + "-card", Swap: "outerHTML"}.MustAttrs()... }>Cancel</a>
+					<a href={ templ.URL(c.Cancel) } class="btn btn-secondary" { Hx{Get: c.Action, Target: "#" + c.ID + "-card", Swap: "outerHTML"}.MustAttrs()... }>Cancel</a>
 					<button type="submit" class="btn btn-danger">
 						<span class="btn-spinner" aria-hidden="true"></span>
 						{ c.Label }

@@ -19,7 +19,7 @@ import (
 // SettingsSection is one page of the Settings area. The sections are listed
 // in settingsSections (the registry); the shell turns every entry into a
 // link in the settings navigation and a page at /settings/<Slug>. To add a
-// section, give its entry a Template (and a Data and Routes function when it
+// section, give its entry a Component (and a Data and Routes function when it
 // needs them); see "Settings sections" in README.md.
 type SettingsSection struct {
 	// Slug is the last path element: /settings/<Slug>. It is also the ID of
@@ -33,11 +33,8 @@ type SettingsSection struct {
 	Description string
 	// Order sorts the navigation; the first section is where /settings leads.
 	Order int
-	// Template is the file below assets/templates/pages/. Ignored when
-	// Component is set.
-	Template string
 	// Component builds the section page inside the settings frame
-	// (ADR-0011). It replaces Template.
+	// (ADR-0011).
 	Component func(v *View, p settingsPage) templ.Component
 	// Data returns the section's own data, which the template sees as
 	// .Page.Data. Optional.
@@ -100,12 +97,8 @@ func settingsPageFor(secs []SettingsSection, sec SettingsSection, data any) sett
 	return settingsPage{Section: nav[slices.IndexFunc(nav, func(n settingsNavItem) bool { return n.Slug == sec.Slug })], Nav: nav, Data: data}
 }
 
-// settingsComponent adapts a section's Component to the Page one; it is nil
-// while the section still uses a template.
+// settingsComponent adapts a section's Component to the Page one.
 func settingsComponent(sec SettingsSection) func(*View, any) templ.Component {
-	if sec.Component == nil {
-		return nil
-	}
 	return func(v *View, data any) templ.Component { return sec.Component(v, data.(settingsPage)) }
 }
 
@@ -121,7 +114,7 @@ func (s *Server) registerSettings() {
 	})
 	for _, sec := range secs {
 		s.addPage(Page{
-			Path: "/settings/" + sec.Slug, Template: sec.Template, Title: sec.Title,
+			Path: "/settings/" + sec.Slug, Title: sec.Title,
 			Component: settingsComponent(sec),
 			Data: func(s *Server, r *http.Request) (any, error) {
 				var data any
@@ -160,26 +153,7 @@ func (s *Server) renderSettingsPage(w http.ResponseWriter, r *http.Request, stat
 	}
 	v := s.newView(r, sec.Title)
 	v.Page = settingsPageFor(settingsSections(), sec, data)
-	if sec.Component != nil {
-		s.renderComponent(w, r, status, sec.Component(v, v.Page.(settingsPage)))
-		return
-	}
-	s.render(w, r, status, sec.Template, "layout_app", v)
-}
-
-// renderSettingsPart renders one named template of a page with data that is
-// not a *View. The partial sees data as its dot, so data carries whatever it
-// needs (the CSRF token for plain-form fallbacks).
-func (s *Server) renderSettingsPart(w http.ResponseWriter, status int, page, name string, data any) {
-	out, err := s.tpl.execute(page, name, data)
-	if err != nil {
-		s.Logger.Error("render failed", "page", page, "fragment", name, "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	setHTMLHeaders(w)
-	w.WriteHeader(status)
-	_, _ = w.Write(out)
+	s.renderComponent(w, r, status, sec.Component(v, v.Page.(settingsPage)))
 }
 
 // settingsCSRF is the CSRF token of the request's principal, for the hidden

@@ -42,7 +42,7 @@ templ QueueSection(sec *queueSection) {
 					}
 					@QueueLimit(sec)
 					if sec.Paused {
-						<form method="post" action={ templ.SafeURL("/queues/" + sec.Kind + "/resume") } { Hx{Post: "/queues/" + sec.Kind + "/resume", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }>
+						<form method="post" action={ templ.URL("/queues/" + sec.Kind + "/resume") } { Hx{Post: "/queues/" + sec.Kind + "/resume", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }>
 							@CSRFField(sec.CSRF)
 							<button type="submit" class="btn btn-primary btn-sm">
 								@Icon(IconPlay, "size-4")
@@ -50,7 +50,7 @@ templ QueueSection(sec *queueSection) {
 							</button>
 						</form>
 					} else {
-						<form method="post" action={ templ.SafeURL("/queues/" + sec.Kind + "/pause") } { Hx{Post: "/queues/" + sec.Kind + "/pause", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }>
+						<form method="post" action={ templ.URL("/queues/" + sec.Kind + "/pause") } { Hx{Post: "/queues/" + sec.Kind + "/pause", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... }>
 							@CSRFField(sec.CSRF)
 							<button type="submit" class="btn btn-secondary btn-sm">
 								@Icon(IconPause, "size-4")
@@ -137,7 +137,7 @@ templ QueueLimit(sec *queueSection) {
 			<span class="sr-only">Speed limit, change</span>
 		</button>
 		<div x-ref="panel" x-show="open" x-cloak class="menu-panel w-72 p-4" role="dialog" aria-label={ sec.Title + " speed limit" }>
-			<form method="post" action={ templ.SafeURL("/queues/" + sec.Kind + "/speed") } { Hx{Post: "/queues/" + sec.Kind + "/speed", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... } class="space-y-3">
+			<form method="post" action={ templ.URL("/queues/" + sec.Kind + "/speed") } { Hx{Post: "/queues/" + sec.Kind + "/speed", Target: "#queue-lists", Swap: "outerHTML"}.MustAttrs()... } class="space-y-3">
 				@CSRFField(sec.CSRF)
 				<p class="text-sm font-medium text-fg">Speed limit</p>
 				@Field(FieldProps{ID: "limit-" + sec.Kind + "-down", Name: "down_kbps", Label: "Download (KB/s)", Type: FieldNumber, Inputmode: "numeric", Value: strconv.FormatInt(sec.LimitDownKB, 10)})
@@ -304,14 +304,14 @@ templ QueueLive(r *queueRowCtx) {
 templ QueueActions(r *queueRowCtx) {
 	<div class="flex items-center justify-end gap-1">
 		if r.CanPause {
-			<form method="post" action={ templ.SafeURL("/queue/" + r.ID + "/pause") } { Hx{Post: "/queue/" + r.ID + "/pause", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }>
+			<form method="post" action={ templ.URL("/queue/" + r.ID + "/pause") } { Hx{Post: "/queue/" + r.ID + "/pause", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }>
 				@CSRFField(r.CSRF)
 				<button type="submit" class="btn btn-ghost btn-icon btn-sm" aria-label={ "Pause " + r.ShortName } title="Pause">
 					@Icon(IconPause, "size-4")
 				</button>
 			</form>
 		} else if r.CanResume {
-			<form method="post" action={ templ.SafeURL("/queue/" + r.ID + "/resume") } { Hx{Post: "/queue/" + r.ID + "/resume", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }>
+			<form method="post" action={ templ.URL("/queue/" + r.ID + "/resume") } { Hx{Post: "/queue/" + r.ID + "/resume", Target: "closest tr", Swap: "outerHTML"}.MustAttrs()... }>
 				@CSRFField(r.CSRF)
 				<button type="submit" class="btn btn-ghost btn-icon btn-sm" aria-label={ "Resume " + r.ShortName } title="Resume">
 					@Icon(IconPlay, "size-4")

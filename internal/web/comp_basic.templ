@@ -409,7 +409,7 @@ templ EmptyState(p EmptyProps) {
 			<p class="mt-1 max-w-sm text-sm text-fg-muted">{ p.Body }</p>
 		}
 		if p.ActionLabel != "" && p.ActionHref != "" {
-			<a href={ templ.SafeURL(p.ActionHref) } class="btn btn-secondary mt-5">{ p.ActionLabel }</a>
+			<a href={ templ.URL(p.ActionHref) } class="btn btn-secondary mt-5">{ p.ActionLabel }</a>
 		}
 	</div>
 }
@@ -426,7 +426,7 @@ templ Pagination(p PaginationProps) {
 		<p class="text-sm text-fg-muted">{ p.Summary }</p>
 		<div class="flex gap-2">
 			if p.PrevHref != "" {
-				<a class="btn btn-secondary btn-sm" href={ templ.SafeURL(p.PrevHref) } rel="prev">
+				<a class="btn btn-secondary btn-sm" href={ templ.URL(p.PrevHref) } rel="prev">
 					@Icon(IconChevronLeft, "size-4")
 					Previous
 				</a>
@@ -437,7 +437,7 @@ templ Pagination(p PaginationProps) {
 				</span>
 			}
 			if p.NextHref != "" {
-				<a class="btn btn-secondary btn-sm" href={ templ.SafeURL(p.NextHref) } rel="next">
+				<a class="btn btn-secondary btn-sm" href={ templ.URL(p.NextHref) } rel="next">
 					Next
 					@Icon(IconChevronRight, "size-4")
 				</a>

@@ -75,12 +75,12 @@ templ HistoryPage(v *View, p historyPage) {
 						<p class="text-sm text-fg-muted">{ historySummary(p) }</p>
 						<div class="flex gap-2">
 							if p.NewestHref != "" {
-								<a class="btn btn-secondary btn-sm" href={ templ.SafeURL(p.NewestHref) }>Back to newest</a>
+								<a class="btn btn-secondary btn-sm" href={ templ.URL(p.NewestHref) }>Back to newest</a>
 							}
 							if p.NextHref != "" {
 								<a
 									class="btn btn-secondary btn-sm"
-									href={ templ.SafeURL(p.NextHref) }
+									href={ templ.URL(p.NextHref) }
 									{ Hx{Get: p.AppendHref, Target: "#history-rows", Swap: "beforeend", Select: "#history-rows > *", SelectOOB: "#history-more", PushURL: "false"}.MustAttrs()... }
 								>
 									{ "Show older" }

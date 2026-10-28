@@ -12,7 +12,7 @@ The reason is type safety and maintainability, not speed. Components were called
 - **Allowlisted htmx attributes.** The runtime `attrs` and `hxVals` helpers (a denylist checked at render time) are replaced by a typed `Hx` struct (`Get`, `Post`, `Target`, `Swap`, `Trigger`, ...). Event handlers, `style` and `srcdoc` cannot be expressed. URLs must be relative and `hx-vals` values ID-shaped, checked when the struct is built. Static attributes are written inline in the `.templ` file.
 - **Typed icons.** `scripts/gen-icons.sh` also emits `type IconName string` and one constant per icon. An unknown icon is a compile error.
 - **Rendering stays buffered.** `render` takes a `templ.Component`, renders into a buffer, and only then writes, so a render error is still a clean 500. `renderFragment`, the per-page template clones and `dict` go away.
-- **Big-bang migration.** Everything moves in one stretch (components and layouts, then pages, then `html/template` is deleted). Mixing the two engines needs a bridge and duplicate layouts that would be thrown away.
+- **Big-bang migration.** Everything moves in one stretch (components and layouts, then pages, then `html/template` is deleted). There is no bridge between the engines: a page is rendered by exactly one of them, and the old layouts and components stayed in place only until the last page moved.
 - **Safety net is the existing tests**: the CSP hygiene tests (no inline script or style, event handlers, `hx-on` or `javascript:` URL in any rendered page) and the handler tests. No golden HTML snapshots. The accessibility test is removed; existing `aria-*`, `role` and label markup is carried over unchanged but no longer enforced.
 
 ## Considered options
@@ -27,4 +27,5 @@ The reason is type safety and maintainability, not speed. Components were called
 - Changing a `.templ` file needs `make generate` (and `make css` if class names changed) before committing. Tailwind scans the `.templ` sources.
 - Generated `*_templ.go` files make diffs noisy; a forgotten `make generate` fails `make check`, not CI.
 - Templates can only do what Go code in the component can. The CSP still decides what markup is allowed; templ does not change it.
+- Links use `templ.URL`, never `templ.SafeURL`: the latter skips the check that neutralises `javascript:`. A component test with hostile data catches it.
 - The `/ui/styleguide` page stays the visual test page and is rewritten as a templ page.
