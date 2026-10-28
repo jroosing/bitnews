@@ -31,7 +31,7 @@ func TestCleanUsenetDownloadBecomesReady(t *testing.T) {
 
 func TestEventsAreDownloadUpdatedStagesThenReady(t *testing.T) {
 	h := newPPHarness(t)
-	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+	h.unpacker.found = true
 	h.repairer.fn = damaged()
 	d := h.add("x", core.StateFetched, core.SourceNZB)
 
@@ -220,14 +220,12 @@ func TestUnpackRunsOnlyWhenArchivesAreDetected(t *testing.T) {
 	})
 	t.Run("sets", func(t *testing.T) {
 		h := newPPHarness(t)
-		sets := []core.ArchiveSet{{Name: "a.rar"}, {Name: "b.7z"}}
-		h.unpacker.sets = sets
+		h.unpacker.found = true
 		d := h.add("x", core.StateFetched, core.SourceNZB)
 
 		require.NoError(t, h.pp.Process(context.Background(), d.ID))
 
 		assert.Equal(t, []string{"repair", "detect", "unpack", "finish"}, h.log.all())
-		assert.Equal(t, sets, h.unpacker.gotSets)
 		assert.Equal(t, d.ID, h.unpacker.gotDLID)
 		assert.Equal(t, "/work/x", h.unpacker.gotDir)
 		assert.Equal(t, "/work/x/_unpack", h.unpacker.gotDst)
@@ -262,10 +260,10 @@ func TestEachSentinelMapsToItsFailureReason(t *testing.T) {
 			}
 		},
 		"detect": func(h *ppHarness, err error) {
-			h.unpacker.detectFn = func(context.Context, string) ([]core.ArchiveSet, error) { return nil, err }
+			h.unpacker.detectFn = func(context.Context, string) (bool, error) { return false, err }
 		},
 		"unpack": func(h *ppHarness, err error) {
-			h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+			h.unpacker.found = true
 			h.unpacker.unpackFn = func(context.Context, string, string, core.UnpackOptions) (core.UnpackResult, error) {
 				return core.UnpackResult{}, err
 			}
@@ -302,7 +300,7 @@ func (folderError) FailureDetail() string {
 
 func TestAnErrorThatVouchesForItsDetailKeepsTheFolderPath(t *testing.T) {
 	h := newPPHarness(t)
-	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+	h.unpacker.found = true
 	h.unpacker.unpackFn = func(context.Context, string, string, core.UnpackOptions) (core.UnpackResult, error) {
 		return core.UnpackResult{}, fmt.Errorf("move: %w", folderError{})
 	}
@@ -317,7 +315,7 @@ func TestAnErrorThatVouchesForItsDetailKeepsTheFolderPath(t *testing.T) {
 
 func TestUnknownErrorDetailIsRedactedAndTruncated(t *testing.T) {
 	h := newPPHarness(t)
-	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+	h.unpacker.found = true
 	h.unpacker.unpackFn = func(context.Context, string, string, core.UnpackOptions) (core.UnpackResult, error) {
 		return core.UnpackResult{}, errors.New(`open /srv/incomplete/Secret.Name/a.rar: permission denied; also "/etc/passwd" and C:\Users\me\x.rar failed`)
 	}
@@ -373,7 +371,7 @@ func TestTorrentWithoutArchivesIsReadyViaFinisherWithoutVerify(t *testing.T) {
 
 func TestTorrentWithArchivesUnpacksIntoUnpackDirAndPassesItToFinisher(t *testing.T) {
 	h := newPPHarness(t)
-	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+	h.unpacker.found = true
 	d := h.add("Movie", core.StateFetched, core.SourceTorrent)
 
 	require.NoError(t, h.pp.Process(context.Background(), d.ID))
@@ -392,7 +390,7 @@ func TestTorrentUnpackFailureFailsWithoutTouchingDataOrFinishing(t *testing.T) {
 	h := newPPHarness(t, func(c *core.PostProcessorConfig) {
 		c.DirFor = func(core.Download) string { return dir }
 	})
-	h.unpacker.sets = []core.ArchiveSet{{Name: "movie"}}
+	h.unpacker.found = true
 	h.unpacker.unpackFn = func(context.Context, string, string, core.UnpackOptions) (core.UnpackResult, error) {
 		return core.UnpackResult{}, core.ErrArchivePassword
 	}
@@ -421,7 +419,7 @@ func TestCancelledContextMidStageLeavesDownloadPostProcessingAndPublishesNoOutco
 			h := newPPHarness(t)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+			h.unpacker.found = true
 			h.unpacker.unpackFn = func(ctx context.Context, _, _ string, _ core.UnpackOptions) (core.UnpackResult, error) {
 				cancel()
 				<-ctx.Done()

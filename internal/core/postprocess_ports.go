@@ -92,20 +92,11 @@ type Repairer interface {
 	Repair(ctx context.Context, dir string) (RepairOutcome, error)
 }
 
-// ArchiveSet is one detected archive, possibly spread over several volumes.
-// Name identifies it within its directory: Unpack finds the set again by it,
-// so nothing the Unpacker detected has to travel through the orchestrator.
-type ArchiveSet struct {
-	Name string
-}
-
 // UnpackOptions carries what Unpack needs beyond the directories.
 type UnpackOptions struct {
 	// DownloadID is the Download being unpacked, so the adapter can find
 	// its password.
 	DownloadID ID
-	// Sets are the archive sets Detect returned.
-	Sets []ArchiveSet
 }
 
 // UnpackResult is what Unpack produced.
@@ -117,13 +108,13 @@ type UnpackResult struct {
 // Unpacker finds and extracts archives. Unpack never modifies or deletes
 // the archives: torrents keep seeding them.
 type Unpacker interface {
-	// Detect returns the archive sets in dir; none means nothing to unpack.
-	Detect(ctx context.Context, dir string) ([]ArchiveSet, error)
-	// Unpack extracts the sets of dir named in opts.Sets into dst, which
-	// does not exist yet. A set that is no longer in dir is
-	// ErrArchiveCorrupt. It returns ErrArchiveUnsupported,
-	// ErrArchivePassword, ErrArchiveCorrupt, ErrPathViolation or ErrDiskFull
-	// in the cases those say.
+	// Detect reports whether dir holds archives to unpack. A set with a
+	// volume missing is ErrArchiveCorrupt.
+	Detect(ctx context.Context, dir string) (bool, error)
+	// Unpack extracts every archive set of dir into dst, which does not
+	// exist yet. It returns ErrArchiveUnsupported, ErrArchivePassword,
+	// ErrArchiveCorrupt, ErrPathViolation or ErrDiskFull in the cases those
+	// say.
 	Unpack(ctx context.Context, dir, dst string, opts UnpackOptions) (UnpackResult, error)
 }
 

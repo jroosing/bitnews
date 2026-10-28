@@ -138,7 +138,7 @@ func TestProcessRefusesADownloadAlreadyBeingProcessed(t *testing.T) {
 
 func TestRecoverReprocessesStuckDownloadsFromTheFirstStage(t *testing.T) {
 	h := newPPHarness(t)
-	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+	h.unpacker.found = true
 	stuck := h.add("stuck", core.StatePostProcessing, core.SourceNZB)
 	fetched := h.add("fetched", core.StateFetched, core.SourceNZB)
 	ready := h.add("ready", core.StateReady, core.SourceNZB)
@@ -157,7 +157,7 @@ func TestRecoverReprocessesStuckDownloadsFromTheFirstStage(t *testing.T) {
 
 func TestRestartInTheMiddleOfAStageReentersAtVerifying(t *testing.T) {
 	h := newPPHarness(t)
-	h.unpacker.sets = []core.ArchiveSet{{Name: "a.rar"}}
+	h.unpacker.found = true
 	ctx, cancel := context.WithCancel(context.Background())
 	var interrupt sync.Once
 	h.unpacker.unpackFn = func(ctx context.Context, _, _ string, _ core.UnpackOptions) (core.UnpackResult, error) {

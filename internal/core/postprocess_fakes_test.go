@@ -172,30 +172,29 @@ func (r *ppRepairer) Repair(ctx context.Context, dir string) (core.RepairOutcome
 
 type ppUnpacker struct {
 	log      *ppLog
-	sets     []core.ArchiveSet
-	detectFn func(ctx context.Context, dir string) ([]core.ArchiveSet, error)
+	found    bool
+	detectFn func(ctx context.Context, dir string) (bool, error)
 	unpackFn func(ctx context.Context, dir, dst string, o core.UnpackOptions) (core.UnpackResult, error)
 
 	mu       sync.Mutex
 	gotDir   string
 	gotDst   string
-	gotSets  []core.ArchiveSet
 	gotDLID  core.ID
 	unpacked int
 }
 
-func (u *ppUnpacker) Detect(ctx context.Context, dir string) ([]core.ArchiveSet, error) {
+func (u *ppUnpacker) Detect(ctx context.Context, dir string) (bool, error) {
 	u.log.add("detect")
 	if u.detectFn != nil {
 		return u.detectFn(ctx, dir)
 	}
-	return u.sets, nil
+	return u.found, nil
 }
 
 func (u *ppUnpacker) Unpack(ctx context.Context, dir, dst string, o core.UnpackOptions) (core.UnpackResult, error) {
 	u.log.add("unpack")
 	u.mu.Lock()
-	u.gotDir, u.gotDst, u.gotSets, u.gotDLID = dir, dst, o.Sets, o.DownloadID
+	u.gotDir, u.gotDst, u.gotDLID = dir, dst, o.DownloadID
 	u.unpacked++
 	u.mu.Unlock()
 	if u.unpackFn != nil {

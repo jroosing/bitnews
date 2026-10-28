@@ -412,14 +412,14 @@ func (p *PostProcessor) pipeline(ctx context.Context, d Download) (string, error
 		}
 	}
 	var unpacked string
-	sets, err := p.cfg.Unpacker.Detect(ctx, dir)
+	found, err := p.cfg.Unpacker.Detect(ctx, dir)
 	if err != nil {
 		return "", &stageError{StageUnpacking, err}
 	}
-	if len(sets) > 0 {
+	if found {
 		p.stage(id, StageUnpacking)
 		dst := filepath.Join(dir, unpackSubdir)
-		if _, err := p.cfg.Unpacker.Unpack(ctx, dir, dst, UnpackOptions{DownloadID: id, Sets: sets}); err != nil {
+		if _, err := p.cfg.Unpacker.Unpack(ctx, dir, dst, UnpackOptions{DownloadID: id}); err != nil {
 			return "", &stageError{StageUnpacking, err}
 		}
 		unpacked = dst
