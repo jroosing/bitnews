@@ -26,11 +26,11 @@ Replace `html/template` with templ components so a wrong component parameter, en
 **Goal:** The web UI renders from templ components with identical visible output, and `html/template` is gone from `internal/web`.
 
 **Acceptance criteria**
-- [ ] `go.mod` has the `a-h/templ` runtime and a `tool` directive for the generator; `make generate` and `make generate-check` exist and `generate-check` is part of `make check` (not CI).
-- [ ] `scripts/gen-icons.sh` also emits `type IconName string` and one constant per icon; an unknown icon does not compile.
-- [ ] A typed `Hx` struct replaces `attrs` and `hxVals`: no event handler, `style` or `srcdoc` can be expressed, URLs must be relative, `hx-vals` values must be ID-shaped; unit tests cover the validation.
-- [ ] Layouts, head, nav, all components and all pages (including `/ui/styleguide`) are `.templ` files in package `web`; Tailwind scans the `.templ` sources and `app.css` is rebuilt.
-- [ ] `render` takes a `templ.Component` and renders into a buffer first; `renderFragment`, `loadTemplates`, `templateFuncs`, `dict`, `attrs`, `hxVals` and `assets/templates` are removed.
-- [ ] `a11y_test.go` is removed; the CSP hygiene tests and all handler tests pass unchanged in intent.
-- [ ] ADR-0005 points to ADR-0011 where it names `html/template`; the web README and CLAUDE.md mention `make generate`.
-- [ ] `make fmt fix` and `make check` are green.
+- [x] `go.mod` has the `a-h/templ` runtime and a `tool` directive for the generator; `make generate` and `make generate-check` exist and `generate-check` is part of `make check` (not CI).
+- [x] `scripts/gen-icons.sh` also emits `type IconName string` and one constant per icon; an unknown icon does not compile.
+- [x] A typed `Hx` struct replaces `attrs` and `hxVals`: no event handler, `style` or `srcdoc` can be expressed, URLs must be relative, `hx-vals` values must be ID-shaped; unit tests cover the validation.
+- [x] Layouts, head, nav, all components and all pages (including `/ui/styleguide`) are `.templ` files in package `web`; Tailwind scans the `.templ` sources and `app.css` is rebuilt.
+- [x] `render` takes a `templ.Component` and renders into a buffer first; `renderFragment`, `loadTemplates`, `templateFuncs`, `dict`, `attrs`, `hxVals` and `assets/templates` are removed.
+- [x] `a11y_test.go` is removed; the CSP hygiene tests and all handler tests pass unchanged in intent.
+- [x] ADR-0005 points to ADR-0011 where it names `html/template`; the web README and CLAUDE.md mention `make generate`.
+- [x] `make fmt fix` and `make check` are green.

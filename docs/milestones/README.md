@@ -161,4 +161,4 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 
 | ID | Issue | Title | Status |
 |---|---|---|---|
-| M11-01 | [#5](https://github.com/jroosing/bitnews/issues/5) | Views as templ components | planned |
+| M11-01 | [#5](https://github.com/jroosing/bitnews/issues/5) | Views as templ components | done |
