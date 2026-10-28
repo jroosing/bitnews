@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	g "github.com/anacrolix/generics"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
 	"github.com/stretchr/testify/assert"
@@ -56,12 +57,28 @@ func TestPieceCompletionUnknownPieceIsNotOk(t *testing.T) {
 	assert.False(t, c.Complete)
 }
 
+func TestPieceCompletionNoneForgetsThePiece(t *testing.T) {
+	pc := newCompletion(t, openDB(t, filepath.Join(t.TempDir(), "db")), manualFlush)
+	require.NoError(t, pc.Set(key(1, 3), g.Some(true)))
+	require.NoError(t, pc.Set(key(1, 4), g.Some(false)))
+
+	require.NoError(t, pc.Set(key(1, 3), g.None[bool]()))
+	require.NoError(t, pc.Set(key(1, 4), g.None[bool]()))
+
+	for _, index := range []int{3, 4} {
+		c, err := pc.Get(key(1, index))
+		require.NoError(t, err)
+		assert.False(t, c.Ok, "piece %d is unknown again and gets hashed", index)
+		assert.False(t, c.Complete, "piece %d", index)
+	}
+}
+
 func TestPieceCompletionSetThenGet(t *testing.T) {
 	pc := newCompletion(t, openDB(t, filepath.Join(t.TempDir(), "db")), manualFlush)
 
-	require.NoError(t, pc.Set(key(1, 5), true))
-	require.NoError(t, pc.Set(key(1, 9), true))
-	require.NoError(t, pc.Set(key(1, 9), false))
+	require.NoError(t, pc.Set(key(1, 5), g.Some(true)))
+	require.NoError(t, pc.Set(key(1, 9), g.Some(true)))
+	require.NoError(t, pc.Set(key(1, 9), g.Some(false)))
 
 	for index, want := range map[int]bool{5: true, 9: false, 4: false, 100: false} {
 		c, err := pc.Get(key(1, index))
@@ -80,8 +97,8 @@ func TestPieceCompletionPersistsAcrossReopenAfterFlush(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "db")
 	db := openDB(t, path)
 	pc := newCompletion(t, db, manualFlush)
-	require.NoError(t, pc.Set(key(1, 0), true))
-	require.NoError(t, pc.Set(key(1, 15), true))
+	require.NoError(t, pc.Set(key(1, 0), g.Some(true)))
+	require.NoError(t, pc.Set(key(1, 15), g.Some(true)))
 	require.NoError(t, pc.Flush())
 	require.NoError(t, pc.Close())
 	require.NoError(t, db.Close())
@@ -100,7 +117,7 @@ func TestPieceCompletionCloseFlushesPendingMarks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "db")
 	db := openDB(t, path)
 	pc := torrent.NewSQLitePieceCompletion(store.NewTorrentPieceRepo(db), torrent.WithFlushInterval(manualFlush))
-	require.NoError(t, pc.Set(key(3, 2), true))
+	require.NoError(t, pc.Set(key(3, 2), g.Some(true)))
 
 	require.NoError(t, pc.Close())
 
@@ -112,7 +129,7 @@ func TestPieceCompletionCloseFlushesPendingMarks(t *testing.T) {
 func TestPieceCompletionBackgroundFlushWritesWithinTheInterval(t *testing.T) {
 	db := openDB(t, filepath.Join(t.TempDir(), "db"))
 	pc := newCompletion(t, db, 20*time.Millisecond)
-	require.NoError(t, pc.Set(key(4, 1), true))
+	require.NoError(t, pc.Set(key(4, 1), g.Some(true)))
 
 	repo := store.NewTorrentPieceRepo(db)
 	require.Eventually(t, func() bool {
@@ -129,13 +146,13 @@ func TestPieceCompletionCrashLosesOnlyUnflushedMarksAndNeverCorrupts(t *testing.
 	path := filepath.Join(t.TempDir(), "db")
 	db := openDB(t, path)
 	pc := torrent.NewSQLitePieceCompletion(store.NewTorrentPieceRepo(db), torrent.WithFlushInterval(manualFlush))
-	require.NoError(t, pc.Set(key(5, 0), true))
-	require.NoError(t, pc.Set(key(5, 1), true))
+	require.NoError(t, pc.Set(key(5, 0), g.Some(true)))
+	require.NoError(t, pc.Set(key(5, 1), g.Some(true)))
 	require.NoError(t, pc.Flush())
 	// These marks are in memory only when the process "crashes": the
 	// completion is dropped without Close.
-	require.NoError(t, pc.Set(key(5, 2), true))
-	require.NoError(t, pc.Set(key(6, 0), true))
+	require.NoError(t, pc.Set(key(5, 2), g.Some(true)))
+	require.NoError(t, pc.Set(key(6, 0), g.Some(true)))
 	require.NoError(t, db.Close())
 
 	pc2 := newCompletion(t, openDB(t, path), manualFlush)
@@ -160,7 +177,7 @@ func TestPieceCompletionRegisterSetsTheExactPieceCount(t *testing.T) {
 	h := core.InfoHash(key(7, 0).InfoHash)
 
 	require.NoError(t, pc.Register(h, 20))
-	require.NoError(t, pc.Set(key(7, 3), true))
+	require.NoError(t, pc.Set(key(7, 3), g.Some(true)))
 	require.NoError(t, pc.Flush())
 
 	p, err := store.NewTorrentPieceRepo(db).Load(context.Background(), h)
@@ -173,16 +190,16 @@ func TestPieceCompletionRejectsPieceCountsOverTheCap(t *testing.T) {
 	pc := newCompletion(t, openDB(t, filepath.Join(t.TempDir(), "db")), manualFlush)
 
 	assert.ErrorIs(t, pc.Register(core.InfoHash{1}, store.MaxTorrentPieces+1), store.ErrInvalidPieces)
-	assert.ErrorIs(t, pc.Set(key(1, store.MaxTorrentPieces), true), store.ErrInvalidPieces)
-	assert.ErrorIs(t, pc.Set(key(1, -1), true), store.ErrInvalidPieces)
-	require.NoError(t, pc.Set(key(1, store.MaxTorrentPieces-1), true))
+	assert.ErrorIs(t, pc.Set(key(1, store.MaxTorrentPieces), g.Some(true)), store.ErrInvalidPieces)
+	assert.ErrorIs(t, pc.Set(key(1, -1), g.Some(true)), store.ErrInvalidPieces)
+	require.NoError(t, pc.Set(key(1, store.MaxTorrentPieces-1), g.Some(true)))
 }
 
 func TestPieceCompletionForgetDeletesTheRowAndTheMemory(t *testing.T) {
 	db := openDB(t, filepath.Join(t.TempDir(), "db"))
 	pc := newCompletion(t, db, manualFlush)
 	h := core.InfoHash(key(8, 0).InfoHash)
-	require.NoError(t, pc.Set(key(8, 1), true))
+	require.NoError(t, pc.Set(key(8, 1), g.Some(true)))
 	require.NoError(t, pc.Flush())
 
 	require.NoError(t, pc.Forget(context.Background(), h))
@@ -226,7 +243,7 @@ func TestPieceCompletionIsSafeForConcurrentUse(t *testing.T) {
 				if (i+w)%pieces == 0 {
 					continue
 				}
-				assert.NoError(t, pc.Set(key(h, i), true))
+				assert.NoError(t, pc.Set(key(h, i), g.Some(true)))
 				_, err := pc.Get(key(h, i))
 				assert.NoError(t, err)
 			}
@@ -256,5 +273,5 @@ func TestPieceCompletionCloseTwiceIsFine(t *testing.T) {
 	pc := newCompletion(t, openDB(t, filepath.Join(t.TempDir(), "db")), manualFlush)
 	require.NoError(t, pc.Close())
 	require.NoError(t, pc.Close())
-	assert.Error(t, pc.Set(key(1, 0), true), "use after Close is an error, not a silent loss")
+	assert.Error(t, pc.Set(key(1, 0), g.Some(true)), "use after Close is an error, not a silent loss")
 }

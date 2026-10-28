@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	g "github.com/anacrolix/generics"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
 
@@ -176,9 +177,10 @@ func (p *SQLitePieceCompletion) Get(pk metainfo.PieceKey) (storage.Completion, e
 	return storage.Completion{}, nil
 }
 
-// Set marks piece pk verified or not. The mark reaches the store at the next
-// flush.
-func (p *SQLitePieceCompletion) Set(pk metainfo.PieceKey, complete bool) error {
+// Set marks piece pk verified (Some(true)), known incomplete (Some(false)) or
+// unknown again (None), which forgets any mark so the piece is hashed. The
+// mark reaches the store at the next flush.
+func (p *SQLitePieceCompletion) Set(pk metainfo.PieceKey, complete g.Option[bool]) error {
 	if pk.Index < 0 || pk.Index >= store.MaxTorrentPieces {
 		return fmt.Errorf("%w: piece index %d", store.ErrInvalidPieces, pk.Index)
 	}
@@ -190,8 +192,16 @@ func (p *SQLitePieceCompletion) Set(pk metainfo.PieceKey, complete bool) error {
 	}
 	e.grow(pk.Index + 1)
 	mask := byte(1) << (pk.Index % 8)
+	if !complete.Ok {
+		e.known[pk.Index/8] &^= mask
+		if e.bits[pk.Index/8]&mask != 0 {
+			e.bits[pk.Index/8] &^= mask
+			e.touch()
+		}
+		return nil
+	}
 	e.known[pk.Index/8] |= mask
-	if has := e.bits[pk.Index/8]&mask != 0; has != complete {
+	if has := e.bits[pk.Index/8]&mask != 0; has != complete.Value {
 		e.bits[pk.Index/8] ^= mask
 		e.touch()
 	}

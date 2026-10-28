@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	g "github.com/anacrolix/generics"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
 )
@@ -185,7 +186,7 @@ func (fp *filePiece) MarkComplete() error {
 	if err := fp.sync(); err != nil {
 		fp.t.logger.Warn("torrent: sync of completed piece failed", "piece", fp.p.Index(), "err", err)
 	}
-	return fp.t.pc.Set(fp.key(), true)
+	return fp.t.pc.Set(fp.key(), g.Some(true))
 }
 
 func (fp *filePiece) sync() error {
@@ -202,7 +203,7 @@ func (fp *filePiece) sync() error {
 }
 
 // MarkNotComplete records the piece as not verified.
-func (fp *filePiece) MarkNotComplete() error { return fp.t.pc.Set(fp.key(), false) }
+func (fp *filePiece) MarkNotComplete() error { return fp.t.pc.Set(fp.key(), g.Some(false)) }
 
 // Completion reports a verified piece as complete only while its files still
 // have at least the size the piece needs; otherwise the piece is unknown and
@@ -218,7 +219,7 @@ func (fp *filePiece) Completion() storage.Completion {
 		if err != nil || info.Size() < s.offset+s.length {
 			fp.t.logger.Warn("torrent: file missing or too small for a piece marked complete",
 				"piece", fp.p.Index(), "file", filepath.Base(fp.t.paths[s.file]))
-			_ = fp.t.pc.Set(fp.key(), false)
+			_ = fp.t.pc.Set(fp.key(), g.Some(false))
 			return storage.Completion{Ok: true}
 		}
 	}
