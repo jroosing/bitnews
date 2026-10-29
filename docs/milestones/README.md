@@ -180,3 +180,17 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | ID | Issue | Title | Status |
 |---|---|---|---|
 | M14-01 | [#8](https://github.com/jroosing/bitnews/issues/8) | Fully obfuscated posts end with an importable video file | done |
+
+### [M15 — Zig rewrite](m15-zig.md) (branch `zig`)
+
+| ID | Issue | Title | Status |
+|---|---|---|---|
+| M15-01 | | Z0 — Build spike | open |
+| M15-02 | | Z1 — Skeleton | open |
+| M15-03 | | Z2 — Core domain and own API | open |
+| M15-04 | | Z3 — Usenet fetch | open |
+| M15-05 | | Z4 — Post-processing | open |
+| M15-06 | | Z5 — SABnzbd adapter | open |
+| M15-07 | | Z6 — Web UI | open |
+| M15-08 | | Z7 — Torrents | open |
+| M15-09 | | Z8 — Merge | open |

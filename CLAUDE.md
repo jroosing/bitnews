@@ -14,6 +14,14 @@
 - **Security rules:** subprocesses only for the pinned post-processing tools `7zz` and `par2`, started through the one runner package with an argument list, no shell and a scrubbed environment (ADR-0007), strict TLS with no skip-verify, every hostile name goes through `internal/fsutil`, and secrets use `core.Secret` so they never reach logs or JSON.
 - **Parallel agents:** when several agents work in one tree, give each its own files or package, tell them not to edit `go.mod`/`go.sum` (add dependencies yourself first), and run the full gate after they finish.
 
+## Zig branch
+
+The `zig` branch rewrites bitnews in Zig ([ADR-0014](docs/adr/0014-zig-memory-safe-where-practical.md), spec [M15](docs/milestones/m15-zig.md)). It lives next to `main`, commits go straight onto it, and it is merged into `main` only once the parity gate in M15 is met. Nothing from it is published: Docker images are built locally only. On this branch:
+
+- **Zig:** 0.17.0 (`scripts/get-zig.sh`), code in `zig/` with its own `build.zig`. The Go code stays as the reference and the parity harness; files both need are copied into `zig/` by the sync step and checked for drift.
+- **Gate:** `zig build check` (format, tests on the debug allocator, sync check) and `make check` for the Go side; the black-box parity run against the Zig binary once it exists; `zig build fuzz-smoke` when touching a parser.
+- **Memory rules:** an arena per request, Article and post-processing step; one documented owner for long-lived state; hard caps on hostile input; no pointers into buffers that can grow.
+
 ## Agent skills
 
 ### Issue tracker
