@@ -28,7 +28,7 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 
 ## Parity gate (merge to main)
 
-1. **Black-box parity.** The Go e2e harness gets `BITNEWS_E2E_BINARY=path`, which starts an external binary with a temporary config dir and ports. Every e2e test that only uses HTTP, NNTP, the local swarm and the database file passes against the Zig binary; tests that inject in-process fakes are skipped there and covered by Zig unit tests.
+1. **Black-box parity.** `internal/blackbox` starts a daemon binary as a process (`BITNEWS_E2E_BINARY=path`, else the Go build) with a temporary config dir and ports and talks to it over HTTP, NNTP, the local swarm and the files on disk. It passes against the Zig binary with nothing skipped (`ZIG_BLACKBOX_SKIP` is empty); behaviour that today only the in-process e2e tests check (injected fakes) is moved into it or covered by Zig unit tests.
 2. **Data compatibility both ways.** A config dir and database written by Go open in Zig with servers, sessions, the app key and history intact, and the other way round.
 3. **Zig tests and fuzzing.** `zig build check` is green; every hostile parser has a fuzz target.
 4. **Soak.** Two weeks on the owner's instance with Sonarr and Radarr, without import regressions.
@@ -55,8 +55,25 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 - **Zig 0.17 specifics:** `main(init: std.process.Init)` brings the `Io`, the allocator arena and the arguments; `addSystemCommand` needs an argv (the wrapper script runs through `sh`); `@cImport` is replaced by `addTranslateC`; fetched packages go to a project-local `zig-pkg/` (ignored); the first fuzz run in a cold cache can panic on a missing `tmp` dir and works when run again.
 
 ### M15-02: Z1 — Skeleton
-**Goal:** Bootstrap (environment variables, flags, umask), logging, SQLite with the shared migrations, master key and sealed secrets read from a Go database, the HTTP server with health and app-key auth, the sync step and `zig build check`, and the black-box mode of the Go e2e harness.
-- [ ] A Go-written config dir opens; the first black-box tests (health, auth) pass against the Zig binary.
+**Goal:** Bootstrap (environment variables, flags, umask), logging, SQLite with the shared migrations, master key and sealed secrets read from a Go database, the HTTP server with health and app-key auth, the sync step and `zig build check`, and a black-box suite that runs against either binary.
+- [x] A Go-written config dir opens (database, key file, app key, sealed secrets: golden files in both directions); the black-box tests for health, auth, routing, start-up failures, fresh and existing config dirs, logging and shutdown pass against the Zig binary on macOS and on Debian trixie (`make blackbox-zig`).
+- [x] `zig build check` (format, tests, shared files) and `make zig-check` (that plus the parity suite) are the gate of the branch.
+
+#### Z1 findings
+
+**Parity suite as a separate package.** The black-box mode did not go into the existing e2e harness (which builds the daemon in-process with injected fakes). `internal/blackbox` is a new test package that starts a binary as a process: the Go one (built in `TestMain`) by default, or the one in `BITNEWS_E2E_BINARY`. It is always green against Go first; `make blackbox-zig` runs it against the Zig binary and skips what later milestones add (`ZIG_BLACKBOX_SKIP` in the Makefile, which shrinks): the data routes and the events stream (Z2), the admin account, the setup token and the web pages (Z6). Later milestones add their scenarios to the same package.
+
+**Where Zig differs from Go, and what it cost:**
+- **Port sharing.** std's `reuse_address` sets `SO_REUSEPORT` as well, so a second daemon bound the same port without an error. Clearing it after the bind works on macOS but not on Linux (found by running the tests in Debian), so `http_listen.zig` creates the socket itself: `SO_REUSEADDR` only, as Go does, with tests for a taken port and for an immediate rebind after a restart.
+- **`Io.File.Writer.init` writes at an offset** (`pwrite`) when stdout or stderr is redirected to a regular file, so each process overwrote the file from byte 0. stdout and stderr use `initStreaming`.
+- **No connect timeout** in the threaded `Io` (`@panic("TODO ...")`): the health probe connects directly and reads through the server's deadline-aware reader.
+- **Errors carry no message.** Go's messages need data (the migration that failed, the length of a wrong key), so the Zig code uses a `Diagnostic` next to the error (`migrate`), or recomputes it on the error path (`keyfile.decodedLength`). Paths in messages are quoted with Go's `%q` rules (`log_text.writeQuoted`).
+- **The setup gate** (503 `setup_required` for everything but `GET /api/v1/health` while no user exists) is a hook in the server, evaluated before routing like `auth.Gate`; the state is one atomic read from the users table. Creating the first user comes with the web UI.
+- **Redirects** of unclean paths are 307, like Go's mux; a body the handler never reads no longer fails with 413 (only a read does, as with `http.MaxBytesReader`), and the connection is closed afterwards.
+- **`Secret`** refuses JSON at compile time; Go writes `"[redacted]"`. Text log timestamps are Go's (`Z` for UTC, milliseconds). `isPrintRune` approximates `unicode.IsPrint`, so a rare unassigned code point may be printed bare where Go quotes it.
+- **Fuzzing.** `zig build test-<group> --fuzz` runs one target per module and fuzz runs must not overlap (they share `.zig-cache`).
+
+**Deliberately not in Z1:** `BITNEWS_ADMIN_PASSWORD_FILE` (logs a warning), the setup token, the web pages, the events stream, and `go_version` in `/api/v1/version` (Zig returns `zig_version`).
 
 ### M15-03: Z2 — Core domain and own API
 **Goal:** Downloads, Categories, Settings, the Queue, the event bus and `/api/v1`.

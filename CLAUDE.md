@@ -19,7 +19,7 @@
 The `zig` branch rewrites bitnews in Zig ([ADR-0014](docs/adr/0014-zig-memory-safe-where-practical.md), spec [M15](docs/milestones/m15-zig.md)). It lives next to `main`, commits go straight onto it, and it is merged into `main` only once the parity gate in M15 is met. Nothing from it is published: Docker images are built locally only. On this branch:
 
 - **Zig:** 0.17.0 (`scripts/get-zig.sh`), code in `zig/` with its own `build.zig`. The Go code stays as the reference and the parity harness; files both need are copied into `zig/` by the sync step and checked for drift.
-- **Gate:** `zig build check` (format, tests on the debug allocator, sync check) and `make check` for the Go side; the black-box parity run against the Zig binary once it exists; `zig build fuzz-smoke` when touching a parser.
+- **Gate:** `make zig-check` (`zig build check`: format, tests on the debug allocator, sync check; then the Go black-box suite against the Zig binary, `make blackbox-zig`) and `make check` for the Go side; run the Zig tests in Debian too (`zig/Dockerfile.dev`) when touching sockets, files or the OS; fuzz a parser you touch (`zig build test-<group> --fuzz`, one run at a time).
 - **Memory rules:** an arena per request, Article and post-processing step; one documented owner for long-lived state; hard caps on hostile input; no pointers into buffers that can grow.
 
 ## Agent skills

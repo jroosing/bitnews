@@ -3,6 +3,7 @@ package blackbox_test
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -117,9 +118,7 @@ func TestInvalidSettingsExitWithCodeTwoAndTheExactMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			env := setupEnv(t)
-			for k, v := range tt.env {
-				env[k] = v
-			}
+			maps.Copy(env, tt.env)
 			for _, k := range tt.drop {
 				delete(env, k)
 			}

@@ -11,7 +11,7 @@ TOOLS_BIN := $(CURDIR)/bin/tools
 
 # image-push builds the linux/amd64 image and pushes it to ghcr.io
 # from this machine, tagged $(VERSION) and latest. Log in first (docs/deploy.md).
-.PHONY: image-push tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check generate generate-check
+.PHONY: zig zig-check blackbox-zig image-push tools build build-all fmt fmt-check fix fix-check test e2e lint vuln fuzz-smoke check css css-watch css-check generate generate-check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/bitnews ./cmd/bitnews
@@ -111,3 +111,21 @@ generate-check:
 	before=$$(sum); go tool templ generate -path internal/web >/dev/null || exit 1; after=$$(sum); \
 	if [ "$$before" = "$$after" ]; then echo "templ up to date"; \
 	else echo "*_templ.go is out of date (run 'make generate')"; exit 1; fi
+
+# ---- the Zig rewrite (branch zig, M15, ADR-0014) --------------------------------------
+
+# What the Zig daemon does not do yet, by milestone: the data routes and events
+# (Z2), the admin account and the web pages (Z6). Shrinks as they land.
+ZIG_BLACKBOX_SKIP := TestARequestBodyAboveTheRouteLimit|TestAdminPasswordFile|TestData|TestShutdownEndsAnOpenEventStream|TestWeb|TestWhileSetupIsOpenTheSetupToken
+
+zig:
+	@cd zig && $$(../scripts/get-zig.sh) build
+
+# The Go black-box suite (internal/blackbox) against the Zig binary.
+blackbox-zig: zig
+	BITNEWS_E2E_BINARY=$(CURDIR)/zig/zig-out/bin/bitnews go test -count=1 -skip '$(ZIG_BLACKBOX_SKIP)' ./internal/blackbox/
+
+# The Zig gate: format, tests and shared files, then the parity suite.
+zig-check:
+	@cd zig && $$(../scripts/get-zig.sh) build check
+	@$(MAKE) --no-print-directory blackbox-zig

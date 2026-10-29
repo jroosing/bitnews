@@ -66,3 +66,12 @@ pub const KeyChecker = struct {
         return k.check(k.ctx, presented);
     }
 };
+
+/// Tells the server whether first-run setup is still open (no admin exists
+/// yet). While it is, every request but GET /api/v1/health is answered with
+/// 503 setup_required before routing, as auth.Gate does. The implementation is
+/// one atomic load; it may be called from many threads at once.
+pub const SetupGate = struct {
+    ctx: *anyopaque,
+    required: *const fn (ctx: *anyopaque) bool,
+};

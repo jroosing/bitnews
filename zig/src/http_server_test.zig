@@ -68,6 +68,10 @@ fn slow(_: ?*anyopaque, e: *ex.Exchange) anyerror!void {
     try e.res.json(e.arena, .ok, .{ .slow = true });
 }
 
+fn nobody(_: ?*anyopaque, e: *ex.Exchange) anyerror!void {
+    try e.res.json(e.arena, .ok, .{ .ok = true });
+}
+
 fn boom(_: ?*anyopaque, _: *ex.Exchange) anyerror!void {
     return error.SecretDetail;
 }
@@ -80,16 +84,22 @@ const Harness = struct {
     stopped: bool = false,
 
     fn start(h: *Harness, limits: srv.Limits) !void {
+        return h.startGated(limits, null);
+    }
+
+    fn startGated(h: *Harness, limits: srv.Limits, gate: ?common.SetupGate) !void {
         h.log = .{};
         h.server = try srv.Server.init(testing.allocator, testing.io, .{
             .logger = h.log.logger(),
             .keys = TestKeys.checker,
             .version = .{ .version = "1.2.3", .commit = "abc123", .zig_version = "0.17.0" },
             .limits = limits,
+            .setup_gate = gate,
         });
         errdefer h.server.deinit();
         try h.server.routes.add("POST /echo", .{ .handler = echo, .auth = .none, .body_limit = 16 });
         try h.server.routes.add("GET /slow", .{ .handler = slow, .auth = .none });
+        try h.server.routes.add("POST /nobody", .{ .handler = nobody, .auth = .none, .body_limit = 16 });
         try h.server.routes.add("GET /boom", .{ .handler = boom, .auth = .none });
         h.port = try h.server.listen("127.0.0.1:0");
         h.fut = try testing.io.concurrent(srv.Server.serve, .{h.server});
@@ -253,6 +263,20 @@ test "listen on port 0 returns the bound port, and bad addresses are refused" {
     try testing.expectError(error.AlreadyListening, h.server.listen("127.0.0.1:0"));
 }
 
+test "a second server cannot bind a port that is taken" {
+    var first: Harness = undefined;
+    try first.start(.{});
+    defer first.deinit();
+
+    // SO_REUSEPORT would let the second bind succeed and share the port.
+    const second = try srv.Server.init(testing.allocator, testing.io, .{ .keys = TestKeys.checker });
+    defer second.deinit();
+    var buf: [32]u8 = undefined;
+    const addr = try std.fmt.bufPrint(&buf, "127.0.0.1:{d}", .{first.port});
+
+    try testing.expectError(error.AddressInUse, second.listen(addr));
+}
+
 test "listen addresses" {
     try testing.expectError(error.InvalidAddress, srv.parseAddress("nonsense"));
     try testing.expectError(error.InvalidAddress, srv.parseAddress("127.0.0.1:99999"));
@@ -283,6 +307,42 @@ test "health is OK without a key, with the API headers" {
     try testing.expectEqualStrings("same-origin", r.header("Referrer-Policy").?);
     try testing.expectEqual(32, r.header("X-Request-ID").?.len);
     try testing.expectEqual(29, r.header("Date").?.len);
+}
+
+const TestGate = struct {
+    var open = std.atomic.Value(bool).init(true);
+    var dummy: u8 = 0;
+    fn required(_: *anyopaque) bool {
+        return open.load(.acquire);
+    }
+    const gate: common.SetupGate = .{ .ctx = &dummy, .required = required };
+};
+
+test "while setup is open everything but GET health is 503 setup_required, then it is gone" {
+    TestGate.open.store(true, .release);
+    var h: Harness = undefined;
+    try h.startGated(.{}, TestGate.gate);
+    defer h.deinit();
+    var arena = newArena();
+    defer arena.deinit();
+    const a = arena.allocator();
+    const auth = "Authorization: Bearer " ++ key ++ "\r\n";
+
+    const health = try get(&h, a, "/api/v1/health", "");
+    const version = try get(&h, a, "/api/v1/version", auth);
+    const unknown = try get(&h, a, "/api/v1/nope", "");
+    const post_health = try h.roundTrip(a, "POST /api/v1/health HTTP/1.1\r\nHost: t\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+
+    try testing.expectEqual(200, health.status);
+    const msg = "first-run setup is required: create the admin account with the setup token from the server log";
+    for ([_]Reply{ version, unknown, post_health }) |r| {
+        try testing.expectEqual(503, r.status);
+        try expectErrorBody("setup_required", msg, r);
+    }
+
+    TestGate.open.store(false, .release);
+    const after = try get(&h, a, "/api/v1/version", auth);
+    try testing.expectEqual(200, after.status);
 }
 
 test "every response carries the security headers, errors included" {
@@ -389,7 +449,7 @@ test "unclean paths redirect with the query kept" {
     var arena = newArena();
     defer arena.deinit();
     const r = try get(&h, arena.allocator(), "/api//v1/./health?x=1", "");
-    try testing.expectEqual(301, r.status);
+    try testing.expectEqual(307, r.status);
     try testing.expectEqualStrings("/api/v1/health?x=1", r.header("Location").?);
 }
 
@@ -579,14 +639,18 @@ test "HTTP/1.1 needs exactly one Host" {
     try testing.expectEqual(200, (try h.roundTrip(a, "GET /api/v1/health HTTP/1.0\r\n\r\n")).status);
 }
 
-test "a declared body above a route's limit is a 413 even for a route that ignores bodies" {
+// Go refuses an over-long body when the handler reads it (MaxBytesReader),
+// not when the head arrives, so a route that ignores bodies, like health,
+// still answers; the connection is closed because the body was not consumed.
+test "a declared body above a route's limit does not stop a route that never reads it" {
     var h: Harness = undefined;
     try h.start(.{});
     defer h.deinit();
     var arena = newArena();
     defer arena.deinit();
-    const r = try h.roundTrip(arena.allocator(), "GET /api/v1/health HTTP/1.1\r\nHost: t\r\nConnection: close\r\nContent-Length: 100000\r\n\r\n");
-    try testing.expectEqual(413, r.status);
+    const r = try h.roundTrip(arena.allocator(), "POST /nobody HTTP/1.1\r\nHost: t\r\nContent-Length: 100000\r\n\r\n");
+    try testing.expectEqual(200, r.status);
+    try testing.expectEqualStrings("close", r.header("Connection").?);
 }
 
 test "a body on a method that has none cannot smuggle a second request" {

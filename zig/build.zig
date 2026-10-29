@@ -34,7 +34,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Set at build time, as the Go build does with -ldflags -X main.version.
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", b.option([]const u8, "version", "version shown by the daemon") orelse "dev");
+    build_options.addOption([]const u8, "commit", b.option([]const u8, "commit", "commit shown by the daemon") orelse "unknown");
+
     const imports: []const std.Build.Module.Import = &.{
+        .{ .name = "build_options", .module = build_options.createModule() },
         .{ .name = "sqlite_c", .module = sqlite_c.createModule() },
         .{ .name = "migrations", .module = migrations },
     };

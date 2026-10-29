@@ -29,6 +29,7 @@ const net = Io.net;
 const Allocator = std.mem.Allocator;
 
 const common = @import("http_common.zig");
+const http_listen = @import("http_listen.zig");
 const ex = @import("http_exchange.zig");
 const respond = @import("respond.zig");
 const head_check = @import("http_head.zig");
@@ -39,6 +40,7 @@ pub const Logger = common.Logger;
 pub const Level = common.Level;
 pub const Attr = common.Attr;
 pub const KeyChecker = common.KeyChecker;
+pub const SetupGate = common.SetupGate;
 pub const Version = api.Version;
 pub const Exchange = ex.Exchange;
 pub const Route = ex.Route;
@@ -77,6 +79,9 @@ pub const Options = struct {
     /// second process of the same user share the port; the daemon is the only
     /// one that binds it.)
     reuse_address: bool = true,
+    /// While first-run setup is open the server answers 503 setup_required to
+    /// every request but GET /api/v1/health, before routing (null: no gate).
+    setup_gate: ?SetupGate = null,
 };
 
 pub const ListenError = net.IpAddress.ListenError || error{ InvalidAddress, AlreadyListening };
@@ -129,7 +134,10 @@ pub const Server = struct {
     pub fn listen(s: *Server, address: []const u8) ListenError!u16 {
         if (s.listener != null) return error.AlreadyListening;
         const addr = try parseAddress(address);
-        s.listener = try addr.listen(s.io, .{ .reuse_address = s.options.reuse_address });
+        s.listener = if (s.options.reuse_address)
+            try http_listen.listen(s.io, addr, net.default_kernel_backlog)
+        else
+            try addr.listen(s.io, .{});
         return s.listener.?.socket.address.getPort();
     }
 
@@ -506,7 +514,7 @@ fn serveRequest(c: *Conn, arena: Allocator) RequestError!bool {
     const declares_body = (std_head.content_length orelse 0) > 0 or std_head.transfer_encoding != .none;
     if (declares_body and !std_head.method.requestHasBody()) force_close = true;
 
-    try dispatch(s, &e, &force_close);
+    try dispatch(s, &e);
 
     // The body is owed to the framing: whatever the handler did not read must
     // be discarded (bounded by the route's limit) or the connection closed.
@@ -531,9 +539,21 @@ fn serveRequest(c: *Conn, arena: Allocator) RequestError!bool {
     return keep and c.http.reader.state == .ready;
 }
 
+const setup_required_message = "first-run setup is required: create the admin account with the setup token from the server log";
+
+/// What the gate lets through while setup is open: GET health. The web UI's
+/// setup pages and static files join it with the web UI.
+fn setupExempt(e: *const Exchange) bool {
+    return e.method == .GET and std.mem.eql(u8, e.path, "/api/v1/health");
+}
+
 /// Routes the request and runs the handler, leaving the response in `e.res`.
-fn dispatch(s: *Server, e: *Exchange, force_close: *bool) RequestError!void {
+fn dispatch(s: *Server, e: *Exchange) RequestError!void {
     const arena = e.arena;
+    if (s.options.setup_gate) |gate| if (gate.required(gate.ctx) and !setupExempt(e)) {
+        try e.res.fail(arena, .service_unavailable, "setup_required", setup_required_message);
+        return;
+    };
     const m = try s.routes.lookup(arena, e.method, e.path);
     switch (m) {
         .bad_path => try e.res.fail(arena, .bad_request, "bad_request", "invalid request path"),
@@ -544,7 +564,7 @@ fn dispatch(s: *Server, e: *Exchange, force_close: *bool) RequestError!void {
         },
         .redirect => |loc| {
             const location = if (e.query.len > 0) try std.mem.concat(arena, u8, &.{ loc, "?", e.query }) else loc;
-            e.res.status = .moved_permanently;
+            e.res.status = .temporary_redirect;
             try e.res.setHeader(arena, "Location", location);
         },
         .found => |f| {
@@ -555,11 +575,9 @@ fn dispatch(s: *Server, e: *Exchange, force_close: *bool) RequestError!void {
                 try e.res.fail(arena, .unauthorized, "unauthorized", "a valid API key is required");
                 return;
             }
-            if (e.content_length) |n| if (n > e.body_limit) {
-                try e.res.fail(arena, .payload_too_large, "request_too_large", "request body is too large");
-                force_close.* = true;
-                return;
-            };
+            // A declared body above the limit is refused when the handler reads
+            // it (Exchange.bodyReader), as http.MaxBytesReader does in Go: a
+            // handler that never reads one, like health, still answers.
             f.value.handler(f.value.state, e) catch |err| switch (err) {
                 error.Canceled => return error.Canceled,
                 error.OutOfMemory => return error.OutOfMemory,

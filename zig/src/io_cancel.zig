@@ -30,6 +30,6 @@ test "cancelling a task blocked in a socket read returns promptly" {
     const t0 = Io.Clock.now(.awake, io);
     const res = fut.cancel(io);
     const waited = t0.durationTo(Io.Clock.now(.awake, io));
-    std.debug.print("cancel result: {any}, waited {d} ms\n", .{ res, @divTrunc(waited.nanoseconds, std.time.ns_per_ms) });
     try std.testing.expectError(error.Canceled, res);
+    try std.testing.expect(waited.toMilliseconds() < 1000);
 }

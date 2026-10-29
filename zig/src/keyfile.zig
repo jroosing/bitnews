@@ -8,6 +8,7 @@
 //! `parse` or `loadOrCreate`; callers pass it on by pointer and never copy it.
 
 const std = @import("std");
+const log_text = @import("log_text.zig");
 const Io = std.Io;
 const Dir = Io.Dir;
 const base64 = std.base64;
@@ -253,33 +254,64 @@ fn writeExclusive(io: Io, path: []const u8, line: []const u8) LoadError!bool {
 
 /// Writes the message for a load failure, with the instructions of the Go
 /// version. It never contains the key or the file content.
-pub fn writeErrorMessage(w: *Io.Writer, err: LoadError, path: []const u8) Io.Writer.Error!void {
+pub fn writeErrorMessage(w: *Io.Writer, err: LoadError, path: []const u8, got_len: usize) Io.Writer.Error!void {
     switch (err) {
-        error.KeyFileNotRegular => try w.print("key file {f} is not a regular file", .{std.zig.fmtString(path)}),
-        error.KeyFileTooLarge => try w.print("key file {f} is too large to be a key", .{std.zig.fmtString(path)}),
+        error.KeyFileNotRegular => try w.print("key file {f} is not a regular file", .{quoted(path)}),
+        error.KeyFileTooLarge => try w.print("key file {f} is too large to be a key", .{quoted(path)}),
         error.KeyFileEmpty => {
-            try w.print("key file {f}: key file is empty\n", .{std.zig.fmtString(path)});
+            try w.print("key file {f}: key file is empty\n", .{quoted(path)});
             try writeHelp(w, path);
         },
         error.KeyNotBase64 => {
-            try w.print("key file {f} is invalid: key is not valid base64\n", .{std.zig.fmtString(path)});
+            try w.print("key file {f} is invalid: key is not valid base64\n", .{quoted(path)});
             try writeHelp(w, path);
         },
         error.KeyWrongLength => {
-            try w.print("key file {f} is invalid: key must be {d} bytes\n", .{ std.zig.fmtString(path), key_size });
+            try w.print("key file {f} is invalid: key must be {d} bytes, got {d}\n", .{ quoted(path), key_size, got_len });
             try writeHelp(w, path);
         },
         error.KeyFileUnreadable => {
-            try w.print("opening key file {f}\n", .{std.zig.fmtString(path)});
+            try w.print("opening key file {f}\n", .{quoted(path)});
             try writeHelp(w, path);
         },
         error.KeyFileCannotCreate => {
-            try w.print("key file {f} does not exist and cannot be created\n", .{std.zig.fmtString(path)});
+            try w.print("key file {f} does not exist and cannot be created\n", .{quoted(path)});
             try writeHelp(w, path);
         },
         error.EntropyUnavailable => try w.writeAll("no entropy available to generate a master key"),
         error.Canceled => try w.writeAll("canceled while loading the master key"),
     }
+}
+
+/// Go's %q of a path.
+const Quoted = struct {
+    s: []const u8,
+    pub fn format(q: Quoted, w: *Io.Writer) Io.Writer.Error!void {
+        try log_text.writeQuoted(w, q.s);
+    }
+};
+
+fn quoted(s: []const u8) Quoted {
+    return .{ .s = s };
+}
+
+/// The number of bytes the key file decodes to, for the "got N" of the
+/// wrong-length message; 0 when it cannot be read. Only used after the load
+/// failed, never on the key itself.
+pub fn decodedLength(io: Io, path: []const u8) usize {
+    var file = Dir.cwd().openFile(io, path, .{}) catch return 0;
+    defer file.close(io);
+    var content: [max_file_size + 1]u8 = undefined;
+    defer std.crypto.secureZero(u8, &content);
+    const n = file.readPositionalAll(io, &content, 0) catch return 0;
+    if (n > max_file_size) return 0;
+    var chars: usize = 0;
+    var pad: usize = 0;
+    for (std.mem.trim(u8, content[0..n], " \t\r\n\x0b\x0c")) |c| {
+        if (c == '\r' or c == '\n') continue;
+        if (c == '=') pad += 1 else chars += 1;
+    }
+    return (chars + pad) / 4 * 3 - pad;
 }
 
 fn writeHelp(w: *Io.Writer, path: []const u8) Io.Writer.Error!void {
@@ -474,7 +506,7 @@ test "a path below a regular file fails with instructions" {
 
     var aw: Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
-    try writeErrorMessage(&aw.writer, error.KeyFileUnreadable, path);
+    try writeErrorMessage(&aw.writer, error.KeyFileUnreadable, path, 0);
     try testing.expect(std.mem.find(u8, aw.written(), "BITNEWS_KEY_FILE") != null);
     try testing.expect(std.mem.find(u8, aw.written(), "chmod 600") != null);
     try testing.expect(std.mem.find(u8, aw.written(), path) != null);
@@ -493,11 +525,29 @@ test "a read-only directory fails with instructions and creates nothing" {
     try testing.expectError(error.FileNotFound, tmp.dir.statFile(testing.io, "ro/bitnews.key", .{}));
 }
 
+// The messages are Go's (store.LoadOrCreateKey): the path in Go %q quotes, and
+// a key of the wrong length says how long it is.
+test "error messages quote the path and say how long a wrong key is" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "k", .data = "q82rzavNq82rzavNq82rzw==\n" }); // 16 bytes
+    const path = try tmpPath(&tmp, "k");
+    defer testing.allocator.free(path);
+    try testing.expectError(error.KeyWrongLength, loadOrCreate(testing.io, path));
+
+    var aw: Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    try writeErrorMessage(&aw.writer, error.KeyWrongLength, path, decodedLength(testing.io, path));
+    const want = try std.fmt.allocPrint(testing.allocator, "key file \"{s}\" is invalid: key must be 32 bytes, got 16\n", .{path});
+    defer testing.allocator.free(want);
+    try testing.expect(std.mem.startsWith(u8, aw.written(), want));
+}
+
 test "error messages never contain the key or the file content" {
     var aw: Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
     const errors = [_]LoadError{ error.KeyNotBase64, error.KeyWrongLength, error.KeyFileEmpty, error.KeyFileNotRegular, error.KeyFileTooLarge, error.KeyFileUnreadable };
-    for (errors) |e| try writeErrorMessage(&aw.writer, e, "/data/bitnews.key");
+    for (errors) |e| try writeErrorMessage(&aw.writer, e, "/data/bitnews.key", 0);
     try testing.expect(std.mem.find(u8, aw.written(), test_key_b64) == null);
     try testing.expect(std.mem.find(u8, aw.written(), "/data/bitnews.key") != null);
 }
