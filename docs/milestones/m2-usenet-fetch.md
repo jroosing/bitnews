@@ -156,7 +156,7 @@ All hostile names (NZB subjects, yEnc `name=`, and later archive entries and tor
 
 - The scheduling policy (M1-06) decides which Downloads are active. The runner starts and stops their Article work.
 - Pause stops dispatching for that Download; in-flight Articles finish. Global pause stops the whole Queue.
-- Progress: `DoneBytes` (decoded bytes written) and the rate over a 5 s window, emitted through the throttled bus.
+- Progress: `DoneBytes` (decoded bytes written) and the rate over a sliding window of one-second slots (`core.RateWindow`, 10 s), emitted through the throttled bus.
 - Speed limit: `golang.org/x/time/rate` token buckets, global and per protocol, applied to bytes read from the network.
 - Disk guard: before activating a Download and every 30 s, check `free(incomplete root) ≥ remaining + min_free` (setting, default 5 GiB). If there is too little space, pause the Queue with reason `disk_full` and emit an event.
 - When every Article is either `done` or `missing`, the Download is **Fetched**. The Missing Article and damaged counts are kept for M3.
