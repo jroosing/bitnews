@@ -42,7 +42,7 @@
 // the port instead); the sockets are bound as settings.network says.
 // A netbind.Monitor per bound protocol holds its Queue's bind_unavailable
 // pause reason while the binding is unavailable (bindingSwitch). Sockets are not rebound
-// live: a change of the network settings logs a warning and needs a restart.
+// live: a change of the network settings needs a restart (restartWatcher).
 //
 // # Speed, queue and disk settings
 //
@@ -50,7 +50,8 @@
 // every change of them (the overall limit caps each protocol, so each runner
 // gets the tighter of it and its own). Queue sizes, min_free and the Share
 // Limit defaults are read from the Settings by the runners on each pass.
-// settings.torrent and queues.postproc_concurrency are read once, at start:
+// settings.torrent, settings.network and queues.postproc_concurrency are
+// read once, at start:
 // restartWatcher logs a warning when they change, and the web UI says that a
 // restart is pending (webConfig).
 //

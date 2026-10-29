@@ -126,7 +126,6 @@ type Daemon struct {
 	// Build made it (owned).
 	torrents *trunner.Runner
 	owned    *closeOnce
-	binding  *bindingWatcher
 	restarts *restartWatcher
 	speed    *speedApplier
 	port     *torrentPort
@@ -394,7 +393,6 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	d = &Daemon{
 		log: log, bus: bus, server: server, runner: run, post: post, sessions: sessions, cleanup: cleanup,
 		dirs: dirs, track: track, torrents: trun, owned: owned,
-		binding:  &bindingWatcher{start: started.Network, current: settings.Current, log: log},
 		restarts: &restartWatcher{start: restartOnlyOf(started), current: settings.Current, log: log},
 		speed:    speed,
 		port:     tport,
@@ -540,10 +538,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 	for _, sw := range d.switches {
 		start(sw.name+" network monitor", sw.ks.Run)
 	}
-	start("network binding watcher", func(ctx context.Context) error {
-		d.binding.run(ctx, d.bus)
-		return nil
-	})
 	start("restart watcher", func(ctx context.Context) error {
 		d.restarts.run(ctx, d.bus)
 		return nil

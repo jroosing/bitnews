@@ -75,24 +75,6 @@ func TestTorrentFinisherPassesEverythingElseOn(t *testing.T) {
 	}
 }
 
-func TestBindingWatcherWarnsOncePerChange(t *testing.T) {
-	var buf syncBuf
-	s := core.DefaultSettings()
-	w := &bindingWatcher{start: s.Network, current: func() core.Settings { return s }, log: slog.New(slog.NewTextHandler(&buf, nil))}
-
-	w.check()
-	assert.Empty(t, buf.String(), "nothing changed")
-
-	s.Network.Torrent.Interface = "wg0"
-	w.check()
-	w.check()
-	assert.Equal(t, 1, countOf(buf.String(), "restart bitnews"))
-
-	s.Network.Torrent.Interface = ""
-	w.check()
-	assert.Equal(t, 1, countOf(buf.String(), "restart bitnews"), "back to what we started with")
-}
-
 func countOf(s, sub string) int {
 	n := 0
 	for i := 0; i+len(sub) <= len(s); i++ {

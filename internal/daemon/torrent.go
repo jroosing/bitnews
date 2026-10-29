@@ -95,41 +95,6 @@ func (r *shareLimitRemover) Remove(ctx context.Context, id core.ID, deleteData b
 	return r.downloads.Delete(ctx, id, deleteData)
 }
 
-// bindingWatcher warns once per change when the network bindings in the
-// Settings differ from the ones the daemon started with: sockets are not
-// rebound live, a restart applies the change.
-type bindingWatcher struct {
-	start   core.NetworkSettings
-	current func() core.Settings
-	log     *slog.Logger
-
-	mu     sync.Mutex
-	warned core.NetworkSettings
-}
-
-func (w *bindingWatcher) run(ctx context.Context, bus *core.Bus) {
-	for ctx.Err() == nil {
-		sub := bus.Subscribe(ctx)
-		for ev := range sub.Events() {
-			if _, ok := ev.(core.SettingsChanged); ok {
-				w.check()
-			}
-		}
-		sub.Close()
-	}
-}
-
-func (w *bindingWatcher) check() {
-	now := w.current().Network
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if now == w.start || now == w.warned {
-		return
-	}
-	w.warned = now
-	w.log.Warn("the network binding settings changed; restart bitnews to apply them (sockets are not rebound live)")
-}
-
 // closeOnce closes c the first time it is called.
 type closeOnce struct {
 	c    io.Closer

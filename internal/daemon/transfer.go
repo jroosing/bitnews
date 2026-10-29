@@ -112,15 +112,17 @@ func postprocConcurrency(s core.Settings, tune Tuning) int {
 }
 
 // restartOnly is the part of the Settings that is read once at start-up.
+// The network bindings are among them: sockets are not rebound live.
 type restartOnly struct {
 	Torrent  core.TorrentSettings
 	Postproc int
+	Network  core.NetworkSettings
 }
 
 func restartOnlyOf(s core.Settings) restartOnly {
 	t := s.Torrent
 	t.ListenPort = 0 // applied live by torrentPort
-	return restartOnly{Torrent: t, Postproc: s.Queues.EffectivePostprocConcurrency()}
+	return restartOnly{Torrent: t, Postproc: s.Queues.EffectivePostprocConcurrency(), Network: s.Network}
 }
 
 // restartWatcher warns once per change when settings that need a restart
@@ -150,7 +152,7 @@ func (w *restartWatcher) check() {
 		return
 	}
 	w.warned = now
-	w.log.Warn("the torrent network or post-processing settings changed; restart bitnews to apply them")
+	w.log.Warn("the torrent, network binding or post-processing settings changed; restart bitnews to apply them")
 }
 
 // webConfig implements web.ConfigSource: the Settings the daemon was built

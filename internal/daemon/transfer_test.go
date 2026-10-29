@@ -160,7 +160,7 @@ func TestPostprocConcurrencyComesFromTheSettingsUnlessATestSetsIt(t *testing.T) 
 	assert.Equal(t, 1, postprocConcurrency(core.Settings{}, Tuning{}))
 }
 
-func TestRestartWatcherWarnsOncePerChangeOfTheTorrentOrPostprocSettings(t *testing.T) {
+func TestRestartWatcherWarnsOncePerChangeOfTheTorrentPostprocOrNetworkSettings(t *testing.T) {
 	var buf syncBuf
 	s := core.DefaultSettings()
 	w := &restartWatcher{start: restartOnlyOf(s), current: func() core.Settings { return s }, log: slog.New(slog.NewTextHandler(&buf, nil))}
@@ -188,6 +188,11 @@ func TestRestartWatcherWarnsOncePerChangeOfTheTorrentOrPostprocSettings(t *testi
 	s.Queues.Usenet = 8
 	w.check()
 	assert.Equal(t, 2, countOf(buf.String(), "restart bitnews"), "queue limits apply live")
+
+	s.Network.Torrent.Interface = "wg0"
+	w.check()
+	w.check()
+	assert.Equal(t, 3, countOf(buf.String(), "restart bitnews"), "sockets are not rebound live")
 }
 
 func TestWebConfigReportsTheStartedSettingsAndTheLiveBindings(t *testing.T) {
