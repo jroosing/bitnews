@@ -35,6 +35,11 @@ func TestFetchesAnNZBToFetchedWithByteExactFiles(t *testing.T) {
 	assert.False(t, got.FetchedAt.IsZero())
 	assert.Equal(t, files, readDir(t, h.dirFor(d)))
 	assert.Equal(t, int64(305_000), got.DoneBytes)
+	// The state is stored before its events are published, and the
+	// recorder reads the bus on its own goroutine.
+	require.Eventually(t, func() bool {
+		return indexOf(rec.all(), func(ev core.Event) bool { return ev.Kind() == core.KindFetched }) >= 0
+	}, 10*time.Second, time.Millisecond)
 	var kinds []core.EventKind
 	for _, ev := range rec.all() {
 		if ev.Kind() != core.KindDownloadProgress && ev.Kind() != core.KindDownloadAdded {
