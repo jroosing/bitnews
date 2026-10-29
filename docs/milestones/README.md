@@ -185,7 +185,7 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 
 | ID | Issue | Title | Status |
 |---|---|---|---|
-| M15-01 | [#9](https://github.com/jroosing/bitnews/issues/9) | Z0 — Build spike | open |
+| M15-01 | [#9](https://github.com/jroosing/bitnews/issues/9) | Z0 — Build spike | done |
 | M15-02 | [#10](https://github.com/jroosing/bitnews/issues/10) | Z1 — Skeleton | open |
 | M15-03 | [#11](https://github.com/jroosing/bitnews/issues/11) | Z2 — Core domain and own API | open |
 | M15-04 | [#12](https://github.com/jroosing/bitnews/issues/12) | Z3 — Usenet fetch | open |
