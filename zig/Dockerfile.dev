@@ -1,0 +1,14 @@
+# Local build environment for the Zig branch: Debian trixie with the system
+# C++ toolchain and the -dev packages the binary links against (ADR-0014).
+# Built and used locally only; nothing is published.
+#
+#   docker build -f zig/Dockerfile.dev -t bitnews-zig-dev zig
+#   docker run --rm -v "$PWD":/src -w /src/zig bitnews-zig-dev ./dev-run.sh build test
+FROM debian:trixie-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl xz-utils git g++ make pkg-config \
+      libtorrent-rasterbar-dev libssl-dev libcurl4-openssl-dev \
+ && rm -rf /var/lib/apt/lists/*
+# Caches live outside the mounted source tree, so macOS and Linux builds never mix.
+ENV ZIG_LOCAL_CACHE_DIR=/tmp/zig-local-cache ZIG_GLOBAL_CACHE_DIR=/tmp/zig-global-cache

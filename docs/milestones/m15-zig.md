@@ -37,8 +37,22 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 
 ### M15-01: Z0 — Build spike
 **Goal:** Prove the toolchain split. On Debian trixie and macOS, the distro libtorrent 2.0.x, OpenSSL and libcurl are installed; `libbitnews_lt` is built with the system C++ compiler; a Zig `main` links it with the SQLite amalgamation, adds a magnet and prints its peers; a `std.Io` socket read is cancelled.
-- [ ] `scripts/get-zig.sh` pins Zig 0.17.0; `zig/build.zig` builds the spike on linux/amd64, linux/arm64 and macOS.
-- [ ] Findings (what works, what does not, `std.Io` cancellation, fuzzer maturity) are written into this spec.
+- [x] `scripts/get-zig.sh` pins Zig 0.17.0 (SHA-256 per platform); `zig/build.zig` builds the spike on linux/arm64 (Debian trixie, in `zig/Dockerfile.dev`) and macOS arm64. **linux/amd64 is not verified**: see the findings.
+- [x] Findings (what works, what does not, `std.Io` cancellation, fuzzer maturity) are written into this spec.
+
+#### Z0 findings
+
+**The toolchain split works.** One Zig binary links the SQLite 3.54.1 amalgamation (a pinned `build.zig.zon` dependency, compiled by Zig as C), libcurl, OpenSSL and `libbitnews_lt`. The wrapper is built by `zig/lt/build-lt.sh` with the system C++ compiler and pkg-config's flags (they carry defines that must match the installed libtorrent) and loaded as a shared library; Zig only sees the translated C header. On Debian trixie arm64 (libtorrent 2.0.11, OpenSSL 3.5.7, libcurl 8.14.1) a magnet's metadata arrived in 3 s from 9 peers; on macOS (Homebrew libtorrent 2.1.2) in 2 s from 3. The `STRICT` tables and `RENAME COLUMN` of the store's migrations work on the pinned SQLite.
+
+**`std.Io` cancellation works.** A task blocked in a socket read (`io.concurrent` on the threaded `Io`) returns as soon as it is cancelled, in 0 ms, on macOS and Linux (`zig/src/io_cancel.zig`). Two things to remember: the `Reader` interface reports every failure as `error.ReadFailed` and the real cause (`error.Canceled`) is in `reader.err`; and a cancellation is signalled once, at the next cancellation point, so a task must not swallow it. Decision 9 (`std.Io` on threads) stands.
+
+**The built-in fuzzer works, with conditions.** `zig build test --fuzz[=limit]` is coverage guided and finds a planted out-of-bounds read within about 10 000 runs, saving the input to `.zig-cache/f/crash`. But it never found a 4-byte magic prefix from scratch in 84 million runs, so good seeds are essential. Seeds are `Smith` streams: a slice is a u32 little-endian length followed by the bytes, so the sync step must wrap the Go corpus files that way (a raw file is not a valid seed). `std.testing.allocator` is a `SafeAllocator` in 0.17. Decision 18 (built-in fuzzer only) stands, with the seed conversion added to the sync step.
+
+**Things the plan did not foresee:**
+- **Version skew between development and production.** Homebrew has libtorrent 2.1.2, Debian trixie 2.0.11. The wrapper must compile against both, so it stays on the API they share, and macOS is for development only.
+- **macOS libcurl is the system one** (SecureTransport), not OpenSSL. TLS behaviour differs from production there; production TLS is only tested on Debian.
+- **linux/amd64 is unverified.** Docker's Rosetta cannot run the amd64 Zig compiler on an arm64 Mac (`rosetta error: bss_size overflow`). It needs an x86_64 machine; the build is native per architecture and Debian ships the same package versions, so the risk is low but not checked.
+- **Zig 0.17 specifics:** `main(init: std.process.Init)` brings the `Io`, the allocator arena and the arguments; `addSystemCommand` needs an argv (the wrapper script runs through `sh`); `@cImport` is replaced by `addTranslateC`; fetched packages go to a project-local `zig-pkg/` (ignored); the first fuzz run in a cold cache can panic on a missing `tmp` dir and works when run again.
 
 ### M15-02: Z1 — Skeleton
 **Goal:** Bootstrap (environment variables, flags, umask), logging, SQLite with the shared migrations, master key and sealed secrets read from a Go database, the HTTP server with health and app-key auth, the sync step and `zig build check`, and the black-box mode of the Go e2e harness.
@@ -71,3 +85,4 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 ### M15-09: Z8 — Merge
 **Goal:** The parity gate is met; locally built Docker image and LXC script; `zig` is merged into `main`, the Go code removed, the shared files moved into place.
 - [ ] Parity gate items 1–4 hold.
+- [ ] The build and the black-box suite are verified on linux/amd64 (the Z0 spike could only run on arm64, see the Z0 findings).
