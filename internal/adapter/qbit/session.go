@@ -3,8 +3,10 @@ package qbit
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"sync"
+	"sync/atomic"
 	"time"
+
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 const (
@@ -17,60 +19,43 @@ const (
 
 // sessions is the table of SID sessions: random 128-bit tokens in memory,
 // each bound to the generation of the app key that logged in, so a refresh
-// ends them all. A session lives one
-// hour after its last use and the table holds a bounded number of them.
-// Sessions are valid on /api/v2 only, since nothing else reads them.
+// ends them all. A session lives one hour after its last use and the table
+// holds a bounded number of them; when it is full, the least recently used
+// session goes, which is also the one idle longest, so expired sessions make
+// room first. Sessions are valid on /api/v2 only, since nothing else reads
+// them.
 type sessions struct {
 	now func() time.Time
-	max int
-
-	mu sync.Mutex
-	m  map[string]*session
+	m   *lru.Cache[string, *session]
 }
 
 type session struct {
 	generation uint64
-	lastUsed   time.Time
+	// lastUsed is in unix nanoseconds. use updates it in place rather than
+	// adding the session again, so it cannot bring back a session that a
+	// concurrent drop (a logout) just removed.
+	lastUsed atomic.Int64
 }
 
 func newSessions(now func() time.Time, limit int) *sessions {
-	return &sessions{now: now, max: limit, m: make(map[string]*session)}
+	m, err := lru.New[string, *session](limit)
+	if err != nil {
+		panic(err) // limit is defaultMaxSessions or a positive Deps.MaxSessions
+	}
+	return &sessions{now: now, m: m}
 }
 
-// create opens a session for the key generation and returns its token. When the
-// table is full, expired sessions go first, then the least recently used one.
+// create opens a session for the key generation and returns its token.
 func (t *sessions) create(generation uint64) (string, error) {
 	raw := make([]byte, sidBytes)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
 	token := hex.EncodeToString(raw)
-	now := t.now()
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if len(t.m) >= t.max {
-		t.sweep(now)
-	}
-	for len(t.m) >= t.max {
-		var oldest string
-		var oldestAt time.Time
-		for k, s := range t.m {
-			if oldest == "" || s.lastUsed.Before(oldestAt) {
-				oldest, oldestAt = k, s.lastUsed
-			}
-		}
-		delete(t.m, oldest)
-	}
-	t.m[token] = &session{generation: generation, lastUsed: now}
+	s := &session{generation: generation}
+	s.lastUsed.Store(t.now().UnixNano())
+	t.m.Add(token, s)
 	return token, nil
-}
-
-func (t *sessions) sweep(now time.Time) {
-	for k, s := range t.m {
-		if now.Sub(s.lastUsed) >= sessionIdle {
-			delete(t.m, k)
-		}
-	}
 }
 
 // use returns the key generation of a live session and refreshes its idle
@@ -79,23 +64,17 @@ func (t *sessions) use(token string) (uint64, bool) {
 	if len(token) != 2*sidBytes {
 		return 0, false
 	}
-	now := t.now()
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	s, ok := t.m[token]
+	s, ok := t.m.Get(token)
 	if !ok {
 		return 0, false
 	}
-	if now.Sub(s.lastUsed) >= sessionIdle {
-		delete(t.m, token)
+	now := t.now().UnixNano()
+	if time.Duration(now-s.lastUsed.Load()) >= sessionIdle {
+		t.m.Remove(token)
 		return 0, false
 	}
-	s.lastUsed = now
+	s.lastUsed.Store(now)
 	return s.generation, true
 }
 
-func (t *sessions) drop(token string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.m, token)
-}
+func (t *sessions) drop(token string) { t.m.Remove(token) }

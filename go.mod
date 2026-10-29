@@ -14,6 +14,7 @@ require (
 	github.com/anacrolix/generics v0.2.0
 	github.com/anacrolix/torrent v1.61.1-0.20261024051421-5f95cd33fd29
 	github.com/anacrolix/utp v0.2.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
