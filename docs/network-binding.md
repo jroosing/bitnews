@@ -59,15 +59,7 @@ If the binding cannot be applied the dial or listen fails with an error wrapping
 
 `netbind.Monitor` checks the binding every 5 seconds (configurable): the interface must exist and be up, and the address, if set, must be assigned to that interface (to any interface that is up when none is named). It reports the first result and every change after that, with a reason such as `interface "wg0" does not exist`.
 
-`netbind.Killswitch` connects a monitor to two callbacks:
-
-- `Pause(reason)`: once per outage, including when the binding is unavailable at start-up.
-- `Resume()`: once when the binding is available again after a pause.
-
-The daemon is meant to connect them as follows (that wiring lives in `internal/daemon`, not in `netbind`):
-
-- Pause: pause the protocol's Queue with reason `bind_unavailable` and close its sockets. For torrents the engine is closed; for Usenet the pools' connections are closed.
-- Resume: reopen the sockets (a new torrent engine, new pool connections) and resume the Queue.
+The daemon's kill switch is the monitor's callback (`bindingSwitch` in `internal/daemon`): while the binding is unavailable, including at start-up, the protocol's Queue holds the pause reason `bind_unavailable`; when it is available again that reason is released. The Queue holds each pause reason separately, so a pause the user asked for stays.
 - A change of the settings restarts the affected engine or pools. The torrent engine has no live rebind.
 - Starting while the binding is unavailable: `torrent.New` returns an error wrapping `torrent.ErrBindUnavailable` and Usenet dials fail. The daemon starts paused and lets the kill switch resume it.
 
@@ -107,7 +99,7 @@ docker run --rm --privileged -e NETBIND_NETNS=1 -v /tmp/nb:/nb:ro debian:13-slim
 
 ## Implementation notes (M5-07)
 
-- **Package `internal/netbind`** (standard library only; `syscall.SetsockoptString` with `SO_BINDTODEVICE`, no `x/sys`): `Binding{Interface, Address}` with `Enabled`, `Validate`, `Control`, `Dialer`, `ListenConfig`, `ListenAddr`, `Check`/`CheckNow`; `Monitor`, `Killswitch`, `SystemLookup`. Interface names are validated again right before the setsockopt (`core.ValidInterfaceName`), so a hostile name never reaches the kernel.
+- **Package `internal/netbind`** (standard library only; `syscall.SetsockoptString` with `SO_BINDTODEVICE`, no `x/sys`): `Binding{Interface, Address}` with `Enabled`, `Validate`, `Control`, `Dialer`, `ListenConfig`, `ListenAddr`, `Check`/`CheckNow`; `Monitor`, `SystemLookup`. Interface names are validated again right before the setsockopt (`core.ValidInterfaceName`), so a hostile name never reaches the kernel.
 - `Dialer` is a small type with `DialContext` (it satisfies `nntp.Dialer`) rather than a bare `*net.Dialer`, because `LocalAddr` has to match the network of each dial (`tcp`, `udp`, `ip`) and a `net.Dialer` has one. The base dialer's `Control` hook still runs, after the binding's.
 - An address of the wrong family for the network (`tcp4` with an IPv6 address) is an error, not a fallback.
 - The torrent engine's `Binding` replaces the old `BindAddr`-only path: with any binding, all peer, uTP and DHT sockets are opened by the engine (see above). The IP families follow the address (one family) or are both (interface only, the IPv6 socket is skipped if the host has none). A random listen port is shared by all sockets and retried when its UDP twin is taken.

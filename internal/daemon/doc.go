@@ -40,8 +40,8 @@
 // there too but moves live (torrentPort, port.go), also through
 // POST /api/v1/torrent/port (BITNEWS_TORRENT_PORT, Deps.Torrent.Port, fixes
 // the port instead); the sockets are bound as settings.network says.
-// A netbind.Killswitch per bound protocol pauses its Queue while the binding
-// is unavailable and resumes only what it paused. Sockets are not rebound
+// A netbind.Monitor per bound protocol holds its Queue's bind_unavailable
+// pause reason while the binding is unavailable (bindingSwitch). Sockets are not rebound
 // live: a change of the network settings logs a warning and needs a restart.
 //
 // # Speed, queue and disk settings

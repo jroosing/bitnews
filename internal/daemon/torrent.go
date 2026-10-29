@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"sync"
-	"sync/atomic"
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
@@ -94,29 +93,6 @@ type shareLimitRemover struct{ downloads *app.DownloadService }
 
 func (r *shareLimitRemover) Remove(ctx context.Context, id core.ID, deleteData bool) error {
 	return r.downloads.Delete(ctx, id, deleteData)
-}
-
-// bindingKillswitch connects a netbind.Killswitch to a Queue. pause and
-// resume act on the Queue; the Queue is resumed only if this kill switch
-// paused it, so an outage never undoes a pause the user asked for.
-type bindingKillswitch struct {
-	name   string
-	log    *slog.Logger
-	pause  func(reason string) (paused bool) // reports whether it paused something
-	resume func()
-	ours   atomic.Bool
-}
-
-func (k *bindingKillswitch) onPause(reason string) {
-	k.log.Warn("network binding unavailable, queue paused", "protocol", k.name, "reason", reason)
-	k.ours.Store(k.pause(reason))
-}
-
-func (k *bindingKillswitch) onResume() {
-	k.log.Info("network binding available again", "protocol", k.name)
-	if k.ours.Swap(false) {
-		k.resume()
-	}
 }
 
 // bindingWatcher warns once per change when the network bindings in the

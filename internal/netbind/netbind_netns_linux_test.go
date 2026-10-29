@@ -159,11 +159,17 @@ func TestNetnsKillSwitch(t *testing.T) {
 	var calls []string
 	signal := make(chan string, 8)
 	record := func(s string) { mu.Lock(); calls = append(calls, s); mu.Unlock(); signal <- s }
-	ks := netbind.NewKillswitch(netbind.KillswitchConfig{
-		Binding: b, Interval: time.Second,
-		Pause:  func(reason string) { record("pause: " + reason) },
-		Resume: func() { record("resume") },
-	})
+	paused := false
+	ks := netbind.NewMonitor(b, time.Second, func(s netbind.Status) {
+		switch {
+		case !s.Available:
+			paused = true
+			record("pause: " + s.Reason)
+		case paused:
+			paused = false
+			record("resume")
+		}
+	}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- ks.Run(ctx) }()

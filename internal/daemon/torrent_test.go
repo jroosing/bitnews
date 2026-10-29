@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,28 +73,6 @@ func TestTorrentFinisherPassesEverythingElseOn(t *testing.T) {
 			assert.Equal(t, 1, inner.calls)
 		})
 	}
-}
-
-func TestBindingKillswitchResumesOnlyWhatItPaused(t *testing.T) {
-	var mu sync.Mutex
-	var paused, resumed int
-	k := &bindingKillswitch{
-		name: "usenet", log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		pause:  func(string) bool { mu.Lock(); defer mu.Unlock(); paused++; return false }, // the user had paused it
-		resume: func() { mu.Lock(); defer mu.Unlock(); resumed++ },
-	}
-
-	k.onPause("interface gone")
-	k.onResume()
-
-	assert.Equal(t, 1, paused)
-	assert.Zero(t, resumed, "the user's own pause stays")
-
-	k.pause = func(string) bool { mu.Lock(); defer mu.Unlock(); paused++; return true }
-	k.onPause("interface gone")
-	k.onResume()
-	k.onResume()
-	assert.Equal(t, 1, resumed, "resumed once")
 }
 
 func TestBindingWatcherWarnsOncePerChange(t *testing.T) {

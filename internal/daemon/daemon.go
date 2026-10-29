@@ -23,6 +23,7 @@ import (
 	"github.com/jroosing/bitnews/internal/netbind"
 	"github.com/jroosing/bitnews/internal/postproc/finalize"
 	"github.com/jroosing/bitnews/internal/postproc/unpack"
+	"github.com/jroosing/bitnews/internal/queue"
 	"github.com/jroosing/bitnews/internal/store"
 	trunner "github.com/jroosing/bitnews/internal/torrent/runner"
 	"github.com/jroosing/bitnews/internal/usenet/nntp"
@@ -137,7 +138,7 @@ type Daemon struct {
 // namedSwitch is a network kill switch to run as a worker.
 type namedSwitch struct {
 	name string
-	ks   *netbind.Killswitch
+	ks   *netbind.Monitor
 }
 
 // Build wires everything. It starts nothing: call Run, and serve Handler or
@@ -403,22 +404,20 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 }
 
 // networkSwitches builds a kill switch for each protocol whose binding is
-// on. When the bound interface goes away the protocol's Queue is paused; when
-// it returns, the Queue is resumed, but only if the kill switch paused it.
+// on. When the bound interface goes away the protocol's Queue is paused for
+// that reason; when it returns, the reason is released.
 func networkSwitches(n core.NetworkSettings, usenet *runner.Runner, torrents *trunner.Runner, log *slog.Logger, tune Tuning) []namedSwitch {
 	var out []namedSwitch
-	add := func(name string, b core.ProtocolBinding, k *bindingKillswitch) {
+	add := func(name string, b core.ProtocolBinding, q *queue.Queue) {
 		if !b.Enabled() {
 			return
 		}
-		out = append(out, namedSwitch{name: name, ks: netbind.NewKillswitch(netbind.KillswitchConfig{
-			Binding:  netbind.Binding{Interface: b.Interface, Address: b.Address},
-			Interval: tune.BindingInterval, Pause: k.onPause, Resume: k.onResume,
-		})})
+		out = append(out, namedSwitch{name: name, ks: netbind.NewMonitor(
+			netbind.Binding{Interface: b.Interface, Address: b.Address}, tune.BindingInterval, bindingSwitch(name, q, log), nil)})
 	}
-	add("usenet", n.Usenet, queueKillswitch("usenet", usenet.Queue(), log))
+	add("usenet", n.Usenet, usenet.Queue())
 	if torrents != nil {
-		add("torrent", n.Torrent, queueKillswitch("torrent", torrents.Queue(), log))
+		add("torrent", n.Torrent, torrents.Queue())
 	}
 	return out
 }

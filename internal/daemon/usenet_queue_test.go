@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/netbind"
 	"github.com/jroosing/bitnews/internal/queue"
 )
 
@@ -23,16 +24,16 @@ func (idleProtocol) Start(context.Context, core.Download) error { return nil }
 func (idleProtocol) Stop(context.Context, core.ID)              {}
 func (idleProtocol) Abandon(context.Context, core.ID) error     { return nil }
 
-func TestQueueKillswitchPausesTheQueueForTheBindingNotAsTheUser(t *testing.T) {
+func TestBindingSwitchPausesTheQueueForTheBindingNotAsTheUser(t *testing.T) {
 	q, err := queue.New(queue.Config{
 		Source: core.SourceNZB, Downloads: struct{ core.DownloadRepo }{}, Bus: core.NewBus(),
 		Settings: func(context.Context) (core.Settings, error) { return core.DefaultSettings(), nil },
 		Protocol: idleProtocol{},
 	})
 	require.NoError(t, err)
-	k := queueKillswitch("usenet", q, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	onChange := bindingSwitch("usenet", q, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-	k.onPause("interface gone")
+	onChange(netbind.Status{Available: false, Reason: "interface gone"})
 
 	paused, reason, detail := q.Paused()
 	assert.True(t, paused)
@@ -40,7 +41,7 @@ func TestQueueKillswitchPausesTheQueueForTheBindingNotAsTheUser(t *testing.T) {
 	assert.Equal(t, "interface gone", detail)
 
 	q.Pause(queue.ReasonUser, "")
-	k.onResume()
+	onChange(netbind.Status{Available: true})
 
 	paused, reason, _ = q.Paused()
 	assert.True(t, paused, "the user's own pause stays")
