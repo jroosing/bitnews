@@ -138,5 +138,4 @@ const (
 	defaultDoneBytesInterval = 2 * time.Second
 	defaultFailureBackoff    = 30 * time.Second
 	noServersLogInterval     = time.Minute
-	rateWindowSpan           = 5 * time.Second
 )

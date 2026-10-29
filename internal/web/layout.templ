@@ -63,11 +63,11 @@ templ Nav(n NavData) {
 // value spans with out-of-band swaps (queue_events.go); keep their ids.
 templ LiveStatus() {
 	<div id="live-status" class="hidden items-center gap-4 sm:flex" aria-label="Transfer status">
-		<span class="inline-flex items-center gap-1.5 text-sm text-fg-muted tabular-nums" title="Download speed">
+		<span class="inline-flex min-w-[12ch] items-center gap-1.5 text-sm text-fg-muted tabular-nums" title="Download speed">
 			@Icon(IconArrowDown, "size-4 text-info-fg")
 			<span id="status-down">0 B/s</span>
 		</span>
-		<span class="inline-flex items-center gap-1.5 text-sm text-fg-muted tabular-nums" title="Upload speed">
+		<span class="inline-flex min-w-[12ch] items-center gap-1.5 text-sm text-fg-muted tabular-nums" title="Upload speed">
 			@Icon(IconArrowUp, "size-4 text-ok-fg")
 			<span id="status-up">0 B/s</span>
 		</span>

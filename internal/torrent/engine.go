@@ -106,7 +106,7 @@ type entry struct {
 	seedSince    time.Time
 	seedAccum    time.Duration
 
-	rate rateSample
+	rate rateState
 
 	progress int64 // bytes received as of the last sample, for stall detection
 	stalled  int   // consecutive samples without progress while connected
@@ -120,10 +120,26 @@ const (
 	cycleTicks = 10
 )
 
-type rateSample struct {
-	at          time.Time
-	read, wrote int64
-	down, up    int64
+// rateState is a torrent's transfer rates, averaged over
+// core.DefaultRateWindow: anacrolix's byte counters move in bursts, and a
+// one-second delta reads a quiet second as a stop.
+type rateState struct {
+	t        *anacrolix.Torrent // whose counters the windows hold
+	down, up *core.RateWindow
+	// downRate and upRate are the rates as of the last sample.
+	downRate, upRate int64
+}
+
+// sample adds the counters of t at now and updates the rates. A new
+// incarnation of the torrent (re-added after a pause or a move) starts its
+// counters at zero, so it starts new windows.
+func (r *rateState) sample(t *anacrolix.Torrent, now time.Time, read, wrote int64) {
+	if r.t != t {
+		*r = rateState{t: t, down: core.NewRateWindow(core.DefaultRateWindow), up: core.NewRateWindow(core.DefaultRateWindow)}
+	}
+	r.down.Add(now, read)
+	r.up.Add(now, wrote)
+	r.downRate, r.upRate = max(0, r.down.Rate(now)), max(0, r.up.Rate(now))
 }
 
 // New starts an engine: it opens the listen sockets and starts the DHT if
@@ -881,8 +897,8 @@ func (e *Engine) stats(ent *entry, h core.InfoHash) core.TorrentStats {
 	out := core.TorrentStats{
 		Name:        t.Name(),
 		Private:     isPrivate(t),
-		DownRate:    ent.rate.down,
-		UpRate:      ent.rate.up,
+		DownRate:    ent.rate.downRate,
+		UpRate:      ent.rate.upRate,
 		Peers:       st.ActivePeers,
 		Seeds:       st.ConnectedSeeders,
 		Uploaded:    ent.uploadedBase + st.BytesWrittenData.Int64(),
@@ -939,13 +955,11 @@ func (e *Engine) sampleRates() {
 		if t := ent.t; t != nil {
 			st := t.Stats()
 			read, wrote := st.BytesReadUsefulData.Int64(), st.BytesWrittenData.Int64()
-			if dt := now.Sub(ent.rate.at).Seconds(); !ent.rate.at.IsZero() && dt > 0 {
-				ent.rate.down = max(0, int64(float64(read-ent.rate.read)/dt))
-				ent.rate.up = max(0, int64(float64(wrote-ent.rate.wrote)/dt))
-			}
-			ent.rate.at, ent.rate.read, ent.rate.wrote = now, read, wrote
+			ent.rate.sample(t, now, read, wrote)
 			e.nudgeIfStalled(ent, st.ActivePeers, read+t.BytesCompleted())
 			e.touchSeeding(ent, e.now()) // keeps the seeding clock current between Stats calls
+		} else {
+			ent.rate = rateState{} // stopped: nothing moves
 		}
 		ent.mu.Unlock()
 	}

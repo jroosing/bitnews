@@ -1176,7 +1176,7 @@ func QueueSpeed(r *queueRowCtx) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, " class=\"tabular-nums\"><div class=\"flex flex-wrap items-center justify-end gap-x-3 md:justify-start\"><span class=\"inline-flex items-center gap-1 whitespace-nowrap\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, " class=\"tabular-nums\"><div class=\"flex flex-wrap items-center justify-end gap-x-3 md:justify-start\"><span class=\"inline-flex min-w-[12ch] items-center gap-1 whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1202,7 +1202,7 @@ func QueueSpeed(r *queueRowCtx) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if r.Torrent {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<span class=\"inline-flex items-center gap-1 whitespace-nowrap\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<span class=\"inline-flex min-w-[12ch] items-center gap-1 whitespace-nowrap\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

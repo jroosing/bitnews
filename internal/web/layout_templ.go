@@ -349,7 +349,7 @@ func LiveStatus() templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div id=\"live-status\" class=\"hidden items-center gap-4 sm:flex\" aria-label=\"Transfer status\"><span class=\"inline-flex items-center gap-1.5 text-sm text-fg-muted tabular-nums\" title=\"Download speed\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div id=\"live-status\" class=\"hidden items-center gap-4 sm:flex\" aria-label=\"Transfer status\"><span class=\"inline-flex min-w-[12ch] items-center gap-1.5 text-sm text-fg-muted tabular-nums\" title=\"Download speed\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -357,7 +357,7 @@ func LiveStatus() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<span id=\"status-down\">0 B/s</span></span> <span class=\"inline-flex items-center gap-1.5 text-sm text-fg-muted tabular-nums\" title=\"Upload speed\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<span id=\"status-down\">0 B/s</span></span> <span class=\"inline-flex min-w-[12ch] items-center gap-1.5 text-sm text-fg-muted tabular-nums\" title=\"Upload speed\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

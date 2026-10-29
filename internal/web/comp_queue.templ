@@ -261,13 +261,13 @@ templ QueueSpeed(r *queueRowCtx) {
 		class="tabular-nums"
 	>
 		<div class="flex flex-wrap items-center justify-end gap-x-3 md:justify-start">
-			<span class="inline-flex items-center gap-1 whitespace-nowrap">
+			<span class="inline-flex min-w-[12ch] items-center gap-1 whitespace-nowrap">
 				@Icon(IconArrowDown, "size-3.5 text-info-fg")
 				<span class="sr-only">Download </span>
 				{ r.Rate }
 			</span>
 			if r.Torrent {
-				<span class="inline-flex items-center gap-1 whitespace-nowrap">
+				<span class="inline-flex min-w-[12ch] items-center gap-1 whitespace-nowrap">
 					@Icon(IconArrowUp, "size-3.5 text-ok-fg")
 					<span class="sr-only">Upload </span>
 					{ r.UpRate }

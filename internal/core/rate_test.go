@@ -1,0 +1,52 @@
+package core_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/jroosing/bitnews/internal/core"
+)
+
+func TestRateWindowAveragesOverTheLastFiveSeconds(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	w := core.NewRateWindow(5 * time.Second)
+	assert.Zero(t, w.Rate(t0), "no samples")
+	for i := 0; i <= 7; i++ {
+		w.Add(t0.Add(time.Duration(i)*time.Second), int64(i)*1000)
+	}
+
+	assert.Equal(t, int64(1000), w.Rate(t0.Add(7*time.Second)))
+	assert.Zero(t, w.Rate(t0.Add(30*time.Second)), "stalled")
+}
+
+func TestRateWindowFollowsASpeedChange(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	w := core.NewRateWindow(5 * time.Second)
+	total := int64(0)
+	for i := range 10 { // 1000 B/s for 10 s
+		total += 1000
+		w.Add(t0.Add(time.Duration(i)*time.Second), total)
+	}
+	for i := 10; i < 20; i++ { // then 4000 B/s
+		total += 4000
+		w.Add(t0.Add(time.Duration(i)*time.Second), total)
+	}
+
+	assert.Equal(t, int64(4000), w.Rate(t0.Add(19*time.Second)))
+}
+
+// Data arrives in bursts: a second without bytes in the middle of a transfer
+// is not a stop.
+func TestRateWindowDoesNotDropToZeroForAQuietSecond(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	w := core.NewRateWindow(core.DefaultRateWindow)
+	for i, total := range []int64{0, 2000, 4000, 4000, 8000} { // nothing in second 3
+		w.Add(t0.Add(time.Duration(i)*time.Second), total)
+	}
+
+	assert.Equal(t, int64(2000), w.Rate(t0.Add(4*time.Second)))
+	w.Add(t0.Add(5*time.Second), 8000)
+	assert.Equal(t, int64(1600), w.Rate(t0.Add(5*time.Second)), "a quiet second lowers the average, it does not zero it")
+}

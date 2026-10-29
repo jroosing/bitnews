@@ -80,7 +80,7 @@ type jobState struct {
 	fatal error
 	// nextSave is when the resume blob is saved next.
 	nextSave time.Time
-	rate     *rateWindow
+	rate     *core.RateWindow
 	// total is the Download's size in bytes.
 	total int64
 
@@ -98,7 +98,7 @@ type jobState struct {
 }
 
 func newJobState() *jobState {
-	return &jobState{seg: map[segKey]segStatus{}, rate: newRateWindow(rateWindowSpan)}
+	return &jobState{seg: map[segKey]segStatus{}, rate: core.NewRateWindow(core.DefaultRateWindow)}
 }
 
 func (st *jobState) fatalErr() error {
@@ -188,7 +188,7 @@ func (r *Runner) fetchOne(ctx context.Context, j *job, d core.Download) {
 	}
 	now := r.clock.Now()
 	st.nextSave = now.Add(r.cfg.SaveInterval)
-	st.rate.add(now, st.done)
+	st.rate.Add(now, st.done)
 	st.total = d.TotalBytes
 	if st.total == 0 {
 		st.total = p.encoded
@@ -330,8 +330,8 @@ func (r *Runner) onResult(ctx context.Context, j *job, id core.ID, stop context.
 	if saveDue {
 		st.nextSave = now.Add(r.cfg.SaveInterval)
 	}
-	st.rate.add(now, st.done)
-	done, total, rate := st.done, st.total, st.rate.rate(now)
+	st.rate.Add(now, st.done)
+	done, total, rate := st.done, st.total, st.rate.Rate(now)
 	remaining := max(total-done, 0)
 	st.mu.Unlock()
 
