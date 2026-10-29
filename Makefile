@@ -73,7 +73,7 @@ fuzz-smoke: tools
 		done; \
 	done
 
-check: fmt-check fix-check generate-check lint test e2e vuln
+check: fmt-check fix-check generate-check css-check lint test e2e vuln
 
 # The web UI stylesheet. internal/web/assets/static/app.css is generated and
 # committed, so `go build` and CI need no Tailwind step. Run `make css` after
