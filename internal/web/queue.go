@@ -189,17 +189,9 @@ func (s *Server) queueViews(ctx context.Context, kind core.SourceKind) ([]view.V
 	}
 	var out []view.View
 	for _, st := range afterQueueStates {
-		var ds []core.Download
-		for after := ""; ; {
-			page, err := s.Downloads.List(ctx, app.ListFilter{State: st, Kind: kind, After: after})
-			if err != nil {
-				return nil, fmt.Errorf("web: list %s downloads: %w", st, err)
-			}
-			ds = append(ds, page.Items...)
-			if page.Next == "" {
-				break
-			}
-			after = page.Next
+		ds, err := s.Downloads.All(ctx, app.ListFilter{State: st, Kind: kind})
+		if err != nil {
+			return nil, fmt.Errorf("web: list %s downloads: %w", st, err)
 		}
 		slices.SortStableFunc(ds, core.CompareQueueOrder)
 		for _, d := range ds {

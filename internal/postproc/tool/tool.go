@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -103,26 +104,17 @@ func Run(ctx context.Context, s Spec) (Result, error) {
 		return res, nil
 	case ctx.Err() != nil:
 		res.ExitCode = -1
-		return res, fmt.Errorf("tool: %s cancelled: %w", baseName(s.Path), ctx.Err())
+		return res, fmt.Errorf("tool: %s cancelled: %w", filepath.Base(s.Path), ctx.Err())
 	case errors.Is(runCtx.Err(), context.DeadlineExceeded):
 		res.ExitCode = -1
-		return res, fmt.Errorf("%w: %s after %s", ErrTimeout, baseName(s.Path), timeout)
+		return res, fmt.Errorf("%w: %s after %s", ErrTimeout, filepath.Base(s.Path), timeout)
 	case errors.As(err, &exitErr):
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
 	default:
 		res.ExitCode = -1
-		return res, fmt.Errorf("tool: start %s: %w", baseName(s.Path), err)
+		return res, fmt.Errorf("tool: start %s: %w", filepath.Base(s.Path), err)
 	}
-}
-
-func baseName(p string) string {
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' || p[i] == os.PathSeparator {
-			return p[i+1:]
-		}
-	}
-	return p
 }
 
 // scrubbedEnv is the whole environment of a tool: nothing from the daemon's

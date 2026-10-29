@@ -4,13 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 )
-
-func listFilter(after string) app.ListFilter {
-	return app.ListFilter{Kind: core.SourceTorrent, After: after, Limit: pageSize}
-}
 
 // hashParam reads the hash parameter of properties and files: one valid hash.
 func (c *call) hashParam() (string, bool) {

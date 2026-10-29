@@ -83,24 +83,17 @@ func (c *call) historyDownloads(f catFilter) ([]core.Download, error) {
 	if f.none {
 		return nil, nil
 	}
-	var out []core.Download
-	for after := ""; ; {
-		page, err := c.h.Downloads.List(c.ctx(), app.ListFilter{
-			Kind: core.SourceNZB, CategoryID: f.single(), After: after, Limit: pageSize,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, d := range page.Items {
-			if !d.State.InQueue() && f.matches(d) {
-				out = append(out, d)
-			}
-		}
-		if page.Next == "" {
-			return out, nil
-		}
-		after = page.Next
+	all, err := c.h.Downloads.All(c.ctx(), app.ListFilter{Kind: core.SourceNZB, CategoryID: f.single()})
+	if err != nil {
+		return nil, err
 	}
+	var out []core.Download
+	for _, d := range all {
+		if !d.State.InQueue() && f.matches(d) {
+			out = append(out, d)
+		}
+	}
+	return out, nil
 }
 
 // paging reads start and limit. A missing, invalid or negative start is 0;

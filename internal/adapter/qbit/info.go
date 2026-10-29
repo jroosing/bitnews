@@ -107,27 +107,22 @@ func (c *call) categoryNames() (catNames, []core.Category, error) {
 // valid hash) is left out, and so is one whose torrent cannot be described
 // now.
 func (c *call) loadAll() ([]entry, error) {
-	var out []entry
-	for after := ""; ; {
-		page, err := c.h.Downloads.List(c.ctx(), listFilter(after))
-		if err != nil {
-			return nil, err
-		}
-		for _, d := range page.Items {
-			e, ok, err := c.entryOf(d, false)
-			if err != nil {
-				c.h.log.Debug("qbit: torrent skipped", "id", d.ID, "err", err)
-				continue
-			}
-			if ok {
-				out = append(out, e)
-			}
-		}
-		if page.Next == "" {
-			return out, nil
-		}
-		after = page.Next
+	all, err := c.h.Downloads.All(c.ctx(), app.ListFilter{Kind: core.SourceTorrent})
+	if err != nil {
+		return nil, err
 	}
+	var out []entry
+	for _, d := range all {
+		e, ok, err := c.entryOf(d, false)
+		if err != nil {
+			c.h.log.Debug("qbit: torrent skipped", "id", d.ID, "err", err)
+			continue
+		}
+		if ok {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // torrentPaths are a torrent's name and paths. SavePath is the directory

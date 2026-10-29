@@ -130,3 +130,26 @@ type SessionRepo interface {
 	// with the token hash keep and reports how many it removed.
 	DeleteForUserExcept(ctx context.Context, userID ID, keep TokenHash) (int, error)
 }
+
+// listAllPage is the page size of ListAll when the query sets none.
+const listAllPage = 200
+
+// ListAll returns every Download q matches, reading page after page (q.After
+// is ignored). It is for callers that need the whole set, such as a Queue.
+func ListAll(ctx context.Context, repo DownloadRepo, q DownloadQuery) ([]Download, error) {
+	if q.Limit <= 0 {
+		q.Limit = listAllPage
+	}
+	var out []Download
+	for q.After = ""; ; {
+		page, next, err := repo.List(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page...)
+		if next == "" {
+			return out, nil
+		}
+		q.After = next
+	}
+}

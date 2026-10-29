@@ -289,17 +289,11 @@ func (m *Module) Queue(ctx context.Context, kind core.SourceKind) ([]View, error
 	}
 	var ds []core.Download
 	for _, st := range []core.State{core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching} {
-		for after := ""; ; {
-			page, next, err := m.downloads.List(ctx, core.DownloadQuery{State: st, SourceKind: kind, After: after, Limit: 200})
-			if err != nil {
-				return nil, fmt.Errorf("view: list %s downloads: %w", st, err)
-			}
-			ds = append(ds, page...)
-			if next == "" {
-				break
-			}
-			after = next
+		page, err := core.ListAll(ctx, m.downloads, core.DownloadQuery{State: st, SourceKind: kind})
+		if err != nil {
+			return nil, fmt.Errorf("view: list %s downloads: %w", st, err)
 		}
+		ds = append(ds, page...)
 	}
 	slices.SortStableFunc(ds, core.CompareQueueOrder)
 	out := make([]View, len(ds))

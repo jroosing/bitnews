@@ -109,6 +109,20 @@ func pausable(d core.Download) bool {
 	return false
 }
 
+// All returns every Download the filter matches, reading page after page;
+// f.After and f.Limit are ignored.
+func (s *DownloadService) All(ctx context.Context, f ListFilter) ([]core.Download, error) {
+	f.After, f.Limit = "", 0
+	if err := f.validate(); err != nil {
+		return nil, err
+	}
+	ds, err := core.ListAll(ctx, s.downloads, core.DownloadQuery{State: f.State, CategoryID: f.CategoryID, SourceKind: f.Kind})
+	if err != nil {
+		return nil, fmt.Errorf("app: list downloads: %w", err)
+	}
+	return ds, nil
+}
+
 // ListFilter selects one page of Downloads. Zero-valued fields match
 // everything.
 type ListFilter struct {
@@ -119,6 +133,18 @@ type ListFilter struct {
 	After string
 	// Limit is the page size; zero takes the repository default.
 	Limit int
+}
+
+func (f ListFilter) validate() error {
+	switch {
+	case f.State != "" && !slices.Contains(knownStates, f.State):
+		return invalid("invalid_state", "unknown state %q", f.State)
+	case f.Kind != "" && !slices.Contains(knownKinds, f.Kind):
+		return invalid("invalid_kind", "unknown kind %q: use nzb or torrent", f.Kind)
+	case f.Limit < 0:
+		return invalid("invalid_limit", "limit must not be negative")
+	}
+	return nil
 }
 
 // Page is one page of Downloads, oldest first.
@@ -142,13 +168,8 @@ var (
 
 // List returns one page of Downloads matching f.
 func (s *DownloadService) List(ctx context.Context, f ListFilter) (Page, error) {
-	switch {
-	case f.State != "" && !slices.Contains(knownStates, f.State):
-		return Page{}, invalid("invalid_state", "unknown state %q", f.State)
-	case f.Kind != "" && !slices.Contains(knownKinds, f.Kind):
-		return Page{}, invalid("invalid_kind", "unknown kind %q: use nzb or torrent", f.Kind)
-	case f.Limit < 0:
-		return Page{}, invalid("invalid_limit", "limit must not be negative")
+	if err := f.validate(); err != nil {
+		return Page{}, err
 	}
 	items, next, err := s.downloads.List(ctx, core.DownloadQuery{
 		State: f.State, CategoryID: f.CategoryID, SourceKind: f.Kind, After: f.After, Limit: f.Limit,
@@ -294,17 +315,11 @@ var queueStates = []core.State{core.StateAdded, core.StateFetchingMetadata, core
 func (s *DownloadService) queueOf(ctx context.Context, kind core.SourceKind) ([]core.Download, error) {
 	var queue []core.Download
 	for _, st := range queueStates {
-		for after := ""; ; {
-			page, next, err := s.downloads.List(ctx, core.DownloadQuery{State: st, SourceKind: kind, After: after, Limit: store.MaxListLimit})
-			if err != nil {
-				return nil, fmt.Errorf("app: list queue: %w", err)
-			}
-			queue = append(queue, page...)
-			if next == "" {
-				break
-			}
-			after = next
+		page, err := core.ListAll(ctx, s.downloads, core.DownloadQuery{State: st, SourceKind: kind, Limit: store.MaxListLimit})
+		if err != nil {
+			return nil, fmt.Errorf("app: list queue: %w", err)
 		}
+		queue = append(queue, page...)
 	}
 	return queue, nil
 }

@@ -48,8 +48,6 @@ const (
 	maxURLBytes = 16 << 10
 	// maxHashes caps the hashes of one call.
 	maxHashes = 1000
-	// pageSize is the page size used when reading Downloads.
-	pageSize = 200
 )
 
 // SettingsReader gives the adapter the Settings in effect.

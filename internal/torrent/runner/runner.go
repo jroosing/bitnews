@@ -194,20 +194,11 @@ func (r *Runner) shutdown() {
 
 // list returns every torrent Download in state st.
 func (r *Runner) list(ctx context.Context, st core.State) ([]core.Download, error) {
-	var out []core.Download
-	for after := ""; ; {
-		page, next, err := r.cfg.Downloads.List(ctx, core.DownloadQuery{
-			State: st, SourceKind: core.SourceTorrent, After: after, Limit: 200,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("torrent runner: list %s downloads: %w", st, err)
-		}
-		out = append(out, page...)
-		if next == "" {
-			return out, nil
-		}
-		after = next
+	out, err := core.ListAll(ctx, r.cfg.Downloads, core.DownloadQuery{State: st, SourceKind: core.SourceTorrent})
+	if err != nil {
+		return nil, fmt.Errorf("torrent runner: list %s downloads: %w", st, err)
 	}
+	return out, nil
 }
 
 // Recover moves the torrent Downloads found Fetching back to Queued and adds

@@ -156,20 +156,15 @@ func (s *CategoryService) Delete(ctx context.Context, id core.ID) error {
 
 // downloadsIn returns the IDs of the Downloads that use the Category.
 func (s *CategoryService) downloadsIn(ctx context.Context, id core.ID) ([]core.ID, error) {
-	var out []core.ID
-	for after := ""; ; {
-		page, next, err := s.downloads.List(ctx, core.DownloadQuery{CategoryID: id, After: after, Limit: 200})
-		if err != nil {
-			return nil, fmt.Errorf("app: delete category: %w", err)
-		}
-		for _, d := range page {
-			out = append(out, d.ID)
-		}
-		if next == "" {
-			return out, nil
-		}
-		after = next
+	ds, err := core.ListAll(ctx, s.downloads, core.DownloadQuery{CategoryID: id})
+	if err != nil {
+		return nil, fmt.Errorf("app: delete category: %w", err)
 	}
+	out := make([]core.ID, len(ds))
+	for i, d := range ds {
+		out[i] = d.ID
+	}
+	return out, nil
 }
 
 func validateCategory(c core.Category) error {

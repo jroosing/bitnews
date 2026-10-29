@@ -252,19 +252,11 @@ func (q *Queue) deactivate(ctx context.Context, id core.ID) {
 func (q *Queue) list(ctx context.Context) ([]core.Download, error) {
 	var out []core.Download
 	for _, st := range []core.State{core.StateQueued, core.StateFetching} {
-		for after := ""; ; {
-			page, next, err := q.cfg.Downloads.List(ctx, core.DownloadQuery{
-				State: st, SourceKind: q.cfg.Source, After: after, Limit: 200,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("queue: list %s downloads: %w", st, err)
-			}
-			out = append(out, page...)
-			if next == "" {
-				break
-			}
-			after = next
+		page, err := core.ListAll(ctx, q.cfg.Downloads, core.DownloadQuery{State: st, SourceKind: q.cfg.Source})
+		if err != nil {
+			return nil, fmt.Errorf("queue: list %s downloads: %w", st, err)
 		}
+		out = append(out, page...)
 	}
 	return out, nil
 }
@@ -481,22 +473,14 @@ func (q *Queue) Release(id core.ID) bool {
 // shutdown or a crash.
 func (q *Queue) Recover(ctx context.Context) error {
 	var errs []error
-	for after := ""; ; {
-		page, next, err := q.cfg.Downloads.List(ctx, core.DownloadQuery{
-			State: core.StateFetching, SourceKind: q.cfg.Source, After: after, Limit: 200,
-		})
-		if err != nil {
-			return fmt.Errorf("queue: recover: %w", err)
+	fetching, err := core.ListAll(ctx, q.cfg.Downloads, core.DownloadQuery{State: core.StateFetching, SourceKind: q.cfg.Source})
+	if err != nil {
+		return fmt.Errorf("queue: recover: %w", err)
+	}
+	for _, d := range fetching {
+		if _, err := q.SetState(ctx, d.ID, core.StateChange{To: core.StateQueued, At: q.cfg.Now()}); err != nil {
+			errs = append(errs, fmt.Errorf("queue: recover %s: %w", d.ID, err))
 		}
-		for _, d := range page {
-			if _, err := q.SetState(ctx, d.ID, core.StateChange{To: core.StateQueued, At: q.cfg.Now()}); err != nil {
-				errs = append(errs, fmt.Errorf("queue: recover %s: %w", d.ID, err))
-			}
-		}
-		if next == "" {
-			break
-		}
-		after = next
 	}
 	return errors.Join(errs...)
 }

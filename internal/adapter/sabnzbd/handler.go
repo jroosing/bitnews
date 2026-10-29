@@ -30,9 +30,6 @@ const (
 	maxUploadBytes = app.DefaultMaxNZBBytes + 1<<20
 	maxFieldBytes  = 16 << 10
 	maxParts       = 32
-	// pageSize is the page size used when reading Downloads from the
-	// service; the repository caps pages at this size.
-	pageSize = 200
 )
 
 // SettingsReader gives the adapter the Settings in effect.

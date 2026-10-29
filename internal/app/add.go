@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -227,7 +228,7 @@ func (s *AddService) addNZB(ctx context.Context, st *StagedNZB, req AddRequest) 
 		// and the output folder. Torrents never come through here.
 		name = tidy.Clean(name)
 	}
-	password := firstNonEmpty(req.Password.Reveal(), strings.TrimSpace(st.nzb.Meta.Password), suffixPassword)
+	password := cmp.Or(req.Password.Reveal(), strings.TrimSpace(st.nzb.Meta.Password), suffixPassword)
 
 	finalPath := filepath.Join(st.dir, nzbFileName(name))
 	if err := os.Rename(st.tmpPath, finalPath); err != nil {
@@ -316,15 +317,6 @@ func (s *AddService) resolveCategory(ctx context.Context, id core.ID, metaName s
 	}
 	c, _ := FindCategory(cats, metaName)
 	return c.ID, nil
-}
-
-func firstNonEmpty(vs ...string) string {
-	for _, v := range vs {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // resolveName picks the display name: the request's, the NZB's, the upload's
