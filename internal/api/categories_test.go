@@ -12,9 +12,10 @@ import (
 )
 
 type categoryJSON struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	DirOverride *string `json:"dir_override"`
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	UsenetDir  *string `json:"usenet_dir"`
+	TorrentDir *string `json:"torrent_dir"`
 }
 
 func (e *env) createCategory(key, body string) categoryJSON {
@@ -31,21 +32,23 @@ func TestCreateCategoryReturns201WithTheStoredCategory(t *testing.T) {
 	e := newEnv(t)
 	key := e.apiKey()
 
-	rec := e.do("POST", "/api/v1/categories", `{"name":"tv","dir_override":"/data/tv"}`, withBearer(key))
+	rec := e.do("POST", "/api/v1/categories", `{"name":"tv","usenet_dir":"/data/tv","torrent_dir":"/data/torrents/tv"}`, withBearer(key))
 
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var got categoryJSON
 	decode(t, rec, &got)
 	assert.NotEmpty(t, got.ID)
 	assert.Equal(t, "tv", got.Name)
-	require.NotNil(t, got.DirOverride)
-	assert.Equal(t, "/data/tv", *got.DirOverride)
+	require.NotNil(t, got.UsenetDir)
+	assert.Equal(t, "/data/tv", *got.UsenetDir)
+	require.NotNil(t, got.TorrentDir)
+	assert.Equal(t, "/data/torrents/tv", *got.TorrentDir)
 	stored, err := e.cats.Get(context.Background(), core.ID(got.ID))
 	require.NoError(t, err)
-	assert.Equal(t, "tv", stored.Name)
+	assert.Equal(t, core.Category{ID: core.ID(got.ID), Name: "tv", UsenetDir: "/data/tv", TorrentDir: "/data/torrents/tv"}, stored)
 }
 
-func TestListCategoriesShowsNullForMissingDirOverride(t *testing.T) {
+func TestListCategoriesShowsNullForMissingDirOverrides(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	key := e.apiKey()
@@ -55,7 +58,7 @@ func TestListCategoriesShowsNullForMissingDirOverride(t *testing.T) {
 	rec := e.do("GET", "/api/v1/categories", "", withBearer(key))
 
 	assert.JSONEq(t, `{"items":[]}`, empty.Body.String())
-	assert.JSONEq(t, `{"items":[{"id":"`+c.ID+`","name":"tv","dir_override":null}]}`, rec.Body.String())
+	assert.JSONEq(t, `{"items":[{"id":"`+c.ID+`","name":"tv","usenet_dir":null,"torrent_dir":null}]}`, rec.Body.String())
 	assert.Equal(t, http.StatusUnauthorized, e.do("GET", "/api/v1/categories", "").Code)
 }
 
@@ -72,7 +75,8 @@ func TestCreateCategoryRejectsInvalidInput(t *testing.T) {
 		"bad name":        {`{"name":"TV Shows"}`, 400, "invalid_name"},
 		"dot dot":         {`{"name":".."}`, 400, "invalid_name"},
 		"missing name":    {`{}`, 400, "invalid_name"},
-		"relative dir":    {`{"name":"x","dir_override":"rel/dir"}`, 400, "invalid_dir_override"},
+		"relative dir":    {`{"name":"x","torrent_dir":"rel/dir"}`, 400, "invalid_dir_override"},
+		"old field":       {`{"name":"x","dir_override":"/data/x"}`, 400, "invalid_json"},
 		"duplicate":       {`{"name":"tv"}`, 409, "name_taken"},
 		"unknown field":   {`{"name":"x","id":"abc"}`, 400, "invalid_json"},
 		"wrong json type": {`{"name":5}`, 400, "invalid_json"},
@@ -86,7 +90,7 @@ func TestCreateCategoryRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-func TestPatchCategoryRenamesSetsAndClearsDirOverride(t *testing.T) {
+func TestPatchCategoryRenamesSetsAndClearsDirOverrides(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	key := e.apiKey()
@@ -94,12 +98,14 @@ func TestPatchCategoryRenamesSetsAndClearsDirOverride(t *testing.T) {
 	path := "/api/v1/categories/" + c.ID
 
 	renamed := e.do("PATCH", path, `{"name":"series"}`, withBearer(key))
-	withDir := e.do("PATCH", path, `{"dir_override":"/data/series"}`, withBearer(key))
-	cleared := e.do("PATCH", path, `{"dir_override":null}`, withBearer(key))
+	withDir := e.do("PATCH", path, `{"torrent_dir":"/data/series"}`, withBearer(key))
+	both := e.do("PATCH", path, `{"usenet_dir":"/data/usenet/series"}`, withBearer(key))
+	cleared := e.do("PATCH", path, `{"usenet_dir":null,"torrent_dir":null}`, withBearer(key))
 
-	assert.JSONEq(t, `{"id":"`+c.ID+`","name":"series","dir_override":null}`, renamed.Body.String())
-	assert.JSONEq(t, `{"id":"`+c.ID+`","name":"series","dir_override":"/data/series"}`, withDir.Body.String())
-	assert.JSONEq(t, `{"id":"`+c.ID+`","name":"series","dir_override":null}`, cleared.Body.String())
+	assert.JSONEq(t, `{"id":"`+c.ID+`","name":"series","usenet_dir":null,"torrent_dir":null}`, renamed.Body.String())
+	assert.JSONEq(t, `{"id":"`+c.ID+`","name":"series","usenet_dir":null,"torrent_dir":"/data/series"}`, withDir.Body.String())
+	assert.JSONEq(t, `{"id":"`+c.ID+`","name":"series","usenet_dir":"/data/usenet/series","torrent_dir":"/data/series"}`, both.Body.String())
+	assert.JSONEq(t, `{"id":"`+c.ID+`","name":"series","usenet_dir":null,"torrent_dir":null}`, cleared.Body.String())
 }
 
 func TestPatchCategoryRejectsInvalidChanges(t *testing.T) {

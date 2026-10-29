@@ -17,7 +17,7 @@ import (
 
 func TestDetailOfAReadyUsenetDownload(t *testing.T) {
 	d := newDetailEnv(t)
-	cat, err := d.catSvc.Create(t.Context(), "movies", "")
+	cat, err := d.catSvc.Create(t.Context(), "movies", "", "")
 	require.NoError(t, err)
 	dl := d.add(core.Download{Name: "Some.Movie.2024", CategoryID: cat.ID, TotalBytes: 3 << 30, DoneBytes: 3 << 30,
 		OutputPath: "/media/complete/Some.Movie.2024", Priority: core.DownloadPriorityHigh})

@@ -39,7 +39,7 @@
 //
 // # Tables (migration 0001)
 //
-//   - categories(id, name UNIQUE, dir_override)
+//   - categories(id, name UNIQUE, usenet_dir, torrent_dir)
 //   - downloads(id, name, source_kind, category_id, state, priority,
 //     queue_position, paused, failure_reason, failure_detail, total_bytes,
 //     done_bytes, added_at, fetched_at, ready_at, updated_at, output_path).

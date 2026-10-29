@@ -227,10 +227,12 @@ func TestCategoriesOfNoneIsAnEmptyObject(t *testing.T) {
 	assert.JSONEq(t, `{}`, s.get(sid, "/api/v2/torrents/categories").Body.String())
 }
 
-func TestACategoryWithADirOverrideReportsIt(t *testing.T) {
+func TestACategoryReportsItsTorrentDirOverrideNotTheUsenetOne(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
-	_, err := s.categories.Create(context.Background(), "movies", "/data/media/movies")
+	_, err := s.categories.Create(context.Background(), "movies", "/data/usenet/movies", "/data/media/movies")
+	require.NoError(t, err)
+	_, err = s.categories.Create(context.Background(), "tv", "/data/usenet/tv", "")
 	require.NoError(t, err)
 	sid := s.login()
 
@@ -240,6 +242,7 @@ func TestACategoryWithADirOverrideReportsIt(t *testing.T) {
 	decode(t, s.get(sid, "/api/v2/torrents/categories"), &cats)
 
 	assert.Equal(t, "/data/media/movies", cats["movies"].SavePath)
+	assert.Equal(t, s.torrents+"/tv", cats["tv"].SavePath, "a Usenet override does not apply to torrents")
 }
 
 func queueOrder(s *stack, sid *http.Cookie) []string { return names(s.info(sid, "sort=priority")) }

@@ -14,15 +14,16 @@ const defaultCategoryName = "*"
 // categoryDir is the dir a media manager joins to complete_dir to find a
 // Category's output: the Category's name, or the override relative to the
 // Usenet complete root when it lies inside it, else the absolute override.
+// Only the Usenet override counts: SAB is the Usenet adapter.
 func categoryDir(root string, c core.Category) string {
-	if c.DirOverride == "" {
+	if c.UsenetDir == "" {
 		return c.Name
 	}
-	if rel, err := filepath.Rel(root, c.DirOverride); err == nil && rel != "." && rel != ".." &&
+	if rel, err := filepath.Rel(root, c.UsenetDir); err == nil && rel != "." && rel != ".." &&
 		!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return filepath.ToSlash(rel)
 	}
-	return c.DirOverride
+	return c.UsenetDir
 }
 
 // getConfig answers mode=get_config. Sonarr and Radarr read the complete dir

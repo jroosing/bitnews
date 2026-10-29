@@ -25,11 +25,12 @@ func TestGetConfigReportsTheCompleteDirAndCategoryDirsRelativeToIt(t *testing.T)
 	s := newStack(t)
 	ctx := context.Background()
 	s.category("tv")
-	inside, err := s.categories.Create(ctx, "movies", filepath.Join(s.complete, "films", "hd"))
+	_, err := s.categories.Create(ctx, "movies", filepath.Join(s.complete, "films", "hd"), "/data/torrents/films")
 	require.NoError(t, err)
-	outside, err := s.categories.Create(ctx, "music", "/mnt/music")
+	_, err = s.categories.Create(ctx, "music", "/mnt/music", "")
 	require.NoError(t, err)
-	_, _ = inside, outside
+	_, err = s.categories.Create(ctx, "books", "", "/data/torrents/books") // a torrent override only
+	require.NoError(t, err)
 
 	m := generic(t, s.call("mode=get_config"))
 
@@ -47,7 +48,7 @@ func TestGetConfigReportsTheCompleteDirAndCategoryDirsRelativeToIt(t *testing.T)
 		cat := c.(map[string]any)
 		dirs[cat["name"].(string)] = cat["dir"]
 	}
-	assert.Equal(t, map[string]any{"*": "", "tv": "tv", "movies": "films/hd", "music": "/mnt/music"}, dirs)
+	assert.Equal(t, map[string]any{"*": "", "tv": "tv", "movies": "films/hd", "music": "/mnt/music", "books": "books"}, dirs)
 	assert.Equal(t, "*", cfg["categories"].([]any)[0].(map[string]any)["name"], "the default category comes first")
 }
 

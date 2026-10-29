@@ -53,21 +53,23 @@ func timeOrNil(t time.Time) *time.Time {
 	return &t
 }
 
-// categoryJSON is how a Category looks in responses. dir_override is null
-// when unset.
+// categoryJSON is how a Category looks in responses. A folder override is
+// null when unset.
 type categoryJSON struct {
-	ID          core.ID `json:"id"`
-	Name        string  `json:"name"`
-	DirOverride *string `json:"dir_override"`
+	ID         core.ID `json:"id"`
+	Name       string  `json:"name"`
+	UsenetDir  *string `json:"usenet_dir"`
+	TorrentDir *string `json:"torrent_dir"`
 }
 
 func toCategoryJSON(c core.Category) categoryJSON {
-	out := categoryJSON{ID: c.ID, Name: c.Name}
-	if c.DirOverride != "" {
-		dir := c.DirOverride
-		out.DirOverride = &dir
+	orNull := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+		return &s
 	}
-	return out
+	return categoryJSON{ID: c.ID, Name: c.Name, UsenetDir: orNull(c.UsenetDir), TorrentDir: orNull(c.TorrentDir)}
 }
 
 // serverJSON is how a Server looks in responses. The password is never part

@@ -66,8 +66,8 @@ func (r *CategoryRepo) Create(ctx context.Context, c core.Category) error {
 		return err
 	}
 	_, err := r.db.Writer().ExecContext(ctx,
-		`INSERT INTO categories (id, name, dir_override) VALUES (?, ?, ?)`,
-		string(c.ID), c.Name, c.DirOverride)
+		`INSERT INTO categories (id, name, usenet_dir, torrent_dir) VALUES (?, ?, ?, ?)`,
+		string(c.ID), c.Name, c.UsenetDir, c.TorrentDir)
 	return mapErr("create category", err)
 }
 
@@ -75,15 +75,15 @@ func (r *CategoryRepo) Create(ctx context.Context, c core.Category) error {
 func (r *CategoryRepo) Get(ctx context.Context, id core.ID) (core.Category, error) {
 	var c core.Category
 	err := r.db.Reader().QueryRowContext(ctx,
-		`SELECT id, name, dir_override FROM categories WHERE id = ?`, string(id)).
-		Scan(&c.ID, &c.Name, &c.DirOverride)
+		`SELECT id, name, usenet_dir, torrent_dir FROM categories WHERE id = ?`, string(id)).
+		Scan(&c.ID, &c.Name, &c.UsenetDir, &c.TorrentDir)
 	return c, mapErr("get category", err)
 }
 
 // List returns every Category ordered by name.
 func (r *CategoryRepo) List(ctx context.Context) ([]core.Category, error) {
 	rows, err := r.db.Reader().QueryContext(ctx,
-		`SELECT id, name, dir_override FROM categories ORDER BY name`)
+		`SELECT id, name, usenet_dir, torrent_dir FROM categories ORDER BY name`)
 	if err != nil {
 		return nil, mapErr("list categories", err)
 	}
@@ -91,7 +91,7 @@ func (r *CategoryRepo) List(ctx context.Context) ([]core.Category, error) {
 	var out []core.Category
 	for rows.Next() {
 		var c core.Category
-		if err := rows.Scan(&c.ID, &c.Name, &c.DirOverride); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.UsenetDir, &c.TorrentDir); err != nil {
 			return nil, mapErr("list categories", err)
 		}
 		out = append(out, c)
@@ -99,14 +99,14 @@ func (r *CategoryRepo) List(ctx context.Context) ([]core.Category, error) {
 	return out, mapErr("list categories", rows.Err())
 }
 
-// Update validates c and stores its name and dir override.
+// Update validates c and stores its name and folder overrides.
 func (r *CategoryRepo) Update(ctx context.Context, c core.Category) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
 	res, err := r.db.Writer().ExecContext(ctx,
-		`UPDATE categories SET name = ?, dir_override = ? WHERE id = ?`,
-		c.Name, c.DirOverride, string(c.ID))
+		`UPDATE categories SET name = ?, usenet_dir = ?, torrent_dir = ? WHERE id = ?`,
+		c.Name, c.UsenetDir, c.TorrentDir, string(c.ID))
 	return mapExec("update category", res, err)
 }
 

@@ -60,7 +60,7 @@ func optionTexts(sel *html.Node) []string {
 
 func TestAddFormIsAFragmentWithTabsCategoriesAndDefaults(t *testing.T) {
 	d := newDetailEnv(t)
-	_, err := d.catSvc.Create(t.Context(), "tv", "")
+	_, err := d.catSvc.Create(t.Context(), "tv", "", "")
 	require.NoError(t, err)
 
 	rec := d.b.get("/downloads/add", htmx())
@@ -126,7 +126,7 @@ func TestEveryPageHasTheNewDownloadButtonAndDialog(t *testing.T) {
 
 func TestAddUploadedNZBCreatesAQueuedDownload(t *testing.T) {
 	d := newDetailEnv(t)
-	cat, err := d.catSvc.Create(t.Context(), "tv", "")
+	cat, err := d.catSvc.Create(t.Context(), "tv", "", "")
 	require.NoError(t, err)
 
 	rec := d.upload(

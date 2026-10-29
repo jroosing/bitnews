@@ -35,13 +35,31 @@ func TestCategoryNamedLikeADirectoryReferenceIsRejected(t *testing.T) {
 	}
 }
 
-func TestCategoryDirOverrideMustBeAbsolute(t *testing.T) {
-	c := core.Category{ID: core.NewID(), Name: "tv", DirOverride: "media/tv"}
-	if err := c.Validate(); err == nil {
-		t.Fatal("relative DirOverride accepted")
+func TestCategoryDirOverridesMustBeAbsolute(t *testing.T) {
+	for _, c := range []core.Category{
+		{ID: core.NewID(), Name: "tv", UsenetDir: "media/tv"},
+		{ID: core.NewID(), Name: "tv", TorrentDir: "media/tv"},
+	} {
+		if err := c.Validate(); err == nil {
+			t.Errorf("relative override accepted: %+v", c)
+		}
 	}
-	c.DirOverride = "/data/usenet/complete/series"
+	c := core.Category{ID: core.NewID(), Name: "tv", UsenetDir: "/data/usenet/complete/series", TorrentDir: "/data/torrents/series"}
 	if err := c.Validate(); err != nil {
-		t.Fatalf("absolute DirOverride: %v", err)
+		t.Fatalf("absolute overrides: %v", err)
+	}
+}
+
+func TestCategoryDirOverrideIsPerSourceKind(t *testing.T) {
+	c := core.Category{Name: "movies", UsenetDir: "/data/usenet/movies", TorrentDir: "/data/torrents/movies"}
+
+	if got := c.DirOverride(core.SourceNZB); got != "/data/usenet/movies" {
+		t.Errorf("usenet: %q", got)
+	}
+	if got := c.DirOverride(core.SourceTorrent); got != "/data/torrents/movies" {
+		t.Errorf("torrent: %q", got)
+	}
+	if got := (core.Category{Name: "tv", UsenetDir: "/data/tv"}).DirOverride(core.SourceTorrent); got != "" {
+		t.Errorf("torrent without its own override: %q, want the default", got)
 	}
 }

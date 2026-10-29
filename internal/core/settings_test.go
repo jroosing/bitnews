@@ -288,9 +288,13 @@ func TestPathProblemsNameTheRootThatIsWrong(t *testing.T) {
 func TestCategoryDirOverrideMustBeClean(t *testing.T) {
 	// placed here with the other path-shape tests
 	for _, bad := range []string{"/data/../etc", "/data/tv/", "/data//tv"} {
-		c := core.Category{ID: core.NewID(), Name: "tv", DirOverride: bad}
-		if err := c.Validate(); err == nil {
-			t.Errorf("DirOverride %q accepted", bad)
+		for _, c := range []core.Category{
+			{ID: core.NewID(), Name: "tv", UsenetDir: bad},
+			{ID: core.NewID(), Name: "tv", TorrentDir: bad},
+		} {
+			if err := c.Validate(); err == nil {
+				t.Errorf("override %q accepted: %+v", bad, c)
+			}
 		}
 	}
 }

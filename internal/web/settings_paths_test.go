@@ -232,7 +232,7 @@ func TestPlainFormPostRendersThePageAgain(t *testing.T) {
 
 func TestMutatingSettingsRoutesNeedASessionAndTheSameSite(t *testing.T) {
 	e, b := settingsSignedIn(t)
-	cat, err := e.cats.Create(context.Background(), "tv", "")
+	cat, err := e.cats.Create(context.Background(), "tv", "", "")
 	require.NoError(t, err)
 	srv := mustCreateServer(t, e, "main")
 	form := pathsForm(t)
@@ -243,7 +243,7 @@ func TestMutatingSettingsRoutesNeedASessionAndTheSameSite(t *testing.T) {
 	}{
 		{"POST", "/settings/paths", form},
 		{"POST", "/settings/categories", url.Values{"name": {"movies"}}},
-		{"POST", "/settings/categories/" + string(cat.ID), url.Values{"dir_override": {"/x"}}},
+		{"POST", "/settings/categories/" + string(cat.ID), url.Values{"usenet_dir": {"/x"}}},
 		{"DELETE", "/settings/categories/" + string(cat.ID), nil},
 		{"POST", "/settings/servers", serverForm("other")},
 		{"POST", "/settings/servers/test", serverForm("other")},

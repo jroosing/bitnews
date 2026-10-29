@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -16,17 +17,48 @@ import (
 type categoriesView struct {
 	Items []categoryRow
 	// The add form: what was typed and what was wrong with it.
-	Name, Dir           string
-	NameError, DirError string
-	Error               string
+	Name      string
+	NameError string
+	Dirs      categoryDirs
+	Error     string
 }
 
 // categoryRow is one row of the table, read-only or being edited.
 type categoryRow struct {
-	ID    string
-	Name  string
-	Dir   string // the override; empty means the default folder
-	Error string
+	ID   string
+	Name string
+	Dirs categoryDirs
+}
+
+// categoryDirs are the folder overrides of a category as typed, one per
+// protocol (empty means the default folder), with their problems.
+type categoryDirs struct {
+	Usenet, Torrent           string
+	UsenetError, TorrentError string
+}
+
+func (d categoryDirs) invalid() bool { return d.UsenetError != "" || d.TorrentError != "" }
+
+func categoryRowOf(c core.Category) categoryRow {
+	return categoryRow{ID: string(c.ID), Name: c.Name, Dirs: categoryDirs{Usenet: c.UsenetDir, Torrent: c.TorrentDir}}
+}
+
+// readCategoryDirs reads the two folder fields of a form and checks their
+// shape (never the disk), each next to its own field. Valid folders are
+// cleaned: a trailing or doubled separator is dropped.
+func readCategoryDirs(form url.Values) categoryDirs {
+	d := categoryDirs{Usenet: strings.TrimSpace(form.Get("usenet_dir")), Torrent: strings.TrimSpace(form.Get("torrent_dir"))}
+	if d.Usenet != "" {
+		if d.UsenetError = pathShapeError(d.Usenet, categoryDirMsg); d.UsenetError == "" {
+			d.Usenet = filepath.Clean(d.Usenet)
+		}
+	}
+	if d.Torrent != "" {
+		if d.TorrentError = pathShapeError(d.Torrent, categoryDirMsg); d.TorrentError == "" {
+			d.Torrent = filepath.Clean(d.Torrent)
+		}
+	}
+	return d
 }
 
 // Messages for category input, shared by the create and edit forms.
@@ -43,7 +75,7 @@ func (s *Server) categoriesViewFor(r *http.Request, base categoriesView) (catego
 	}
 	base.Items = make([]categoryRow, 0, len(cats))
 	for _, c := range cats {
-		base.Items = append(base.Items, categoryRow{ID: string(c.ID), Name: c.Name, Dir: c.DirOverride})
+		base.Items = append(base.Items, categoryRowOf(c))
 	}
 	return base, nil
 }
@@ -55,27 +87,6 @@ func (s *Server) registerCategoryRoutes() {
 	s.handleAuthed("POST /settings/categories/{id}", s.postCategoryUpdate)
 	s.handleAuthed("DELETE /settings/categories/{id}", s.deleteCategory)
 	s.handleAuthed("POST /settings/categories/{id}/delete", s.deleteCategory)
-}
-
-// validCategoryInput checks a name and the shape of a folder (never the disk),
-// but reports both problems at once, each next to its field.
-func validCategoryInput(name, dir string, checkName bool) (nameErr, dirErr string) {
-	if checkName && (core.Category{Name: name}).Validate() != nil {
-		nameErr = categoryNameMsg
-	}
-	if dir != "" {
-		dirErr = pathShapeError(dir, categoryDirMsg)
-	}
-	return nameErr, dirErr
-}
-
-// cleanCategoryDir drops a trailing or doubled separator from a folder that
-// passed the shape check. Empty (the default folder) stays empty.
-func cleanCategoryDir(dir string) string {
-	if dir == "" {
-		return ""
-	}
-	return filepath.Clean(dir)
 }
 
 // respondCategories answers with the card for htmx, or the whole page.
@@ -96,10 +107,12 @@ func (s *Server) postCategory(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, r, http.StatusBadRequest, "Bad request", "The form could not be read.")
 		return
 	}
-	form := categoriesView{Name: strings.TrimSpace(r.PostForm.Get("name")), Dir: strings.TrimSpace(r.PostForm.Get("dir_override"))}
-	form.NameError, form.DirError = validCategoryInput(form.Name, form.Dir, true)
-	if form.NameError == "" && form.DirError == "" {
-		_, err := s.Categories.Create(r.Context(), form.Name, cleanCategoryDir(form.Dir))
+	form := categoriesView{Name: strings.TrimSpace(r.PostForm.Get("name")), Dirs: readCategoryDirs(r.PostForm)}
+	if (core.Category{Name: form.Name}).Validate() != nil {
+		form.NameError = categoryNameMsg
+	}
+	if form.NameError == "" && !form.Dirs.invalid() {
+		_, err := s.Categories.Create(r.Context(), form.Name, form.Dirs.Usenet, form.Dirs.Torrent)
 		if ae, ok := errors.AsType[*app.Error](err); ok && ae.Code == "name_taken" {
 			form.NameError = "A category with this name already exists."
 		} else if ok {
@@ -114,7 +127,7 @@ func (s *Server) postCategory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	status := http.StatusOK
-	if form.NameError != "" || form.DirError != "" || form.Error != "" {
+	if form.NameError != "" || form.Dirs.invalid() || form.Error != "" {
 		status = http.StatusUnprocessableEntity
 	}
 	v, err := s.categoriesViewFor(r, form)
@@ -134,7 +147,7 @@ func (s *Server) findCategory(r *http.Request) (categoryRow, bool, error) {
 	id := core.ID(r.PathValue("id"))
 	for _, c := range cats {
 		if c.ID == id {
-			return categoryRow{ID: string(c.ID), Name: c.Name, Dir: c.DirOverride}, true, nil
+			return categoryRowOf(c), true, nil
 		}
 	}
 	return categoryRow{}, false, nil
@@ -165,7 +178,7 @@ func (s *Server) getCategoryEdit(w http.ResponseWriter, r *http.Request) {
 	s.categoryRowFragment(w, r, CategoryEditRow)
 }
 
-// postCategoryUpdate changes the folder override of a category.
+// postCategoryUpdate changes the folder overrides of a category.
 func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 	if !s.settingsServices(w, r, s.Categories != nil) {
 		return
@@ -183,16 +196,14 @@ func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		s.settingsFail(w, r, "category", core.ErrNotFound)
 		return
 	}
-	dir := strings.TrimSpace(r.PostForm.Get("dir_override"))
-	if _, dirErr := validCategoryInput(row.Name, dir, false); dirErr != "" {
-		row.Dir, row.Error = dir, dirErr
+	row.Dirs = readCategoryDirs(r.PostForm)
+	if row.Dirs.invalid() {
 		s.renderComponent(w, r, http.StatusUnprocessableEntity, CategoryEditRow(row))
 		return
 	}
-	dir = cleanCategoryDir(dir)
-	updated, err := s.Categories.Update(r.Context(), core.ID(row.ID), app.CategoryPatch{DirOverride: &dir})
+	updated, err := s.Categories.Update(r.Context(), core.ID(row.ID), app.CategoryPatch{UsenetDir: &row.Dirs.Usenet, TorrentDir: &row.Dirs.Torrent})
 	if ae, isApp := errors.AsType[*app.Error](err); isApp {
-		row.Dir, row.Error = dir, ae.Message
+		row.Dirs.UsenetError = ae.Message
 		s.renderComponent(w, r, http.StatusUnprocessableEntity, CategoryEditRow(row))
 		return
 	} else if err != nil {
@@ -203,7 +214,7 @@ func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		s.redirect(w, r, "/settings/paths")
 		return
 	}
-	row.Dir, row.Error = updated.DirOverride, ""
+	row = categoryRowOf(updated)
 	trigger(w, "success", "Category saved. It applies to new downloads.", nil)
 	s.renderComponent(w, r, http.StatusOK, CategoryRow(row))
 }

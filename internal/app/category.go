@@ -86,10 +86,11 @@ func ensureCategory(ctx context.Context, repo core.CategoryRepo, log *slog.Logge
 	return core.Category{}, nil
 }
 
-// Create validates and stores a new Category. A name that is already taken
-// is a conflict (code "name_taken").
-func (s *CategoryService) Create(ctx context.Context, name, dirOverride string) (core.Category, error) {
-	c := core.Category{ID: core.NewID(), Name: name, DirOverride: dirOverride}
+// Create validates and stores a new Category with its Usenet and torrent
+// folder overrides (empty for the default folder). A name that is already
+// taken is a conflict (code "name_taken").
+func (s *CategoryService) Create(ctx context.Context, name, usenetDir, torrentDir string) (core.Category, error) {
+	c := core.Category{ID: core.NewID(), Name: name, UsenetDir: usenetDir, TorrentDir: torrentDir}
 	if err := validateCategory(c); err != nil {
 		return core.Category{}, err
 	}
@@ -100,16 +101,17 @@ func (s *CategoryService) Create(ctx context.Context, name, dirOverride string) 
 }
 
 // CategoryPatch lists the changes Update applies; nil fields are left alone.
-// A DirOverride that points at the empty string removes the override.
+// A folder override that points at the empty string removes the override.
 type CategoryPatch struct {
-	Name        *string
-	DirOverride *string
+	Name       *string
+	UsenetDir  *string
+	TorrentDir *string
 }
 
 // Update validates and stores the changes to a Category.
 func (s *CategoryService) Update(ctx context.Context, id core.ID, p CategoryPatch) (core.Category, error) {
-	if p.Name == nil && p.DirOverride == nil {
-		return core.Category{}, invalid("empty_patch", "nothing to change: give name or dir_override")
+	if p.Name == nil && p.UsenetDir == nil && p.TorrentDir == nil {
+		return core.Category{}, invalid("empty_patch", "nothing to change: give name, usenet_dir or torrent_dir")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -120,8 +122,11 @@ func (s *CategoryService) Update(ctx context.Context, id core.ID, p CategoryPatc
 	if p.Name != nil {
 		c.Name = *p.Name
 	}
-	if p.DirOverride != nil {
-		c.DirOverride = *p.DirOverride
+	if p.UsenetDir != nil {
+		c.UsenetDir = *p.UsenetDir
+	}
+	if p.TorrentDir != nil {
+		c.TorrentDir = *p.TorrentDir
 	}
 	if err := validateCategory(c); err != nil {
 		return core.Category{}, err
@@ -175,7 +180,7 @@ func validateCategory(c core.Category) error {
 	case errors.Is(err, core.ErrInvalidCategoryName):
 		return invalid("invalid_name", "category name must use only a-z, 0-9, '.', '_' and '-', be 1 to 64 characters long, and not be '.' or '..'")
 	default:
-		return invalid("invalid_dir_override", "dir_override must be an absolute path")
+		return invalid("invalid_dir_override", "usenet_dir and torrent_dir must be absolute paths")
 	}
 }
 

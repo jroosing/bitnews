@@ -111,7 +111,8 @@ func TestAddFileCategories(t *testing.T) {
 	require.Len(t, cats, 2, "an unknown name creates exactly one Category")
 	assert.Equal(t, "movies-4k", cats[0].Name)
 	assert.Equal(t, fresh.CategoryID, cats[0].ID)
-	assert.Empty(t, cats[0].DirOverride, "the default dir")
+	assert.Empty(t, cats[0].UsenetDir, "the default dir")
+	assert.Empty(t, cats[0].TorrentDir)
 }
 
 func TestAddFileWithAnInvalidCategoryNameIsAnErrorAndAddsNothing(t *testing.T) {

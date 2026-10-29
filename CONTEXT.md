@@ -23,7 +23,7 @@ A Source describing BitTorrent content, given as a .torrent file or a magnet lin
 _Avoid_: Magnet (as a generic term), transfer
 
 **Category**:
-An optional label on a Download that decides where its Ready output lands and which Media manager owns it. Categories are shared across Usenet and torrents.
+An optional label on a Download that decides where its Ready output lands and which Media manager owns it. Categories are shared across Usenet and torrents, but each protocol has its own folder for a Category (a Usenet folder and a torrent folder), as each has its own complete root.
 _Avoid_: Label, tag, group
 
 **Media manager**:

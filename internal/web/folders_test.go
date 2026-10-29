@@ -62,7 +62,7 @@ func TestThePathFieldsHaveABrowseButton(t *testing.T) {
 
 	doc := parseHTML(t, b.get("/settings/paths").Body.String())
 
-	for _, id := range []string{"usenet-incomplete", "usenet-complete", "torrent-incomplete", "torrent-complete", "category-dir"} {
+	for _, id := range []string{"usenet-incomplete", "usenet-complete", "torrent-incomplete", "torrent-complete", "category-usenet-dir", "category-torrent-dir"} {
 		btn := find(doc, func(n *html.Node) bool { return attr(n, "data-folder-input") == id })
 		assert.NotNil(t, btn, id)
 	}

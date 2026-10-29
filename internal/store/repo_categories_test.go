@@ -2,7 +2,12 @@ package store_test
 
 import (
 	"context"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +27,7 @@ func newCategoryRepo(t *testing.T) (*store.CategoryRepo, *store.DB) {
 func TestCategoryRepoCreateThenGetRoundTrips(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newCategoryRepo(t)
-	want := core.Category{ID: core.NewID(), Name: "tv", DirOverride: "/media/tv"}
+	want := core.Category{ID: core.NewID(), Name: "tv", UsenetDir: "/media/tv", TorrentDir: "/media/torrents/tv"}
 
 	require.NoError(t, repo.Create(ctx, want))
 	got, err := repo.Get(ctx, want.ID)
@@ -76,7 +81,7 @@ func TestCategoryRepoListReturnsAllOrderedByName(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newCategoryRepo(t)
 	tv := core.Category{ID: core.NewID(), Name: "tv"}
-	movies := core.Category{ID: core.NewID(), Name: "movies", DirOverride: "/m"}
+	movies := core.Category{ID: core.NewID(), Name: "movies", UsenetDir: "/m"}
 	require.NoError(t, repo.Create(ctx, tv))
 	require.NoError(t, repo.Create(ctx, movies))
 
@@ -95,12 +100,12 @@ func TestCategoryRepoListOnEmptyDBIsEmpty(t *testing.T) {
 	assert.Empty(t, got)
 }
 
-func TestCategoryRepoUpdateChangesNameAndDirOverride(t *testing.T) {
+func TestCategoryRepoUpdateChangesNameAndDirOverrides(t *testing.T) {
 	ctx := context.Background()
 	repo, _ := newCategoryRepo(t)
 	c := core.Category{ID: core.NewID(), Name: "tv"}
 	require.NoError(t, repo.Create(ctx, c))
-	c.Name, c.DirOverride = "series", "/media/series"
+	c.Name, c.UsenetDir, c.TorrentDir = "series", "/media/series", "/media/torrents/series"
 
 	require.NoError(t, repo.Update(ctx, c))
 
@@ -136,7 +141,7 @@ func TestCategoryRepoUpdateRejectsInvalidCategoryAndKeepsRow(t *testing.T) {
 	c := core.Category{ID: core.NewID(), Name: "tv"}
 	require.NoError(t, repo.Create(ctx, c))
 
-	err := repo.Update(ctx, core.Category{ID: c.ID, Name: "tv", DirOverride: "relative/dir"})
+	err := repo.Update(ctx, core.Category{ID: c.ID, Name: "tv", TorrentDir: "relative/dir"})
 
 	require.Error(t, err)
 	got, err := repo.Get(ctx, c.ID)
@@ -162,4 +167,40 @@ func TestCategoryRepoDeleteUnknownIDIsNotFound(t *testing.T) {
 	err := repo.Delete(context.Background(), core.NewID())
 
 	assert.ErrorIs(t, err, core.ErrNotFound)
+}
+
+// Before migration 9 one folder override served both protocols; it becomes
+// the override of each, so nothing changes until the user splits them.
+func TestMigration0009SplitsTheDirOverrideIntoOnePerProtocol(t *testing.T) {
+	ctx := context.Background()
+	upTo8 := fstest.MapFS{}
+	files, err := fs.Glob(os.DirFS("migrations"), "*.sql")
+	require.NoError(t, err)
+	for _, f := range files {
+		if f < "0009" {
+			data, err := os.ReadFile(filepath.Join("migrations", f))
+			require.NoError(t, err)
+			upTo8[f] = &fstest.MapFile{Data: data}
+		}
+	}
+	path := filepath.Join(t.TempDir(), "bitnews.db")
+	old, err := store.Open(ctx, path, store.WithMigrations(upTo8))
+	require.NoError(t, err)
+	_, err = old.Writer().ExecContext(ctx, `INSERT INTO categories (id, name, dir_override) VALUES ('c1', 'movies', '/data/usenet/complete/movies'), ('c2', 'tv', '')`)
+	require.NoError(t, err)
+	require.NoError(t, old.Close())
+
+	db, err := store.Open(ctx, path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	cats, err := store.NewCategoryRepo(db).List(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, []core.Category{
+		{ID: "c1", Name: "movies", UsenetDir: "/data/usenet/complete/movies", TorrentDir: "/data/usenet/complete/movies"},
+		{ID: "c2", Name: "tv"},
+	}, cats)
+	var name string
+	require.NoError(t, db.Reader().QueryRow(`SELECT name FROM schema_migrations WHERE version = 9`).Scan(&name))
+	assert.True(t, strings.Contains(name, "category"), name)
 }

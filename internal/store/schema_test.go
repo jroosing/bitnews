@@ -15,7 +15,7 @@ import (
 // Category, Settings, User, Session) so that the repositories can be
 // implemented on this schema without further migrations.
 const (
-	insertCategory = `INSERT INTO categories (id, name, dir_override) VALUES ('cat1', 'tv', '/data/tv')`
+	insertCategory = `INSERT INTO categories (id, name, usenet_dir, torrent_dir) VALUES ('cat1', 'tv', '/data/tv', '/data/torrents/tv')`
 	insertDownload = `INSERT INTO downloads (
 		id, name, source_kind, category_id, state, priority, queue_position, paused,
 		failure_reason, failure_detail, total_bytes, done_bytes,

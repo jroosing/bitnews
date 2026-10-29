@@ -308,7 +308,7 @@ These rules apply to every archive entry before anything is written.
 
 **Work**
 - Apply the cleanup rules with and without archives, keeping samples and `.nfo` files.
-- Resolve the destination when the move happens (Category override, then the complete root with the Category, then the root), and handle collisions with `Unique`.
+- Resolve the destination when the move happens (the Category's folder for the protocol, see M13, then the complete root with the Category, then the root), and handle collisions with `Unique`.
 - Use `MoveDir`, emitting a warning event on a cross-device move.
 - Set `OutputPath`, then Ready, and emit the `Ready` event.
 

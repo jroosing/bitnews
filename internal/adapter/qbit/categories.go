@@ -16,11 +16,11 @@ type categoryJSON struct {
 	SavePath string `json:"savePath"`
 }
 
-// categorySavePath is where a Category's torrents land: its dir override, or
-// its name below the torrent complete root.
+// categorySavePath is where a Category's torrents land: its torrent folder
+// override, or its name below the torrent complete root.
 func categorySavePath(root string, c core.Category) string {
-	if c.DirOverride != "" {
-		return c.DirOverride
+	if c.TorrentDir != "" {
+		return c.TorrentDir
 	}
 	return filepath.Join(root, c.Name)
 }

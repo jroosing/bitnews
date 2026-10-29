@@ -42,8 +42,8 @@ While first-run setup is open, every route except `POST /setup` and `GET /health
 | PATCH | `/api/v1/downloads/{id}` | write | any of `{"priority":"force\|high\|normal\|low","category_id":"<id>"\|null,"queue_position":{"move":"top\|bottom\|up\|down"}}` | `200 Download`; `409 not_queued` for a move of a Download that is Fetched or later. The state cannot be changed. |
 | DELETE | `/api/v1/downloads/{id}?delete_data=true` | write | | `204`. The row is deleted and a `removed` event follows. Data is deleted only with `delete_data=true`: the fetch (or the torrent) is stopped first, then the working directory and the output go. `409 download_busy` while the Download is `fetched` or `post_processing`, with or without `delete_data`: par2 or 7-Zip may be using its files, so nothing is touched; retry once it is `ready` or `failed`. `409 download_deleting` while another delete of it runs. |
 | GET | `/api/v1/categories` | read | | `200 {"items":[Category]}` |
-| POST | `/api/v1/categories` | write | `{"name","dir_override"?}` | `201 Category`; `400 invalid_name`, `400 invalid_dir_override`, `409 name_taken` |
-| PATCH | `/api/v1/categories/{id}` | write | any of `{"name","dir_override":"/abs/path"\|null}` | `200 Category` |
+| POST | `/api/v1/categories` | write | `{"name","usenet_dir"?,"torrent_dir"?}` | `201 Category`; `400 invalid_name`, `400 invalid_dir_override`, `409 name_taken` |
+| PATCH | `/api/v1/categories/{id}` | write | any of `{"name","usenet_dir":"/abs/path"\|null,"torrent_dir":"/abs/path"\|null}` | `200 Category` |
 | DELETE | `/api/v1/categories/{id}` | write | | `204`. Downloads that used it lose it. |
 | GET | `/api/v1/servers` | read | | `200 {"items":[Server]}` ordered by `priority`, then `name` |
 | POST | `/api/v1/servers` | write | `{"name","host","port"?,"username"?,"password"?,"max_connections"?,"retention_days"?,"priority"?,"enabled"?}` | `201 Server`; `400 invalid_name`, `invalid_host`, `invalid_port`, `invalid_max_connections`, `invalid_retention_days`, `invalid_priority`, `invalid_credentials`; `409 name_taken` |
@@ -80,7 +80,7 @@ The adapters take the same app key, with no scopes and no per-manager credential
 
 `failure_reason`, `failure_detail` and `output_path` are left out when empty. `state` is one of `added`, `fetching_metadata`, `queued`, `fetching`, `fetched`, `post_processing`, `ready`, `failed`. Pausing is the `paused` flag, not a state.
 
-**Category:** `{"id","name","dir_override":"/abs/path"|null}`.
+**Category:** `{"id","name","usenet_dir":"/abs/path"|null,"torrent_dir":"/abs/path"|null}`. `usenet_dir` and `torrent_dir` are the folders the Category's finished Usenet and torrent Downloads go to; `null` means `<complete root of the protocol>/<name>`.
 
 **Server:**
 

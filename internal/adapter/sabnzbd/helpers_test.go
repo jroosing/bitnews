@@ -256,7 +256,7 @@ func inCategory(id core.ID) func(*core.Download) { return func(d *core.Download)
 
 func (s *stack) category(name string) core.Category {
 	s.t.Helper()
-	c, err := s.categories.Create(context.Background(), name, "")
+	c, err := s.categories.Create(context.Background(), name, "", "")
 	require.NoError(s.t, err)
 	return c
 }

@@ -346,7 +346,7 @@ func (s *stack) seed(name string, mutate ...func(*core.Download, *torrent)) (cor
 
 func (s *stack) category(name string) core.Category {
 	s.t.Helper()
-	c, err := s.categories.Create(context.Background(), name, "")
+	c, err := s.categories.Create(context.Background(), name, "", "")
 	require.NoError(s.t, err)
 	return c
 }

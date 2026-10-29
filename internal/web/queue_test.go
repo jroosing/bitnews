@@ -64,7 +64,7 @@ func TestQueueListsOnlyActiveDownloadsInTheSectionOfTheirProtocol(t *testing.T) 
 
 func TestQueueRowShowsTheFactsOfADownload(t *testing.T) {
 	q := newQueueEnv(t)
-	cat, err := q.categories.Create(t.Context(), "movies", "")
+	cat, err := q.categories.Create(t.Context(), "movies", "", "")
 	require.NoError(t, err)
 	d := q.add(core.Download{
 		Name: "Big.Release.2160p", State: core.StateFetching, CategoryID: cat.ID, Priority: core.DownloadPriorityHigh,
@@ -273,7 +273,7 @@ func TestQueueResponsiveTableStructure(t *testing.T) {
 // a11y_test.go): no inline script or style, names on controls, unique ids.
 func addQueueResponses(t *testing.T, out map[string]*httptest.ResponseRecorder) {
 	q := newQueueEnv(t)
-	cat, err := q.categories.Create(t.Context(), "movies", "")
+	cat, err := q.categories.Create(t.Context(), "movies", "", "")
 	require.NoError(t, err)
 	var first core.Download
 	for i, st := range []core.State{core.StateAdded, core.StateFetchingMetadata, core.StateQueued, core.StateFetching, core.StateFetched, core.StatePostProcessing} {

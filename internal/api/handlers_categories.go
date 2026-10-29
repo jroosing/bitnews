@@ -22,13 +22,14 @@ func (s *Server) listCategories(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name        string `json:"name"`
-		DirOverride string `json:"dir_override"`
+		Name       string `json:"name"`
+		UsenetDir  string `json:"usenet_dir"`
+		TorrentDir string `json:"torrent_dir"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	c, err := s.Categories.Create(r.Context(), body.Name, body.DirOverride)
+	c, err := s.Categories.Create(r.Context(), body.Name, body.UsenetDir, body.TorrentDir)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -38,15 +39,19 @@ func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) patchCategory(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name        *string        `json:"name"`
-		DirOverride nullableString `json:"dir_override"`
+		Name       *string        `json:"name"`
+		UsenetDir  nullableString `json:"usenet_dir"`
+		TorrentDir nullableString `json:"torrent_dir"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 	p := app.CategoryPatch{Name: body.Name}
-	if body.DirOverride.Set {
-		p.DirOverride = &body.DirOverride.Value
+	if body.UsenetDir.Set {
+		p.UsenetDir = &body.UsenetDir.Value
+	}
+	if body.TorrentDir.Set {
+		p.TorrentDir = &body.TorrentDir.Value
 	}
 	c, err := s.Categories.Update(r.Context(), core.ID(r.PathValue("id")), p)
 	if err != nil {

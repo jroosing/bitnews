@@ -52,13 +52,13 @@ templ CategoriesCard(v categoriesView) {
 		<header class="card-header">
 			<div>
 				<h2 id="categories-title" class="text-base">Categories</h2>
-				<p class="mt-0.5 text-sm text-fg-muted">Labels that decide where finished downloads go and which media manager picks them up. Without a folder, a category uses <code class="rounded bg-surface-2 px-1.5 py-0.5 text-xs">complete folder/name</code>. Changes apply to new downloads only.</p>
+				<p class="mt-0.5 text-sm text-fg-muted">Labels that decide where finished downloads go and which media manager picks them up. Usenet and torrent downloads each have their own folder; without one, a category uses <code class="rounded bg-surface-2 px-1.5 py-0.5 text-xs">complete folder/name</code> of that protocol. Changes apply to new downloads only.</p>
 			</div>
 		</header>
 		if len(v.Items) > 0 {
 			@TableShell("Categories", "rounded-none border-0 shadow-none") {
 				<thead>
-					<tr><th scope="col">Name</th><th scope="col">Folder</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
+					<tr><th scope="col">Name</th><th scope="col">Usenet folder</th><th scope="col">Torrent folder</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
 				</thead>
 				<tbody>
 					for _, row := range v.Items {
@@ -86,7 +86,7 @@ templ CategoriesCard(v categoriesView) {
 					@Alert(AlertProps{Variant: AlertDanger, Body: v.Error})
 				</div>
 			}
-			<div class="mt-3 grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:items-start">
+			<div class="mt-3 grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(0,3fr)] sm:items-start">
 				<div>
 					<label for="category-name" class="label">Name</label>
 					<input
@@ -123,9 +123,16 @@ templ CategoriesCard(v categoriesView) {
 				</div>
 				<div>
 					@Field(FieldProps{
-						ID: "category-dir", Name: "dir_override", Label: "Folder", Optional: true, Value: v.Dir,
-						Placeholder: "/data/media/tv", Help: "Absolute path. Empty uses the default folder.",
-						Error: v.DirError, Raw: true, Autocomplete: "off", Browse: true,
+						ID: "category-usenet-dir", Name: "usenet_dir", Label: "Usenet folder", Optional: true, Value: v.Dirs.Usenet,
+						Placeholder: "/data/usenet/complete/tv", Help: "Absolute path. Empty uses the default folder.",
+						Error: v.Dirs.UsenetError, Raw: true, Autocomplete: "off", Browse: true,
+					})
+				</div>
+				<div>
+					@Field(FieldProps{
+						ID: "category-torrent-dir", Name: "torrent_dir", Label: "Torrent folder", Optional: true, Value: v.Dirs.Torrent,
+						Placeholder: "/data/torrents/tv", Help: "Absolute path. Empty uses the default folder.",
+						Error: v.Dirs.TorrentError, Raw: true, Autocomplete: "off", Browse: true,
 					})
 				</div>
 			</div>
@@ -144,13 +151,8 @@ templ CategoriesCard(v categoriesView) {
 templ CategoryRow(r categoryRow) {
 	<tr id={ "category-" + r.ID }>
 		<td data-label="Name"><span class="font-medium text-fg">{ r.Name }</span></td>
-		<td data-label="Folder" class="min-w-0 md:max-w-[22rem]">
-			if r.Dir != "" {
-				<code class="break-all text-xs text-fg">{ r.Dir }</code>
-			} else {
-				<span class="text-fg-subtle">Default <code class="text-xs">…/{ r.Name }</code></span>
-			}
-		</td>
+		@categoryFolderCell("Usenet folder", r.Dirs.Usenet, r.Name)
+		@categoryFolderCell("Torrent folder", r.Dirs.Torrent, r.Name)
 		<td data-label="" class="whitespace-nowrap md:w-px">
 			<div class="flex justify-end gap-1">
 				@Button(ButtonProps{
@@ -177,22 +179,39 @@ templ CategoryRow(r categoryRow) {
 	</tr>
 }
 
-// CategoryEditRow is the row of the categories table while its folder is
+// categoryFolderCell shows one folder override of a category, or the
+// default folder.
+templ categoryFolderCell(label, dir, name string) {
+	<td data-label={ label } class="min-w-0 md:max-w-[22rem]">
+		if dir != "" {
+			<code class="break-all text-xs text-fg">{ dir }</code>
+		} else {
+			<span class="text-fg-subtle">Default <code class="text-xs">…/{ name }</code></span>
+		}
+	</td>
+}
+
+// CategoryEditRow is the row of the categories table while its folders are
 // being edited.
 templ CategoryEditRow(r categoryRow) {
 	<tr id={ "category-" + r.ID }>
-		<td colspan="3" data-label="" class="bg-surface-2">
+		<td colspan="4" data-label="" class="bg-surface-2">
 			<form
 				method="post"
 				action={ templ.URL("/settings/categories/" + r.ID) }
 				{ Hx{Post: "/settings/categories/" + r.ID, Target: "closest tr", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
 				class="w-full text-left"
 			>
-				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
 					@Field(FieldProps{
-						ID: "category-dir-" + r.ID, Name: "dir_override", Label: "Folder for " + r.Name, Optional: true, Value: r.Dir,
+						ID: "category-usenet-dir-" + r.ID, Name: "usenet_dir", Label: "Usenet folder for " + r.Name, Optional: true, Value: r.Dirs.Usenet,
 						Placeholder: "Empty uses the default folder", Help: "Absolute path. Applies to new downloads only.",
-						Error: r.Error, Raw: true, Autocomplete: "off", Autofocus: true, Browse: true,
+						Error: r.Dirs.UsenetError, Raw: true, Autocomplete: "off", Autofocus: true, Browse: true,
+					})
+					@Field(FieldProps{
+						ID: "category-torrent-dir-" + r.ID, Name: "torrent_dir", Label: "Torrent folder for " + r.Name, Optional: true, Value: r.Dirs.Torrent,
+						Placeholder: "Empty uses the default folder", Help: "Absolute path. Applies to new downloads only.",
+						Error: r.Dirs.TorrentError, Raw: true, Autocomplete: "off", Browse: true,
 					})
 					<div class="flex justify-end gap-2 sm:pb-6">
 						@Button(ButtonProps{

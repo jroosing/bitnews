@@ -53,7 +53,7 @@ func TestHistoryShowsOutputPathOfReadyAndReasonOfFailed(t *testing.T) {
 
 func TestHistoryFiltersByStateKindAndCategory(t *testing.T) {
 	d := newDetailEnv(t)
-	cat, err := d.catSvc.Create(t.Context(), "tv", "")
+	cat, err := d.catSvc.Create(t.Context(), "tv", "", "")
 	require.NoError(t, err)
 	d.add(core.Download{Name: "Usenet.Ready", CategoryID: cat.ID})
 	d.add(core.Download{Name: "Usenet.Failed", State: core.StateFailed})

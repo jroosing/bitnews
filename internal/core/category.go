@@ -8,14 +8,26 @@ import (
 
 // Category is an optional label on a Download that decides where its Ready
 // output lands and which Media manager owns it. Categories are shared across
-// Usenet and torrents.
+// Usenet and torrents; each protocol has its own folder override, as each
+// has its own complete root.
 type Category struct {
 	ID ID
 	// Name is unique and matches [a-z0-9._-]{1,64}, except "." and "..".
 	Name string
-	// DirOverride, when set, is the absolute directory Ready output of this
-	// Category lands in. Empty means <complete root>/<Name>.
-	DirOverride string
+	// UsenetDir and TorrentDir, when set, are the absolute directories the
+	// Ready output of this Category's Usenet and torrent Downloads lands in.
+	// Empty means <complete root of the protocol>/<Name>.
+	UsenetDir  string
+	TorrentDir string
+}
+
+// DirOverride returns the folder override for Downloads of the source kind,
+// or "" for the default folder.
+func (c Category) DirOverride(kind SourceKind) string {
+	if kind == SourceTorrent {
+		return c.TorrentDir
+	}
+	return c.UsenetDir
 }
 
 // ErrInvalidCategoryName is returned for a Category name outside
@@ -27,12 +39,15 @@ func (c Category) Validate() error {
 	if !validCategoryName(c.Name) {
 		return fmt.Errorf("core: %q: %w", c.Name, ErrInvalidCategoryName)
 	}
-	if c.DirOverride != "" {
-		if !filepath.IsAbs(c.DirOverride) {
-			return fmt.Errorf("core: category %q: dir override %q is not an absolute path", c.Name, c.DirOverride)
+	for _, d := range []struct{ kind, dir string }{{"usenet", c.UsenetDir}, {"torrent", c.TorrentDir}} {
+		if d.dir == "" {
+			continue
 		}
-		if filepath.Clean(c.DirOverride) != c.DirOverride {
-			return fmt.Errorf("core: category %q: dir override %q is not a clean path (no \"..\", \".\" or doubled and trailing separators)", c.Name, c.DirOverride)
+		if !filepath.IsAbs(d.dir) {
+			return fmt.Errorf("core: category %q: %s dir override %q is not an absolute path", c.Name, d.kind, d.dir)
+		}
+		if filepath.Clean(d.dir) != d.dir {
+			return fmt.Errorf("core: category %q: %s dir override %q is not a clean path (no \"..\", \".\" or doubled and trailing separators)", c.Name, d.kind, d.dir)
 		}
 	}
 	return nil

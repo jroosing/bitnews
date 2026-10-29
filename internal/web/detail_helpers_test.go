@@ -354,7 +354,7 @@ func historyRowNames(t *testing.T, body string) []string {
 func downloadHTMLResponses(t *testing.T) map[string]*httptest.ResponseRecorder {
 	d := newDetailEnv(t)
 	out := map[string]*httptest.ResponseRecorder{}
-	cat, err := d.catSvc.Create(t.Context(), "tv", "")
+	cat, err := d.catSvc.Create(t.Context(), "tv", "", "")
 	require.NoError(t, err)
 	ready := d.add(core.Download{Name: `<b>Ready</b> "quoted" & name`, CategoryID: cat.ID, TotalBytes: 5 << 30, DoneBytes: 5 << 30})
 	failed := d.add(core.Download{Name: "Failed.One", State: core.StateFailed, FailureReason: core.FailureRepairInsufficient, FailureDetail: "needs 4 blocks"})

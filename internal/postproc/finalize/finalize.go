@@ -182,9 +182,9 @@ func (f *Finisher) dotUnderscores(ctx context.Context, d core.Download, dir stri
 }
 
 // Destination returns the directory Finish would move d to, before a name
-// clash is resolved with fsutil.Unique: the Category DirOverride, else
-// <complete root>/<category>, else <complete root>, then the sanitized
-// Download name. The torrent runner uses it to relocate a torrent to the same
+// clash is resolved with fsutil.Unique: the Category's folder override for
+// the Download's protocol, else <complete root>/<category>, else <complete
+// root>, then the sanitized Download name. The torrent runner uses it to relocate a torrent to the same
 // place without a rehash.
 func (f *Finisher) Destination(ctx context.Context, d core.Download) (string, error) {
 	if f.deps.Settings == nil || f.deps.Categories == nil {
@@ -193,9 +193,9 @@ func (f *Finisher) Destination(ctx context.Context, d core.Download) (string, er
 	return f.destination(ctx, d)
 }
 
-// destination returns the wanted final dir, before Unique: the Category
-// DirOverride, else <complete root>/<category>, else <complete root>, then
-// the sanitized Download name. The result is always inside the chosen root.
+// destination returns the wanted final dir, before Unique: the Category's
+// folder override for the protocol, else <complete root>/<category>, else
+// <complete root>, then the sanitized Download name. The result is always inside the chosen root.
 func (f *Finisher) destination(ctx context.Context, d core.Download) (string, error) {
 	s, err := f.deps.Settings(ctx)
 	if err != nil {
@@ -226,7 +226,7 @@ func (f *Finisher) destination(ctx context.Context, d core.Download) (string, er
 		case err != nil:
 			return "", fmt.Errorf("finalize: category: %w", err)
 		default:
-			if root, err = categoryRoot(root, cat); err != nil {
+			if root, err = categoryRoot(root, cat, d.SourceKind); err != nil {
 				return "", err
 			}
 		}
@@ -238,17 +238,19 @@ func (f *Finisher) destination(ctx context.Context, d core.Download) (string, er
 	return dst, nil
 }
 
-// categoryRoot returns the dir the Download dir goes into for cat. Names
-// and overrides were validated in core; this defends anyway.
-func categoryRoot(completeRoot string, cat core.Category) (string, error) {
+// categoryRoot returns the dir the Download dir goes into for cat: the
+// Category's folder override for the protocol of the Download, else
+// <complete root>/<category>. Names and overrides were validated in core;
+// this defends anyway.
+func categoryRoot(completeRoot string, cat core.Category, kind core.SourceKind) (string, error) {
 	if err := cat.Validate(); err != nil {
 		return "", fmt.Errorf("finalize: category %q: %w", cat.ID, err)
 	}
-	if cat.DirOverride != "" {
-		if slices.Contains(strings.FieldsFunc(cat.DirOverride, func(r rune) bool { return r == '/' || r == '\\' }), "..") {
-			return "", fmt.Errorf("%w: dir override %q has a .. element", fsutil.ErrUnsafePath, cat.DirOverride)
+	if override := cat.DirOverride(kind); override != "" {
+		if slices.Contains(strings.FieldsFunc(override, func(r rune) bool { return r == '/' || r == '\\' }), "..") {
+			return "", fmt.Errorf("%w: dir override %q has a .. element", fsutil.ErrUnsafePath, override)
 		}
-		return filepath.Clean(cat.DirOverride), nil
+		return filepath.Clean(override), nil
 	}
 	dir, err := fsutil.SafeJoin(completeRoot, cat.Name)
 	if err != nil {

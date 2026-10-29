@@ -27,12 +27,13 @@ func TestCreateCategoryStoresItWithAFreshID(t *testing.T) {
 	s := newStack(t)
 	svc := s.categoryService()
 
-	got, err := svc.Create(ctx, "tv-4k", "/data/tv")
+	got, err := svc.Create(ctx, "tv-4k", "/data/usenet/tv", "/data/torrents/tv")
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, got.ID)
 	assert.Equal(t, "tv-4k", got.Name)
-	assert.Equal(t, "/data/tv", got.DirOverride)
+	assert.Equal(t, "/data/usenet/tv", got.UsenetDir)
+	assert.Equal(t, "/data/torrents/tv", got.TorrentDir)
 	stored, err := s.cats.Get(ctx, got.ID)
 	require.NoError(t, err)
 	assert.Equal(t, got, stored)
@@ -45,13 +46,13 @@ func TestCreateCategoryRejectsBadNamesRelativeDirsAndDuplicates(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)
 	svc := s.categoryService()
-	_, err := svc.Create(ctx, "tv", "")
+	_, err := svc.Create(ctx, "tv", "", "")
 	require.NoError(t, err)
 
-	_, badName := svc.Create(ctx, "TV Shows", "")
-	_, dotDot := svc.Create(ctx, "..", "")
-	_, relative := svc.Create(ctx, "movies", "movies/here")
-	_, duplicate := svc.Create(ctx, "tv", "")
+	_, badName := svc.Create(ctx, "TV Shows", "", "")
+	_, dotDot := svc.Create(ctx, "..", "", "")
+	_, relative := svc.Create(ctx, "movies", "", "movies/here")
+	_, duplicate := svc.Create(ctx, "tv", "", "")
 
 	require.ErrorIs(t, badName, app.ErrInvalidInput)
 	assert.Equal(t, "invalid_name", errCode(t, badName))
@@ -70,23 +71,26 @@ func TestListCategoriesIsEmptySliceNotNil(t *testing.T) {
 	assert.Empty(t, got)
 }
 
-func TestUpdateCategoryRenamesSetsAndClearsDirOverride(t *testing.T) {
+func TestUpdateCategoryRenamesSetsAndClearsDirOverrides(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)
 	svc := s.categoryService()
-	c, err := svc.Create(ctx, "tv", "")
+	c, err := svc.Create(ctx, "tv", "", "")
 	require.NoError(t, err)
 	name, dir, none := "series", "/data/series", ""
 
 	renamed, err := svc.Update(ctx, c.ID, app.CategoryPatch{Name: &name})
 	require.NoError(t, err)
-	withDir, err := svc.Update(ctx, c.ID, app.CategoryPatch{DirOverride: &dir})
+	withDir, err := svc.Update(ctx, c.ID, app.CategoryPatch{TorrentDir: &dir})
 	require.NoError(t, err)
-	cleared, err := svc.Update(ctx, c.ID, app.CategoryPatch{DirOverride: &none})
+	both, err := svc.Update(ctx, c.ID, app.CategoryPatch{UsenetDir: &dir})
+	require.NoError(t, err)
+	cleared, err := svc.Update(ctx, c.ID, app.CategoryPatch{UsenetDir: &none, TorrentDir: &none})
 	require.NoError(t, err)
 
 	assert.Equal(t, core.Category{ID: c.ID, Name: "series"}, renamed)
-	assert.Equal(t, core.Category{ID: c.ID, Name: "series", DirOverride: "/data/series"}, withDir)
+	assert.Equal(t, core.Category{ID: c.ID, Name: "series", TorrentDir: "/data/series"}, withDir)
+	assert.Equal(t, core.Category{ID: c.ID, Name: "series", UsenetDir: "/data/series", TorrentDir: "/data/series"}, both, "the other override stays")
 	assert.Equal(t, core.Category{ID: c.ID, Name: "series"}, cleared)
 }
 
@@ -94,14 +98,14 @@ func TestUpdateCategoryValidatesAndReportsConflictsAndMissingRows(t *testing.T) 
 	ctx := context.Background()
 	s := newStack(t)
 	svc := s.categoryService()
-	tv, err := svc.Create(ctx, "tv", "")
+	tv, err := svc.Create(ctx, "tv", "", "")
 	require.NoError(t, err)
-	_, err = svc.Create(ctx, "movies", "")
+	_, err = svc.Create(ctx, "movies", "", "")
 	require.NoError(t, err)
 	bad, rel, taken := "Bad Name", "relative", "movies"
 
 	_, errName := svc.Update(ctx, tv.ID, app.CategoryPatch{Name: &bad})
-	_, errDir := svc.Update(ctx, tv.ID, app.CategoryPatch{DirOverride: &rel})
+	_, errDir := svc.Update(ctx, tv.ID, app.CategoryPatch{UsenetDir: &rel})
 	_, errTaken := svc.Update(ctx, tv.ID, app.CategoryPatch{Name: &taken})
 	_, errEmpty := svc.Update(ctx, tv.ID, app.CategoryPatch{})
 	_, errMissing := svc.Update(ctx, core.NewID(), app.CategoryPatch{Name: &taken})
@@ -122,7 +126,7 @@ func TestDeleteCategoryClearsItFromDownloadsAndPublishesTheirUpdates(t *testing.
 	ctx := context.Background()
 	s := newStack(t)
 	svc := s.categoryService()
-	c, err := svc.Create(ctx, "tv", "")
+	c, err := svc.Create(ctx, "tv", "", "")
 	require.NoError(t, err)
 	d := s.addDownload(t, "show", 0)
 	s.addDownload(t, "other", 1)

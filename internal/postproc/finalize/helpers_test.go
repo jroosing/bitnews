@@ -73,9 +73,14 @@ func (e *env) warns() []finalize.Warning {
 	return append([]finalize.Warning(nil), e.warnings...)
 }
 
+// addCategory adds a Category whose Usenet folder override is override.
 func (e *env) addCategory(name, override string) core.ID {
+	return e.addCategoryDirs(name, override, "")
+}
+
+func (e *env) addCategoryDirs(name, usenetDir, torrentDir string) core.ID {
 	id := core.NewID()
-	e.cats[id] = core.Category{ID: id, Name: name, DirOverride: override}
+	e.cats[id] = core.Category{ID: id, Name: name, UsenetDir: usenetDir, TorrentDir: torrentDir}
 	return id
 }
 

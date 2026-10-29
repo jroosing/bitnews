@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/jroosing/bitnews/internal/core"
@@ -47,6 +48,30 @@ func TestDestinationDirOverrideWinsOverCategoryDir(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(override, "Film"), out)
 	require.NoDirExists(t, filepath.Join(e.settings.Paths.Usenet.Complete, "movies"))
+}
+
+func TestDestinationUsesTheFolderOverrideOfTheDownloadsProtocol(t *testing.T) {
+	e := newEnv(t)
+	usenetDir := filepath.Join(e.base, "usenet-movies")
+	torrentDir := filepath.Join(e.base, "torrent-movies")
+	split := e.addCategoryDirs("movies", usenetDir, torrentDir)
+	usenetOnly := e.addCategoryDirs("tv", usenetDir, "")
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		d    core.Download
+		cat  core.ID
+		want string
+	}{
+		{usenetDownload("Film"), split, filepath.Join(usenetDir, "Film")},
+		{torrentDownload("Film"), split, filepath.Join(torrentDir, "Film")},
+		{torrentDownload("Show"), usenetOnly, filepath.Join(e.settings.Paths.Torrent.Complete, "tv", "Show")},
+	} {
+		tc.d.CategoryID = tc.cat
+		got, err := e.finisher().Destination(ctx, tc.d)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, got, "%s %s", tc.d.SourceKind, tc.d.Name)
+	}
 }
 
 func TestDestinationIsResolvedAtMoveTime(t *testing.T) {

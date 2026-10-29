@@ -84,8 +84,10 @@ func (r *dataRemover) RemoveData(ctx context.Context, d core.Download) error {
 }
 
 // roots returns the directories data of kind may be deleted inside: that
-// protocol's incomplete and complete roots, and the directory override of
-// every Category (Ready output of such a Category lands there).
+// protocol's incomplete and complete roots, and the folder overrides of every
+// Category (Ready output of such a Category lands there). Both protocols'
+// overrides count, because output that landed before the overrides were split
+// per protocol may sit in the other one.
 func (r *dataRemover) roots(ctx context.Context, kind core.SourceKind) ([]string, error) {
 	s := r.settings()
 	roots := []string{s.Paths.Usenet.Incomplete, s.Paths.Usenet.Complete}
@@ -97,8 +99,10 @@ func (r *dataRemover) roots(ctx context.Context, kind core.SourceKind) ([]string
 		return nil, fmt.Errorf("daemon: list categories: %w", err)
 	}
 	for _, c := range cats {
-		if c.DirOverride != "" {
-			roots = append(roots, c.DirOverride)
+		for _, dir := range []string{c.UsenetDir, c.TorrentDir} {
+			if dir != "" {
+				roots = append(roots, dir)
+			}
 		}
 	}
 	return roots, nil

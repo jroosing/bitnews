@@ -177,7 +177,7 @@ func TestRemoveDataRefusesAPathThatClimbsOutThroughASymlinkedParent(t *testing.T
 
 func TestRemoveDataAllowsTheDirectoryOverrideOfACategory(t *testing.T) {
 	override := t.TempDir()
-	e := newRemoverEnv(t, core.Category{ID: core.NewID(), Name: "tv", DirOverride: override})
+	e := newRemoverEnv(t, core.Category{ID: core.NewID(), Name: "tv", UsenetDir: override})
 	out := filepath.Join(override, "show")
 	writeFile(t, filepath.Join(out, "a.mkv"))
 
@@ -186,6 +186,23 @@ func TestRemoveDataAllowsTheDirectoryOverrideOfACategory(t *testing.T) {
 
 	assert.NoDirExists(t, out)
 	assert.DirExists(t, override, "the override dir itself stays")
+}
+
+// Output that landed in a Category's folder before its overrides were split
+// per protocol may sit in the other protocol's override: it stays removable.
+func TestRemoveDataAllowsTheOverridesOfBothProtocols(t *testing.T) {
+	usenetDir, torrentDir := t.TempDir(), t.TempDir()
+	e := newRemoverEnv(t, core.Category{ID: core.NewID(), Name: "movies", UsenetDir: usenetDir, TorrentDir: torrentDir})
+	torrentInUsenetDir := filepath.Join(usenetDir, "film")
+	nzbInTorrentDir := filepath.Join(torrentDir, "show")
+	writeFile(t, filepath.Join(torrentInUsenetDir, "a.mkv"))
+	writeFile(t, filepath.Join(nzbInTorrentDir, "a.mkv"))
+
+	require.NoError(t, e.removeData(context.Background(), torrentDownload(torrentInUsenetDir)))
+	require.NoError(t, e.removeData(context.Background(), nzbDownload(nzbInTorrentDir)))
+
+	assert.NoDirExists(t, torrentInUsenetDir)
+	assert.NoDirExists(t, nzbInTorrentDir)
 }
 
 func TestRemoveDataStopsWhenTheFetchCannotBeHeld(t *testing.T) {

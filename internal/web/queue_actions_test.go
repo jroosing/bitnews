@@ -137,7 +137,7 @@ func TestMoveOfADownloadThatLeftTheQueueIsAToast(t *testing.T) {
 
 func TestCategoryChangeAssignsAndClears(t *testing.T) {
 	q := newQueueEnv(t)
-	cat, err := q.categories.Create(t.Context(), "tv", "")
+	cat, err := q.categories.Create(t.Context(), "tv", "", "")
 	require.NoError(t, err)
 	d := q.add(core.Download{State: core.StateQueued})
 
@@ -265,7 +265,7 @@ func TestPlainFormErrorShowsAnErrorPage(t *testing.T) {
 
 func TestRowActionsPostToServerValidatedIDsOnly(t *testing.T) {
 	q := newQueueEnv(t)
-	cat, err := q.categories.Create(t.Context(), "movies", "")
+	cat, err := q.categories.Create(t.Context(), "movies", "", "")
 	require.NoError(t, err)
 	for _, name := range hostile {
 		q.add(core.Download{Name: name, State: core.StateQueued, CategoryID: cat.ID})
