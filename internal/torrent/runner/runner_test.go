@@ -170,8 +170,12 @@ func TestDiskGuardPausesRunningTorrentsWhenTheDiskFills(t *testing.T) {
 	h.engine.SetStats(hashOf(a.ID), core.TorrentStats{State: core.TorrentDownloading, Size: 1000})
 
 	h.setFree(10)
+	// The sampled progress rechecks the disk once per interval of the clock.
+	h.eventually(func() bool {
+		h.advance(time.Second)
+		return h.get(a.ID).State == core.StateQueued
+	}, "the disk guard stops the torrent")
 
-	h.waitState(a.ID, core.StateQueued)
 	paused, reason, _ := h.runner.Queue().Paused()
 	assert.True(t, paused)
 	assert.Equal(t, queue.ReasonDiskFull, reason)

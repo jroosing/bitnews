@@ -76,12 +76,35 @@ func TestTheDiskGuardPassesWhenFreeSpaceCannotBeRead(t *testing.T) {
 	}
 }
 
-func TestFitsPausesTheQueueWhenARunningFetchNoLongerFits(t *testing.T) {
+func TestProgressRechecksTheDiskOfARunningFetchOncePerInterval(t *testing.T) {
 	h := newHarness(t)
+	id := h.add("a", withState(core.StateFetching))
+	h.free[root] = 1000
+	h.q.Progress(h.ctx, id, 0, 5000, 0) // the fetch starts; the Queue checked the disk then
+
+	h.q.Progress(h.ctx, id, 100, 5000, 0)
+	paused, _, _ := h.q.Paused()
+	assert.False(t, paused, "not due yet")
+
+	h.now = h.now.Add(queue.DefaultDiskCheckInterval)
+	h.q.Progress(h.ctx, id, 200, 5000, 0)
+
+	_, reason, detail := h.q.Paused()
+	assert.Equal(t, queue.ReasonDiskFull, reason)
+	assert.Equal(t, "1000 bytes free, 4800 needed", detail)
+}
+
+func TestCheckDiskPausesTheQueueWhenARunningFetchNoLongerFits(t *testing.T) {
+	h := newHarness(t)
+	id := h.add("a", withState(core.StateFetching))
 	h.free[root] = 1000
 
-	assert.True(t, h.q.Fits(h.ctx, 500))
-	assert.False(t, h.q.Fits(h.ctx, 5000))
+	assert.True(t, h.q.CheckDisk(h.ctx, id, 5000), "the first call only starts the interval")
+	h.now = h.now.Add(queue.DefaultDiskCheckInterval)
+	assert.True(t, h.q.CheckDisk(h.ctx, id, 500))
+	assert.True(t, h.q.CheckDisk(h.ctx, id, 5000), "not due again yet")
+	h.now = h.now.Add(queue.DefaultDiskCheckInterval)
+	assert.False(t, h.q.CheckDisk(h.ctx, id, 5000))
 
 	_, reason, _ := h.q.Paused()
 	assert.Equal(t, queue.ReasonDiskFull, reason)

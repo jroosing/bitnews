@@ -71,7 +71,7 @@
 // disk_full, bind_unavailable) and publishes core.QueuePaused and
 // core.QueueResumed. SetRateLimits sets the engine's global limits. Before a
 // Download is activated, and every Config.DiskCheckInterval while torrents
-// run, the free space of the torrent incomplete root must cover the remaining
+// run (Queue.Progress, from the sampled stats), the free space of the torrent incomplete root must cover the remaining
 // bytes plus min_free; otherwise the Queue is paused with reason disk_full and
 // resumes by itself. A torrent whose engine reports "no space left" pauses
 // the Queue the same way: it leaves the engine and its Download goes back to

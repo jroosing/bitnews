@@ -52,8 +52,9 @@
 // the cooldown after a failure and the speed limit. SetSpeedLimit applies a
 // token bucket to the bytes received from the network. Before a Download is
 // activated the Queue's disk guard checks the free space of the incomplete
-// root; every Config.DiskCheckInterval while it runs the runner asks the
-// Queue again (Queue.Fits), and a write that fails with "no space left"
+// root, and Queue.Progress checks again every Config.DiskCheckInterval while
+// it runs (a supplement run, which reports no progress, calls
+// Queue.CheckDisk itself); a write that fails with "no space left"
 // pauses the Queue with disk_full (Queue.DiskFull) and requeues the
 // Download.
 //

@@ -72,23 +72,6 @@ func (p protocol) Abandon(ctx context.Context, id core.ID) error {
 	return nil
 }
 
-// checkDisk rechecks the free space for the running torrents; the Queue
-// pauses with disk_full when one of them no longer fits.
-func (r *Runner) checkDisk(ctx context.Context) {
-	if paused, reason, _ := r.q.Paused(); paused && reason == queue.ReasonDiskFull {
-		return
-	}
-	for _, t := range r.runningTors() {
-		st, err := r.engine.Stats(t.hash)
-		if err != nil || st.Size <= 0 {
-			continue
-		}
-		if !r.q.Fits(ctx, st.Size-st.DoneBytes) {
-			return
-		}
-	}
-}
-
 // runningTors lists the torrents the Queue has started.
 func (r *Runner) runningTors() []*tor {
 	r.mu.Lock()

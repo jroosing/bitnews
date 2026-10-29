@@ -66,7 +66,6 @@ func New(cfg Config) (*Runner, error) {
 	r.cfg.DoneBytesInterval = orDefault(cfg.DoneBytesInterval, defaultDoneBytesInterval)
 	r.cfg.PersistInterval = orDefault(cfg.PersistInterval, defaultPersistInterval)
 	r.cfg.LimitInterval = orDefault(cfg.LimitInterval, defaultLimitInterval)
-	r.cfg.DiskCheckInterval = orDefault(cfg.DiskCheckInterval, defaultDiskCheckInterval)
 	r.wake = make(chan struct{}, 1)
 	r.tors = map[core.ID]*tor{}
 	r.bad = map[core.ID]struct{}{}
@@ -75,6 +74,7 @@ func New(cfg Config) (*Runner, error) {
 		Source: core.SourceTorrent, Downloads: cfg.Downloads, Bus: cfg.Bus, Settings: cfg.Settings,
 		Protocol: protocol{r}, MinFree: cfg.MinFree, FreeSpace: free, Now: r.now, Wake: r.poke, Logger: r.log,
 		ProgressInterval: cfg.ProgressInterval, DoneBytesInterval: r.cfg.DoneBytesInterval,
+		DiskCheckInterval: cfg.DiskCheckInterval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("torrent runner: %w", err)
@@ -113,8 +113,6 @@ func (r *Runner) Run(ctx context.Context) error {
 	poll := time.NewTicker(r.cfg.PollInterval)
 	defer poll.Stop()
 
-	disk := time.NewTicker(r.cfg.DiskCheckInterval)
-	defer disk.Stop()
 	sample := time.NewTicker(r.cfg.SampleInterval)
 	defer sample.Stop()
 	persist := time.NewTicker(r.cfg.PersistInterval)
@@ -141,8 +139,6 @@ func (r *Runner) Run(ctx context.Context) error {
 			r.evaluateLimits(ctx)
 		case <-sample.C:
 			r.sample(ctx)
-		case <-disk.C:
-			r.checkDisk(ctx)
 		case ev, ok := <-sub.Events():
 			if !ok {
 				if ctx.Err() != nil {

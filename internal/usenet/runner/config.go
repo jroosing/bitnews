@@ -119,7 +119,7 @@ type Config struct {
 	// PollInterval is the control loop's fallback poll (default 10 s).
 	PollInterval time.Duration
 	// DiskCheckInterval is how often a running Download rechecks free space
-	// (default 30 s).
+	// (default queue.DefaultDiskCheckInterval).
 	DiskCheckInterval time.Duration
 	// SaveInterval is how often resume state is saved (default 10 s).
 	SaveInterval time.Duration
@@ -134,7 +134,6 @@ type Config struct {
 // Defaults.
 const (
 	defaultPollInterval      = 10 * time.Second
-	defaultDiskCheckInterval = 30 * time.Second
 	defaultSaveInterval      = 10 * time.Second
 	defaultDoneBytesInterval = 2 * time.Second
 	defaultFailureBackoff    = 30 * time.Second

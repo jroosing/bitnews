@@ -78,6 +78,9 @@ type Config struct {
 	// DoneBytes is stored; zero is DefaultDoneBytesInterval.
 	ProgressInterval  time.Duration
 	DoneBytesInterval time.Duration
+	// DiskCheckInterval is how often a running Download rechecks the free
+	// space; zero is DefaultDiskCheckInterval.
+	DiskCheckInterval time.Duration
 }
 
 // Queue is the Queue of one Source kind. Its methods are safe for concurrent
@@ -92,6 +95,8 @@ type Queue struct {
 	reasons map[string]string // Pause reason -> detail
 	held    map[core.ID]time.Time
 	stored  map[core.ID]time.Time // when Progress last stored DoneBytes
+	// diskChecked is when CheckDisk last checked a running Download.
+	diskChecked map[core.ID]time.Time
 }
 
 // New returns the Queue described by cfg.
@@ -111,6 +116,9 @@ func New(cfg Config) (*Queue, error) {
 	if cfg.DoneBytesInterval <= 0 {
 		cfg.DoneBytesInterval = DefaultDoneBytesInterval
 	}
+	if cfg.DiskCheckInterval <= 0 {
+		cfg.DiskCheckInterval = DefaultDiskCheckInterval
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.Default()
@@ -119,6 +127,7 @@ func New(cfg Config) (*Queue, error) {
 		cfg: cfg, log: log.With("queue", string(cfg.Source)),
 		throttle: core.NewProgressThrottle(cfg.Now, cfg.ProgressInterval),
 		reasons:  map[string]string{}, held: map[core.ID]time.Time{}, stored: map[core.ID]time.Time{},
+		diskChecked: map[core.ID]time.Time{},
 	}, nil
 }
 
@@ -342,21 +351,6 @@ func (q *Queue) Paused() (paused bool, reason, detail string) {
 		return true, ReasonUser, q.reasons[ReasonUser]
 	}
 	return true, reason, detail
-}
-
-// Fits applies the disk guard to a running fetch that still needs remaining
-// bytes: it pauses the Queue with ReasonDiskFull when the incomplete root no
-// longer has remaining plus min_free bytes free.
-func (q *Queue) Fits(ctx context.Context, remaining int64) bool {
-	settings, err := q.cfg.Settings(ctx)
-	if err != nil {
-		return true
-	}
-	ok, detail := q.fits(ctx, q.root(settings), remaining)
-	if !ok {
-		q.Pause(ReasonDiskFull, detail)
-	}
-	return ok
 }
 
 // DiskFull pauses the Queue with ReasonDiskFull, for a fetch that failed

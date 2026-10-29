@@ -78,10 +78,9 @@ type jobState struct {
 	seg   map[segKey]segStatus
 	done  int64 // decoded bytes written, including restored ones
 	fatal error
-	// nextSave and nextDisk are when the resume blob is saved and free
-	// space checked next.
-	nextSave, nextDisk time.Time
-	rate               *rateWindow
+	// nextSave is when the resume blob is saved next.
+	nextSave time.Time
+	rate     *rateWindow
 	// total is the Download's size in bytes.
 	total int64
 
@@ -188,7 +187,7 @@ func (r *Runner) fetchOne(ctx context.Context, j *job, d core.Download) {
 		st.volumes = slices.Sorted(maps.Keys(supplement))
 	}
 	now := r.clock.Now()
-	st.nextSave, st.nextDisk = now.Add(r.cfg.SaveInterval), now.Add(r.cfg.DiskCheckInterval)
+	st.nextSave = now.Add(r.cfg.SaveInterval)
 	st.rate.add(now, st.done)
 	st.total = d.TotalBytes
 	if st.total == 0 {
@@ -327,25 +326,25 @@ func (r *Runner) onResult(ctx context.Context, j *job, id core.ID, stop context.
 		st.runDone++
 	}
 	now := r.clock.Now()
-	saveDue, diskDue := now.After(st.nextSave), now.After(st.nextDisk)
+	saveDue := now.After(st.nextSave)
 	if saveDue {
 		st.nextSave = now.Add(r.cfg.SaveInterval)
-	}
-	if diskDue {
-		st.nextDisk = now.Add(r.cfg.DiskCheckInterval)
 	}
 	st.rate.add(now, st.done)
 	done, total, rate := st.done, st.total, st.rate.rate(now)
 	remaining := max(total-done, 0)
 	st.mu.Unlock()
 
-	if !st.supplement && r.q.Progress(ctx, id, done, total, rate) && total > 0 && done == total {
+	if st.supplement {
+		// A supplement run reports no progress, so it asks the disk guard
+		// itself. A Queue paused for the disk does not stop it: it is not
+		// one of the Queue's fetches.
+		if !r.q.CheckDisk(ctx, id, remaining) {
+			j.cancel(errDiskFull)
+			return
+		}
+	} else if r.q.Progress(ctx, id, done, total, rate) && total > 0 && done == total {
 		st.finalSent.Store(true)
-	}
-
-	if diskDue && !r.q.Fits(ctx, remaining) {
-		j.cancel(errDiskFull)
-		return
 	}
 	if saveDue {
 		bctx, cancel := bgCtx(ctx)

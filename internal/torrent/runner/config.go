@@ -68,7 +68,7 @@ type Config struct {
 	// LimitInterval is how often Share Limits are evaluated (default 30 s).
 	LimitInterval time.Duration
 	// DiskCheckInterval is how often a running Download rechecks free space
-	// (default 30 s).
+	// (default queue.DefaultDiskCheckInterval).
 	DiskCheckInterval time.Duration
 }
 
@@ -79,7 +79,6 @@ const (
 	defaultDoneBytesInterval = 2 * time.Second
 	defaultPersistInterval   = 30 * time.Second
 	defaultLimitInterval     = 30 * time.Second
-	defaultDiskCheckInterval = 30 * time.Second
 )
 
 func orDefault(d, def time.Duration) time.Duration {

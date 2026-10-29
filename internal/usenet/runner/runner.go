@@ -75,7 +75,6 @@ func New(cfg Config) (*Runner, error) {
 		r.volumes = newMemVolumes()
 	}
 	r.cfg.PollInterval = orDefault(cfg.PollInterval, defaultPollInterval)
-	r.cfg.DiskCheckInterval = orDefault(cfg.DiskCheckInterval, defaultDiskCheckInterval)
 	r.cfg.SaveInterval = orDefault(cfg.SaveInterval, defaultSaveInterval)
 	r.cfg.DoneBytesInterval = orDefault(cfg.DoneBytesInterval, defaultDoneBytesInterval)
 	r.cfg.FailureBackoff = orDefault(cfg.FailureBackoff, defaultFailureBackoff)
@@ -94,6 +93,7 @@ func New(cfg Config) (*Runner, error) {
 		Source: core.SourceNZB, Downloads: cfg.Downloads, Bus: cfg.Bus, Settings: cfg.Settings,
 		Protocol: protocol{r}, MinFree: cfg.MinFree, FreeSpace: free,
 		Now: r.clock.Now, Wake: r.poke, Logger: r.log, DoneBytesInterval: r.cfg.DoneBytesInterval,
+		DiskCheckInterval: cfg.DiskCheckInterval,
 	})
 	if err != nil {
 		return nil, err
