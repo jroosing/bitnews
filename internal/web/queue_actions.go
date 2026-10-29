@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -117,7 +116,7 @@ func (s *Server) queueAction(op queueOp) http.HandlerFunc {
 // answerLists answers an action with the whole lists.
 func (s *Server) answerLists(w http.ResponseWriter, r *http.Request, toast string) {
 	if toast != "" {
-		setTrigger(w, map[string]any{"toast": toastData("success", toast)})
+		trigger(w, "success", toast, nil)
 	}
 	s.renderQueueLists(w, r, http.StatusOK)
 }
@@ -140,7 +139,7 @@ func (s *Server) answerRow(w http.ResponseWriter, r *http.Request, id core.ID) {
 			}
 		}
 	}
-	setTrigger(w, map[string]any{"queue-refresh": true})
+	trigger(w, "", "", map[string]any{"queue-refresh": true})
 	setHTMLHeaders(w)
 	w.WriteHeader(http.StatusOK)
 }
@@ -239,19 +238,6 @@ func invalidForm() error {
 
 // ---- errors and toasts --------------------------------------------------
 
-func toastData(level, message string) map[string]string {
-	return map[string]string{"level": level, "message": message}
-}
-
-// setTrigger sets the HX-Trigger header: events htmx fires on the page.
-func setTrigger(w http.ResponseWriter, events map[string]any) {
-	b, err := json.Marshal(events)
-	if err != nil {
-		return
-	}
-	w.Header().Set("HX-Trigger", string(b))
-}
-
 // queueError answers a failed action. The message shown comes from the
 // services' own errors, which are written for users; anything else is a
 // generic message and a log line. The page is asked to refresh, because the
@@ -274,7 +260,7 @@ func (s *Server) queueError(w http.ResponseWriter, r *http.Request, err error) {
 		status, msg = http.StatusInternalServerError, "That did not work. Details are in the server log."
 	}
 	if isHTMX(r) {
-		setTrigger(w, map[string]any{"toast": toastData("danger", msg), "queue-refresh": true})
+		trigger(w, "danger", msg, map[string]any{"queue-refresh": true})
 		setHTMLHeaders(w)
 		w.WriteHeader(status)
 		return

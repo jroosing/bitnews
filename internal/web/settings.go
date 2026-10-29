@@ -1,17 +1,12 @@
 package web
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"maps"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/a-h/templ"
 
-	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -155,34 +150,6 @@ func (s *Server) renderSettingsPage(w http.ResponseWriter, r *http.Request, stat
 	s.renderComponent(w, r, status, sec.Component(v, v.Page.(settingsPage)))
 }
 
-// settingsTrigger sets the HX-Trigger header: a toast (level success, info,
-// warn or danger) plus any other client events. Everything is written as
-// ASCII, because browsers read header bytes as Latin-1.
-func settingsTrigger(w http.ResponseWriter, level, message string, events map[string]any) {
-	m := map[string]any{}
-	maps.Copy(m, events)
-	if message != "" {
-		m["toast"] = map[string]string{"level": level, "message": message}
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return
-	}
-	var sb strings.Builder
-	for _, r := range string(b) {
-		switch {
-		case r < 0x7f:
-			sb.WriteRune(r)
-		case r > 0xffff:
-			r -= 0x10000
-			fmt.Fprintf(&sb, `\u%04x\u%04x`, 0xd800+(r>>10), 0xdc00+(r&0x3ff))
-		default:
-			fmt.Fprintf(&sb, `\u%04x`, r)
-		}
-	}
-	w.Header().Set("HX-Trigger", sb.String())
-}
-
 // settingsFail answers a service error the form cannot show next to a field:
 // 404 for an unknown ID, otherwise a logged 500.
 func (s *Server) settingsFail(w http.ResponseWriter, r *http.Request, what string, err error) {
@@ -192,11 +159,6 @@ func (s *Server) settingsFail(w http.ResponseWriter, r *http.Request, what strin
 	}
 	s.Logger.Error("settings request failed", "what", what, "path", r.URL.Path, "err", err)
 	s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not complete the request. Details are in the server log.")
-}
-
-// settingsAppError returns the app.Error inside err, if there is one.
-func settingsAppError(err error) (*app.Error, bool) {
-	return errors.AsType[*app.Error](err)
 }
 
 // settingsServices reports whether the services a section needs were given

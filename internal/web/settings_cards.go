@@ -10,6 +10,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -175,7 +176,7 @@ func (s *Server) postCard(cards []*settingsCard, c *settingsCard) http.HandlerFu
 		if err != nil {
 			cur := s.Settings.Current()
 			v := cardView{V: form, E: map[string]string{}, Dirty: true}
-			switch ae, ok := settingsAppError(err); {
+			switch ae, ok := errors.AsType[*app.Error](err); {
 			case errors.Is(err, errFieldsInvalid):
 				v.E, v.Error = errs, cmp.Or(c.invalid, "Some values need fixing. Nothing was saved.")
 			case ok:
@@ -197,7 +198,7 @@ func (s *Server) postCard(cards []*settingsCard, c *settingsCard) http.HandlerFu
 			if s.restartPending(c, next) {
 				level, msg = "info", c.saved+" "+c.restartNote
 			}
-			settingsTrigger(w, level, msg, nil)
+			trigger(w, level, msg, nil)
 		} else {
 			v.Saved = true
 			view = s.finishCard(c, v, next)

@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 )
@@ -19,8 +18,7 @@ type errorPage struct {
 // empty body and a toast (HX-Trigger), because htmx does not swap errors.
 func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int, heading, message string) {
 	if isHTMX(r) {
-		trigger, _ := json.Marshal(map[string]any{"toast": map[string]string{"level": "danger", "message": heading + ". " + message}})
-		w.Header().Set("HX-Trigger", string(trigger))
+		trigger(w, "danger", heading+". "+message, nil)
 		w.WriteHeader(status)
 		return
 	}

@@ -86,7 +86,7 @@ func (s *Server) postAppKeyRotate(w http.ResponseWriter, r *http.Request) {
 	}
 	v = s.appKeyViewFor(r)
 	if isHTMX(r) {
-		settingsTrigger(w, "success", "API key rotated. Update Sonarr, Radarr and your scripts with the new key.", nil)
+		trigger(w, "success", "API key rotated. Update Sonarr, Radarr and your scripts with the new key.", nil)
 	}
 	s.respondAppKey(w, r, http.StatusOK, v)
 }

@@ -2,10 +2,7 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"maps"
 	"math"
 	"net/http"
 	"regexp"
@@ -373,33 +370,6 @@ func shareLimitSummary(own view.ShareLimit, global core.ShareLimit) string {
 
 // ---- actions -----------------------------------------------------------
 
-// detailTrigger sets HX-Trigger with a toast and optional events, as ASCII
-// (browsers read header bytes as Latin-1).
-func detailTrigger(w http.ResponseWriter, level, message string, events map[string]any) {
-	m := map[string]any{}
-	maps.Copy(m, events)
-	if message != "" {
-		m["toast"] = map[string]string{"level": level, "message": message}
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return
-	}
-	var sb strings.Builder
-	for _, r := range string(b) {
-		switch {
-		case r < 0x7f:
-			sb.WriteRune(r)
-		case r > 0xffff:
-			r -= 0x10000
-			fmt.Fprintf(&sb, `\u%04x\u%04x`, 0xd800+(r>>10), 0xdc00+(r&0x3ff))
-		default:
-			fmt.Fprintf(&sb, `\u%04x`, r)
-		}
-	}
-	w.Header().Set("HX-Trigger", sb.String())
-}
-
 // postDelete removes a Download from bitnews, keeping its files unless
 // delete_data is "1".
 func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
@@ -452,7 +422,7 @@ func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/history", http.StatusSeeOther)
 		return
 	}
-	detailTrigger(w, "success", msg, map[string]any{"download-removed": map[string]string{"id": id}})
+	trigger(w, "success", msg, map[string]any{"download-removed": map[string]string{"id": id}})
 	if from == "history" {
 		// The row is the target of the request: an empty body removes it.
 		setHTMLHeaders(w)
@@ -530,7 +500,7 @@ func (s *Server) postShareLimit(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/downloads/"+string(d.ID), http.StatusSeeOther)
 		return
 	}
-	detailTrigger(w, "success", "Share limit saved", nil)
+	trigger(w, "success", "Share limit saved", nil)
 	page, err := s.buildDetail(r.Context(), d, nil)
 	if err != nil {
 		s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "The share limit was saved, but the page could not be refreshed.")

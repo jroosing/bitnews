@@ -114,7 +114,7 @@ func (s *Server) postPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	v = s.passwordViewFor(r)
 	if isHTMX(r) {
-		settingsTrigger(w, "success", msg, nil)
+		trigger(w, "success", msg, nil)
 	} else {
 		v.Saved, v.Note = true, msg
 	}

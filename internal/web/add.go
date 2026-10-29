@@ -166,7 +166,7 @@ func (s *Server) postAdd(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/downloads/"+string(d.ID), http.StatusSeeOther)
 		return
 	}
-	detailTrigger(w, "success", "Added “"+histClean(d.Name, 80)+"”", map[string]any{
+	trigger(w, "success", "Added “"+histClean(d.Name, 80)+"”", map[string]any{
 		"download-added": map[string]string{"id": string(d.ID)},
 		// The queue page refetches itself on this event.
 		"queue-refresh": true,

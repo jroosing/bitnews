@@ -335,7 +335,7 @@ func (s *Server) serverSaved(w http.ResponseWriter, r *http.Request, message str
 	}
 	w.Header().Set("HX-Retarget", "#servers-list")
 	w.Header().Set("HX-Reswap", "outerHTML")
-	settingsTrigger(w, "success", message, map[string]any{"dialog-close": true})
+	trigger(w, "success", message, map[string]any{"dialog-close": true})
 	s.renderComponent(w, r, http.StatusOK, ServersList(v))
 }
 
@@ -386,7 +386,7 @@ func (s *Server) postServerCreate(w http.ResponseWriter, r *http.Request) {
 // mapServerError puts a service error next to its field. It reports false
 // for errors that are not the user's input.
 func (s *Server) mapServerError(v *serverFormView, err error) bool {
-	ae, ok := settingsAppError(err)
+	ae, ok := errors.AsType[*app.Error](err)
 	if !ok {
 		return false
 	}
@@ -460,7 +460,7 @@ func (s *Server) respondServersList(w http.ResponseWriter, r *http.Request, mess
 		return
 	}
 	if message != "" {
-		settingsTrigger(w, "success", message, nil)
+		trigger(w, "success", message, nil)
 	}
 	s.renderComponent(w, r, http.StatusOK, ServersList(v))
 }

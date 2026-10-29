@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -99,7 +100,7 @@ func (s *Server) postCategory(w http.ResponseWriter, r *http.Request) {
 	form.NameError, form.DirError = validCategoryInput(form.Name, form.Dir, true)
 	if form.NameError == "" && form.DirError == "" {
 		_, err := s.Categories.Create(r.Context(), form.Name, cleanCategoryDir(form.Dir))
-		if ae, ok := settingsAppError(err); ok && ae.Code == "name_taken" {
+		if ae, ok := errors.AsType[*app.Error](err); ok && ae.Code == "name_taken" {
 			form.NameError = "A category with this name already exists."
 		} else if ok {
 			form.Error = ae.Message
@@ -109,7 +110,7 @@ func (s *Server) postCategory(w http.ResponseWriter, r *http.Request) {
 		}
 		if err == nil {
 			form = categoriesView{}
-			settingsTrigger(w, "success", "Category added.", nil)
+			trigger(w, "success", "Category added.", nil)
 		}
 	}
 	status := http.StatusOK
@@ -190,7 +191,7 @@ func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	dir = cleanCategoryDir(dir)
 	updated, err := s.Categories.Update(r.Context(), core.ID(row.ID), app.CategoryPatch{DirOverride: &dir})
-	if ae, isApp := settingsAppError(err); isApp {
+	if ae, isApp := errors.AsType[*app.Error](err); isApp {
 		row.Dir, row.Error = dir, ae.Message
 		s.renderComponent(w, r, http.StatusUnprocessableEntity, CategoryEditRow(row))
 		return
@@ -203,7 +204,7 @@ func (s *Server) postCategoryUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row.Dir, row.Error = updated.DirOverride, ""
-	settingsTrigger(w, "success", "Category saved. It applies to new downloads.", nil)
+	trigger(w, "success", "Category saved. It applies to new downloads.", nil)
 	s.renderComponent(w, r, http.StatusOK, CategoryRow(row))
 }
 
@@ -224,6 +225,6 @@ func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
 		s.settingsFail(w, r, "category", err)
 		return
 	}
-	settingsTrigger(w, "success", "Category deleted. Its downloads keep their files.", nil)
+	trigger(w, "success", "Category deleted. Its downloads keep their files.", nil)
 	s.renderComponent(w, r, http.StatusOK, CategoriesCard(v))
 }

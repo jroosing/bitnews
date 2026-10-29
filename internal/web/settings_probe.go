@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -189,7 +190,7 @@ func (s *Server) postServerRowTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := s.Servers.Test(r.Context(), id)
-	if ae, ok := settingsAppError(err); ok && ae.Code == "password_unavailable" {
+	if ae, ok := errors.AsType[*app.Error](err); ok && ae.Code == "password_unavailable" {
 		s.renderProbe(w, r, probeView{
 			Compact: true,
 			Title:   "Password needs to be entered again",
@@ -258,7 +259,7 @@ func (s *Server) postServerTest(w http.ResponseWriter, r *http.Request) {
 		res, err = s.Servers.TestSpec(r.Context(), spec)
 	}
 	if err != nil {
-		if ae, ok := settingsAppError(err); ok {
+		if ae, ok := errors.AsType[*app.Error](err); ok {
 			s.renderProbe(w, r, probeView{Title: "Could not test", Body: ae.Message})
 			return
 		}

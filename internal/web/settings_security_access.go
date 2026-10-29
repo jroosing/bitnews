@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/auth"
 	"github.com/jroosing/bitnews/internal/core"
 )
@@ -161,7 +162,7 @@ func (s *Server) postAccess(w http.ResponseWriter, r *http.Request) {
 		next = *n
 		return nil
 	})
-	switch ae, ok := settingsAppError(err); {
+	switch ae, ok := errors.AsType[*app.Error](err); {
 	case err == nil:
 	case errors.Is(err, errFieldsInvalid):
 		fail()
@@ -185,7 +186,7 @@ func (s *Server) postAccess(w http.ResponseWriter, r *http.Request) {
 		level, msg = "warn", "Saved. Sign-in is skipped for some devices now."
 	}
 	if isHTMX(r) {
-		settingsTrigger(w, level, msg, nil)
+		trigger(w, level, msg, nil)
 	} else {
 		v.Saved = true
 	}
@@ -345,7 +346,7 @@ func (s *Server) postHosts(w http.ResponseWriter, r *http.Request) {
 		n.Auth.TrustedProxies = proxies
 		return nil
 	})
-	switch ae, ok := settingsAppError(err); {
+	switch ae, ok := errors.AsType[*app.Error](err); {
 	case err == nil:
 	case errors.Is(err, errFieldsInvalid):
 		fail()
@@ -364,7 +365,7 @@ func (s *Server) postHosts(w http.ResponseWriter, r *http.Request) {
 	}
 	v = s.hostsViewFor(r)
 	if isHTMX(r) {
-		settingsTrigger(w, "success", "Hosts and proxies saved.", nil)
+		trigger(w, "success", "Hosts and proxies saved.", nil)
 	} else {
 		v.Saved = true
 	}
