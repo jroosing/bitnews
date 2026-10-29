@@ -294,7 +294,7 @@ func historyRowOf(now time.Time, v view.View, categories map[core.ID]string, see
 		ID: string(d.ID), Name: histClean(d.Name, 255), ShortName: histClean(d.Name, 60), Kind: string(d.SourceKind), KindLabel: kind, KindIcon: icon,
 		Torrent: d.SourceKind == core.SourceTorrent,
 		State:   string(d.State), Badge: badge, BadgeLabel: badgeLabel,
-		Category: histClean(categories[d.CategoryID], 100), Size: histBytes(d.TotalBytes),
+		Category: histClean(categories[d.CategoryID], 100), Size: formatBytes(d.TotalBytes),
 		When: histWhen(now, historyTime(d)), Ready: d.State == core.StateReady, Failed: d.State == core.StateFailed,
 	}
 	if row.Name == "" {

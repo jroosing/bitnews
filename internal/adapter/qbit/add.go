@@ -11,6 +11,7 @@ import (
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/redact"
 )
 
 // add serves torrents/add: the urls field (magnet links and http(s) URLs of
@@ -179,7 +180,7 @@ func (c *call) addURLs() ([]string, bool) {
 
 func urlScheme(u string) string {
 	if i := strings.IndexAny(u, ":/?"); i > 0 && u[i] == ':' {
-		return printable(strings.ToLower(u[:i]), 16)
+		return redact.Printable(strings.ToLower(u[:i]), 16)
 	}
 	return ""
 }
@@ -204,7 +205,7 @@ func (c *call) addOptions() (app.AddRequest, bool) {
 		id, err := c.h.ensureCategory(c, name)
 		if err != nil {
 			if errors.Is(err, app.ErrInvalidInput) {
-				c.h.log.Info("qbit: add refused, bad category", "category", printable(name, 40))
+				c.h.log.Info("qbit: add refused, bad category", "category", redact.Printable(name, 40))
 				c.text(200, "Fails.")
 				return req, false
 			}

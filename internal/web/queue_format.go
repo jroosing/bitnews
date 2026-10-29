@@ -31,9 +31,12 @@ func formatBytes(n int64) string {
 }
 
 // formatRate renders a speed, "-" when there is none.
-func formatRate(bytesPerSecond int64) string {
+func formatRate(bytesPerSecond int64) string { return rateOr(bytesPerSecond, "-") }
+
+// rateOr renders a speed, zero when there is none ("0 B/s", "No limit").
+func rateOr(bytesPerSecond int64, zero string) string {
 	if bytesPerSecond <= 0 {
-		return "-"
+		return zero
 	}
 	return formatBytes(bytesPerSecond) + "/s"
 }
@@ -82,15 +85,4 @@ func percent(done, total int64) int {
 		return 100
 	}
 	return min(int(done*100/total), 99)
-}
-
-// truncateRunes shortens s to at most n characters, ending in an ellipsis.
-// It is used where a Download name goes into a sentence (the confirmation
-// dialog); the table truncates with CSS instead.
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n-1]) + "…"
 }

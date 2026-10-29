@@ -184,7 +184,7 @@ func TestE2EWebTorrentDetailAndShareLimit(t *testing.T) {
 	resp, body = w.htmxForm("/downloads/"+string(id)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {"1.5"}, "minutes": {"60"}})
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	_, page = w.do("GET", "/downloads/"+string(id), nil)
-	assert.Contains(t, page, "Own limit: ratio 1.5 or seed for 1 h 0 min")
+	assert.Contains(t, page, "Own limit: ratio 1.5 or seed for 1h")
 
 	resp, body = w.htmxForm("/downloads/"+string(id)+"/share-limit", url.Values{"mode": {"default"}})
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)

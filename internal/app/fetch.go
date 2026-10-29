@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -140,8 +139,6 @@ func (e *errRecorder) Read(p []byte) (int, error) {
 	return n, err
 }
 
-var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"']+`)
-
 // fetchFailed turns a transport error into the API error. The error text of
 // net/http quotes URLs, so every URL in it is redacted.
 func (s *AddService) fetchFailed(ctx context.Context, log *slog.Logger, err error) error {
@@ -161,7 +158,7 @@ func (s *AddService) fetchFailedOf(ctx context.Context, log *slog.Logger, what s
 		if ue, ok := errors.AsType[*url.Error](err); ok {
 			err = ue.Err
 		}
-		reason = urlInText.ReplaceAllStringFunc(err.Error(), redact.URL)
+		reason = redact.URLsIn(err.Error())
 		reason = strings.TrimSpace(reason)
 	}
 	log.Warn(strings.ToLower(what)+" fetch failed", "reason", reason)

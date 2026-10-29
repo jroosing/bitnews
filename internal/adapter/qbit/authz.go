@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jroosing/bitnews/internal/auth"
+	"github.com/jroosing/bitnews/internal/redact"
 )
 
 // sidCookie is the name of the session cookie, as in qBittorrent.
@@ -95,7 +96,7 @@ func (c *call) login() {
 	generation := c.h.AppKey.Generation()
 	if !c.h.AppKey.AuthenticateQBit(username, password) {
 		c.h.Limiter.Fail(ip, key)
-		c.h.log.Warn("qbit: login failed", "ip", key, "username", printable(username, 40))
+		c.h.log.Warn("qbit: login failed", "ip", key, "username", redact.Printable(username, 40))
 		c.text(http.StatusOK, "Fails.")
 		return
 	}

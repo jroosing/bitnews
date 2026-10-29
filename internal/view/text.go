@@ -1,15 +1,12 @@
 package view
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/redact"
 )
-
-var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s"']+`)
 
 // maxDetailBytes caps CleanDetail.
 const maxDetailBytes = 300
@@ -18,7 +15,7 @@ const maxDetailBytes = 300
 // characters become spaces, invisible format characters (bidi overrides) go, white space is collapsed and the length is
 // capped at maxDetailBytes on a character boundary (then "..." is added).
 func CleanDetail(s string) string {
-	s = urlInText.ReplaceAllStringFunc(s, redact.URL)
+	s = redact.URLsIn(s)
 	s = strings.Map(func(r rune) rune {
 		switch {
 		case unicode.IsControl(r):

@@ -8,10 +8,8 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/auth"
@@ -293,30 +291,5 @@ func ignorable(err error) bool {
 	return errors.Is(err, core.ErrNotFound) || errors.Is(err, core.ErrConflict)
 }
 
-var urlInText = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*:(?://|\?)[^\s"']+`)
-
 // maskURLs masks every URL in s, for log lines: a URL can hold a passkey.
-func maskURLs(s string) string {
-	s = urlInText.ReplaceAllStringFunc(s, func(u string) string {
-		if len(u) >= 7 && strings.EqualFold(u[:7], "magnet:") {
-			return "magnet:?[redacted]" // trackers carry passkeys
-		}
-		return redact.URL(u)
-	})
-	return printable(s, 300)
-}
-
-// printable shortens s and replaces everything but printable ASCII, for
-// logs.
-func printable(s string, n int) string {
-	s = strings.Map(func(r rune) rune {
-		if r > unicode.MaxASCII || !unicode.IsPrint(r) {
-			return '?'
-		}
-		return r
-	}, s)
-	if len(s) > n {
-		s = s[:n]
-	}
-	return s
-}
+func maskURLs(s string) string { return redact.Printable(redact.URLsIn(s), 300) }

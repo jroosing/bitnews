@@ -350,7 +350,7 @@ func (s *Server) currentStatus(ctx context.Context) liveStatus {
 		}
 		allPaused = allPaused && any
 	}
-	st := liveStatus{Down: formatRateZero(down), Up: formatRateZero(up)}
+	st := liveStatus{Down: rateOr(down, "0 B/s"), Up: rateOr(up, "0 B/s")}
 	switch {
 	case allPaused:
 		st.Badge, st.Label = "paused", "Paused"
@@ -374,11 +374,4 @@ func (s *Server) anyIn(ctx context.Context, states ...core.State) bool {
 		}
 	}
 	return false
-}
-
-func formatRateZero(bytesPerSecond int64) string {
-	if bytesPerSecond <= 0 {
-		return "0 B/s"
-	}
-	return formatRate(bytesPerSecond)
 }

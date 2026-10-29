@@ -53,9 +53,3 @@ func TestPercent(t *testing.T) {
 	assert.Equal(t, 100, percent(2000, 1000), "clamped")
 	assert.Equal(t, 0, percent(-4, 10))
 }
-
-func TestTruncateRunes(t *testing.T) {
-	assert.Equal(t, "abc", truncateRunes("abc", 5))
-	assert.Equal(t, "abcd…", truncateRunes("abcdefgh", 5))
-	assert.Equal(t, "ééééé", truncateRunes("ééééé", 5), "counts characters, not bytes")
-}

@@ -58,7 +58,7 @@ func seedOf(v view.View, def core.SeedingSettings) *seedView {
 		out.State, out.Label = seedPaused, "Seeding paused"
 	default:
 		out.State, out.Label = seedSeeding, "Seeding"
-		out.Rate = histRate(v.UpRate)
+		out.Rate = rateOr(v.UpRate, "0 B/s")
 	}
 	return out
 }

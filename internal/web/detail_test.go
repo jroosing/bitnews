@@ -114,7 +114,7 @@ func TestDetailOfATorrentShowsFilesPeersRatioAndShareLimit(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	doc := parseHTML(t, rec.Body.String())
 	body := text(doc)
-	for _, want := range []string{"7 peers", "3 seeds", "ratio 2.00", "Private", "2 d 1 h", "Own limit: ratio 2", "linux/disc1.iso", "4.0 GB", "0123456789abcdef0123456789abcdef01234567", "2 files"} {
+	for _, want := range []string{"7 peers", "3 seeds", "ratio 2.00", "Private", "2d 1h", "Own limit: ratio 2", "linux/disc1.iso", "4.0 GB", "0123456789abcdef0123456789abcdef01234567", "2 files"} {
 		assert.Contains(t, body, want)
 	}
 	assert.NotContains(t, rec.Body.String(), "<b>x</b>")
@@ -446,5 +446,5 @@ func TestShareLimitSummaryNamesTheGlobalDefault(t *testing.T) {
 
 	rec := d.b.get("/downloads/" + string(dl.ID))
 
-	assert.Contains(t, text(parseHTML(t, rec.Body.String())), "Global default: ratio 2 or seed for 2 h 0 min")
+	assert.Contains(t, text(parseHTML(t, rec.Body.String())), "Global default: ratio 2 or seed for 2h")
 }

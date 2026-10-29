@@ -231,14 +231,14 @@ func (s *Server) detailDownload(w http.ResponseWriter, r *http.Request) (core.Do
 func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareForm) (detailPage, error) {
 	v := s.View.Of(ctx, d)
 	badge, badgeLabel := badgeOf(v)
-	kind, icon := kindLabel(d.SourceKind)
+	kind, icon := sourceLabel(d.SourceKind)
 	now := time.Now()
 	p := detailPage{
 		ID: string(d.ID), Name: histClean(d.Name, 255), Kind: string(d.SourceKind), KindLabel: kind, KindIcon: icon,
 		State: string(d.State), StateText: stateText(d), Badge: badge, BadgeLabel: badgeLabel,
 		Terminal: terminal(d.State), Ready: d.State == core.StateReady, Failed: d.State == core.StateFailed,
 		Paused: d.Paused, Priority: string(d.Priority), Position: d.QueuePosition,
-		Size: histBytes(v.Total), Done: histBytes(v.Done), Percent: progressPercent(v),
+		Size: formatBytes(v.Total), Done: formatBytes(v.Done), Percent: progressPercent(v),
 		Added: histWhen(now, d.AddedAt), Fetched: histWhen(now, d.FetchedAt), ReadyAt: histWhen(now, d.ReadyAt),
 		Updated: histWhen(now, d.UpdatedAt), OutputPath: histClean(d.OutputPath, 1024),
 		LiveHref: "/downloads/" + string(d.ID) + "/live",
@@ -275,8 +275,8 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 		if s.Detail != nil && (!d.FetchedAt.IsZero() || p.Failed || d.State == core.StatePostProcessing) {
 			if rep, err := s.Detail(ctx, d.ID); err == nil {
 				p.Report = &detailReport{
-					MissingArticles: rep.MissingArticles, MissingBytes: histBytes(rep.MissingBytes),
-					DamagedArticles: rep.DamagedArticles, DamagedBytes: histBytes(rep.DamagedBytes),
+					MissingArticles: rep.MissingArticles, MissingBytes: formatBytes(rep.MissingBytes),
+					DamagedArticles: rep.DamagedArticles, DamagedBytes: formatBytes(rep.DamagedBytes),
 					MissingFiles: rep.MissingFiles,
 					Clean:        rep.MissingArticles == 0 && rep.DamagedArticles == 0 && rep.MissingFiles == 0,
 				}
@@ -289,7 +289,7 @@ func (s *Server) buildDetail(ctx context.Context, d core.Download, form *shareFo
 		}
 		p.Torrent = s.torrentView(v, form)
 		if v.Torrent.Registered && !p.Terminal {
-			p.Speed = histRate(v.DownRate)
+			p.Speed = rateOr(v.DownRate, "0 B/s")
 		}
 	}
 	return p, nil
@@ -324,12 +324,12 @@ func (s *Server) torrentView(v view.View, form *shareForm) *detailTorrent {
 	files := f.Files
 	t := &detailTorrent{
 		InfoHash: histClean(f.Hash, 64), Registered: f.Registered, Private: f.Private, LimitPaused: f.LimitPaused,
-		Peers: f.Peers, Seeds: f.Seeds, DownRate: histRate(v.DownRate), UpRate: histRate(v.UpRate),
-		Uploaded: histBytes(f.Uploaded), Ratio: strconv.FormatFloat(f.Ratio, 'f', 2, 64), SeedingTime: histDuration(f.SeedingTime),
+		Peers: f.Peers, Seeds: f.Seeds, DownRate: rateOr(v.DownRate, "0 B/s"), UpRate: rateOr(v.UpRate, "0 B/s"),
+		Uploaded: formatBytes(f.Uploaded), Ratio: strconv.FormatFloat(f.Ratio, 'f', 2, 64), SeedingTime: shortSpan(f.SeedingTime),
 		FileCount: len(files),
 	}
 	for _, file := range files[:min(len(files), detailMaxFiles)] {
-		t.ShowFiles = append(t.ShowFiles, detailFile{Path: histClean(file.Path, 500), Size: histBytes(file.Size)})
+		t.ShowFiles = append(t.ShowFiles, detailFile{Path: histClean(file.Path, 500), Size: formatBytes(file.Size)})
 	}
 	t.MoreFiles = max(len(files)-detailMaxFiles, 0)
 
@@ -363,7 +363,7 @@ func shareLimitSummary(own view.ShareLimit, global core.ShareLimit) string {
 		parts = append(parts, "ratio "+strconv.FormatFloat(ratio, 'f', -1, 64))
 	}
 	if seeding >= 0 {
-		parts = append(parts, "seed for "+histDuration(seeding))
+		parts = append(parts, "seed for "+shortSpan(seeding))
 	}
 	if len(parts) == 0 {
 		return prefix + "no limit, seed until you stop it"

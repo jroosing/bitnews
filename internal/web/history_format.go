@@ -10,31 +10,6 @@ import (
 	"github.com/jroosing/bitnews/internal/view"
 )
 
-// histBytes formats a byte count for people: 1024-based units with the
-// short names downloaders use.
-func histBytes(n int64) string {
-	if n < 0 {
-		n = 0
-	}
-	if n < 1024 {
-		return fmt.Sprintf("%d B", n)
-	}
-	units := []string{"KB", "MB", "GB", "TB", "PB"}
-	v := float64(n)
-	i := -1
-	for v >= 1024 && i < len(units)-1 {
-		v /= 1024
-		i++
-	}
-	if v >= 100 {
-		return fmt.Sprintf("%.0f %s", v, units[i])
-	}
-	return fmt.Sprintf("%.1f %s", v, units[i])
-}
-
-// histRate formats a transfer rate.
-func histRate(n int64) string { return histBytes(n) + "/s" }
-
 // whenView is a point in time as the templates show it: a relative text, the
 // absolute time for the title attribute and the machine-readable form.
 type whenView struct {
@@ -90,19 +65,6 @@ func histSpan(d time.Duration) string {
 		return plural(int(d/(30*24*time.Hour)), "month")
 	}
 	return plural(int(d/(365*24*time.Hour)), "year")
-}
-
-// histDuration formats a seeding time such as "3 d 4 h" or "12 min".
-func histDuration(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%d s", int(d/time.Second))
-	case d < time.Hour:
-		return fmt.Sprintf("%d min", int(d/time.Minute))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%d h %d min", int(d/time.Hour), int(d%time.Hour/time.Minute))
-	}
-	return fmt.Sprintf("%d d %d h", int(d/(24*time.Hour)), int(d%(24*time.Hour)/time.Hour))
 }
 
 // failureInfo is how a FailureReason reads to a person.
@@ -237,13 +199,6 @@ func badgeOf(v view.View) (class, label string) {
 }
 
 // kindLabel is the text and icon of a Source kind.
-func kindLabel(k core.SourceKind) (label, icon string) {
-	if k == core.SourceTorrent {
-		return "Torrent", "bolt"
-	}
-	return "Usenet", "server"
-}
-
 // sourceLabel names the Source of a Download the way the glossary does, with
 // the icon that goes with it.
 func sourceLabel(k core.SourceKind) (label, icon string) {

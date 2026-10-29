@@ -78,7 +78,7 @@ func (s *Server) newAddForm(ctx context.Context) addForm {
 		Categories:      []option{{"", "No category"}},
 		MaxNZBBytes:     app.DefaultMaxNZBBytes,
 		MaxTorrentBytes: addMaxTorrentBytes,
-		Hint:            "NZB files up to " + histBytes(app.DefaultMaxNZBBytes) + ", torrent files up to " + histBytes(addMaxTorrentBytes),
+		Hint:            "NZB files up to " + formatBytes(app.DefaultMaxNZBBytes) + ", torrent files up to " + formatBytes(addMaxTorrentBytes),
 	}
 	if s.Categories != nil {
 		if cats, err := s.Categories.List(ctx); err == nil {
@@ -305,7 +305,7 @@ func (s *Server) addProblem(f *addForm, err error) int {
 		return http.StatusBadRequest
 	}
 	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-		f.SourceError = "That upload is too large. NZB files can be up to " + histBytes(app.DefaultMaxNZBBytes) + ", torrent files up to " + histBytes(addMaxTorrentBytes) + "."
+		f.SourceError = "That upload is too large. NZB files can be up to " + formatBytes(app.DefaultMaxNZBBytes) + ", torrent files up to " + formatBytes(addMaxTorrentBytes) + "."
 		return http.StatusRequestEntityTooLarge
 	}
 	if e, ok := errors.AsType[*app.Error](err); ok {

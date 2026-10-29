@@ -199,3 +199,21 @@ func TestURLRedactsNestedURLsThatAreNestedAgain(t *testing.T) {
 
 	assert.NotContains(t, got, "DEEPSECRET")
 }
+
+func TestURLsInRedactsEveryURLInText(t *testing.T) {
+	in := `fetch "https://indexer.example/api?apikey=s3cret&t=get" failed; magnet:?xt=urn:btih:abc&tr=https%3A%2F%2Ft.example%2Fannounce%3Fpasskey%3Dp4ss and ftp://u:pw@host/x`
+
+	got := redact.URLsIn(in)
+
+	for _, secret := range []string{"s3cret", "p4ss", "pw@"} {
+		assert.NotContains(t, got, secret)
+	}
+	assert.Contains(t, got, "fetch \"https://indexer.example/api?")
+	assert.Contains(t, got, "magnet:?[redacted]")
+	assert.Equal(t, "no url here", redact.URLsIn("no url here"))
+}
+
+func TestPrintableKeepsPrintableASCIIAndCaps(t *testing.T) {
+	assert.Equal(t, "a?b?c", redact.Printable("a\nbéc", 10))
+	assert.Equal(t, "abc", redact.Printable("abcdef", 3))
+}

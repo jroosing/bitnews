@@ -240,16 +240,9 @@ func (s *Server) newSection(kind core.SourceKind) queueSection {
 		sec.PauseTitle, sec.PauseText = pauseText(sec.Title, st.Reason)
 	}
 	down, up := s.Runtime.SpeedLimits(kind)
-	sec.LimitDown, sec.LimitUp = limitText(down), limitText(up)
+	sec.LimitDown, sec.LimitUp = rateOr(down, "No limit"), rateOr(up, "No limit")
 	sec.LimitDownKB, sec.LimitUpKB = down/1024, up/1024
 	return sec
-}
-
-func limitText(bytesPerSecond int64) string {
-	if bytesPerSecond <= 0 {
-		return "No limit"
-	}
-	return formatRate(bytesPerSecond)
 }
 
 // pauseText explains why a Queue is paused.
@@ -274,7 +267,7 @@ func pauseText(queue, reason string) (title, text string) {
 func newQueueRow(v view.View, category string) queueRow {
 	d := v.Download
 	r := queueRow{
-		ID: string(d.ID), Name: d.Name, ShortName: truncateRunes(d.Name, 60),
+		ID: string(d.ID), Name: d.Name, ShortName: histClean(d.Name, 60),
 		Torrent: d.SourceKind == core.SourceTorrent, State: d.State, Paused: d.Paused,
 		Category: category, CategoryID: string(d.CategoryID),
 		Priority: d.Priority, PriorityLabel: view.PriorityLabel(d.Priority),

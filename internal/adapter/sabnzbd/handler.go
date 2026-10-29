@@ -11,11 +11,11 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/auth"
 	"github.com/jroosing/bitnews/internal/core"
+	"github.com/jroosing/bitnews/internal/redact"
 	"github.com/jroosing/bitnews/internal/view"
 )
 
@@ -152,23 +152,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "retry":
 		c.fail("retry is not supported")
 	default:
-		h.log.Debug("sabnzbd: mode not implemented", "mode", printable(mode, 32))
+		h.log.Debug("sabnzbd: mode not implemented", "mode", redact.Printable(mode, 32))
 		c.fail("not implemented")
 	}
-}
-
-// printable shortens s and drops everything but printable ASCII, for logs.
-func printable(s string, n int) string {
-	s = strings.Map(func(r rune) rune {
-		if r > unicode.MaxASCII || !unicode.IsPrint(r) {
-			return '?'
-		}
-		return r
-	}, s)
-	if len(s) > n {
-		s = s[:n]
-	}
-	return s
 }
 
 // readBody reads the form fields of a POST into c.params and, for a
