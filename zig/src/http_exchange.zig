@@ -27,9 +27,10 @@ pub const Route = struct {
     handler: Handler,
     state: ?*anyopaque = null,
     auth: Auth = .key,
-    /// Largest request body the route accepts (Go's maxBody). A declared
-    /// Content-Length above it is a 413 before the handler runs; a chunked body
-    /// is cut off at it when the handler reads it.
+    /// Largest request body the route accepts (Go's maxBody). Reading a body
+    /// above it (declared or chunked) fails with PayloadTooLarge, which the
+    /// server answers with 413; a handler that never reads the body is not
+    /// affected.
     body_limit: u64 = respond.small_body_limit,
 };
 
