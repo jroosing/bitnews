@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
@@ -225,8 +224,8 @@ func parseKBps(s string) (int64, error) {
 	if s == "" {
 		return 0, nil
 	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || n < 0 || n > maxLimitKBps {
+	n, _, ok := wholeNumber(s, maxLimitKBps)
+	if !ok {
 		return 0, &app.Error{Kind: app.ErrInvalidInput, Code: "invalid_limit", Message: "A speed limit is a whole number of KB/s, 0 or more. Use 0 for no limit."}
 	}
 	return n, nil

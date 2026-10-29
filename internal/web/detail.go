@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"errors"
-	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -433,8 +432,6 @@ func (s *Server) postDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-const maxShareMinutes = 10 * 365 * 24 * 60
-
 // parseShareForm reads the share limit form. A problem is returned in form.
 // The Share Limit is nil for the global default; a negative half is
 // unlimited.
@@ -449,18 +446,14 @@ func parseShareForm(r *http.Request) (*core.ShareLimit, shareForm) {
 		return nil, form
 	}
 	change := core.UnlimitedShareLimit()
-	if form.Ratio != "" {
-		v, err := strconv.ParseFloat(form.Ratio, 64)
-		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100000 {
-			form.RatioError = "Enter a ratio of 0 or more, such as 2 or 1.5, or leave it empty for no ratio limit."
-		}
+	if v, blank, ok := decimalNumber(form.Ratio, maxShareRatio); !ok {
+		form.RatioError = "Enter a ratio of 0 or more, such as 2 or 1.5, or leave it empty for no ratio limit."
+	} else if !blank {
 		change.Ratio = v
 	}
-	if form.Minutes != "" {
-		v, err := strconv.Atoi(form.Minutes)
-		if err != nil || v < 0 || v > maxShareMinutes {
-			form.MinutesError = "Enter a whole number of minutes, such as 1440 for a day, or leave it empty for no time limit."
-		}
+	if v, blank, ok := wholeNumber(form.Minutes, maxSeedingMinutes); !ok {
+		form.MinutesError = "Enter a whole number of minutes, such as 1440 for a day, or leave it empty for no time limit."
+	} else if !blank {
 		change.SeedingTime = time.Duration(v) * time.Minute
 	}
 	return &change, form

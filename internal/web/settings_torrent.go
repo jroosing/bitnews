@@ -264,6 +264,8 @@ type seedingView struct {
 	Actions []SelectOption
 }
 
+// The bounds of a Share Limit, for the default in the torrent settings and
+// a torrent's own on its detail page alike.
 const (
 	maxShareRatio     = 1000
 	maxSeedingMinutes = 10 * 365 * 24 * 60

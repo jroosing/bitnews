@@ -448,3 +448,20 @@ func TestShareLimitSummaryNamesTheGlobalDefault(t *testing.T) {
 
 	assert.Contains(t, text(parseHTML(t, rec.Body.String())), "Global default: ratio 2 or seed for 2h")
 }
+
+func TestShareLimitFormParsesNumbersLikeTheSettings(t *testing.T) {
+	d := newDetailEnv(t)
+	dl := d.add(core.Download{SourceKind: core.SourceTorrent})
+	d.live.set(dl.ID, view.Live{Torrent: &view.TorrentLive{}})
+
+	for _, form := range []url.Values{
+		{"mode": {"custom"}, "ratio": {"1e3"}},
+		{"mode": {"custom"}, "ratio": {"1001"}},
+		{"mode": {"custom"}, "minutes": {"+5"}},
+		{"mode": {"custom"}, "minutes": {"0x10"}},
+	} {
+		d.act("/downloads/"+string(dl.ID)+"/share-limit", form)
+	}
+
+	assert.Empty(t, d.torrents.recorded(), "none of them is a number the settings accept")
+}
