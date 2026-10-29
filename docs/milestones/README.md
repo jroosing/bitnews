@@ -174,3 +174,9 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | ID | Issue | Title | Status |
 |---|---|---|---|
 | M13-01 | [#7](https://github.com/jroosing/bitnews/issues/7) | Category folders per protocol | done |
+
+### [M14 — Fully obfuscated Usenet posts](m14-obfuscated-posts.md)
+
+| ID | Issue | Title | Status |
+|---|---|---|---|
+| M14-01 | [#8](https://github.com/jroosing/bitnews/issues/8) | Fully obfuscated posts end with an importable video file | done |

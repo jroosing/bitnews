@@ -27,6 +27,10 @@
 //	    that share the main file's prefix; extras are how it also finds volumes
 //	    with other names, and how it finds files whose names were obfuscated: it
 //	    scans each extra file and matches it to a target by hash.
+//	  - A PAR2 file is known by its content as well as its name: before par2
+//	    runs, a top-level file that starts with the "PAR2\0PKT" magic but has
+//	    no .par2 name (a fully obfuscated post) is renamed to <name>.par2, so
+//	    the set is used and the cleanup stage removes it afterwards.
 //	  - Never used: -p (purge deletes the .par2 files, so a crash between the
 //	    repair and Ready would leave no set to check against), -N and -S (block
 //	    skipping), -q (we read the report).

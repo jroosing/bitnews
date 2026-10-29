@@ -126,3 +126,34 @@ func TestUnderscoresToDotsDoesNothingTheSecondTimeAfterACrashBeforeTheMove(t *te
 	delete(got, ".bitnews-done")
 	assert.Equal(t, map[string]string{"my.show.mkv": "video"}, got)
 }
+
+// A fully obfuscated post whose movie kept its random name (no usable PAR2
+// set) is named after the Download, so media managers find a video file.
+func TestUsenetNamesAnObfuscatedVideoAfterTheDownload(t *testing.T) {
+	e := newEnv(t)
+	dir := e.usenetDir("Film")
+	writeFiles(t, dir, map[string]string{
+		"13184cde52aaba45f8491bbf0db79b93": "\x1a\x45\xdf\xa3 matroska video",
+		"release.nfo":                      "nfo",
+	})
+	buf, h := logged()
+
+	out, err := e.finisher(finalize.WithLogger(slog.New(h()))).Finish(context.Background(), usenetDownload("Film.2025.1080p"), dir, "")
+
+	require.NoError(t, err)
+	got := listing(t, out)
+	delete(got, finalize.MarkerName)
+	assert.Equal(t, map[string]string{"Film.2025.1080p.mkv": "\x1a\x45\xdf\xa3 matroska video", "release.nfo": "nfo"}, got)
+	assert.Contains(t, buf.String(), "named the obfuscated video after the download")
+}
+
+func TestTorrentFilesAreNeverRenamedEvenWhenObfuscated(t *testing.T) {
+	e := newEnv(t)
+	dir := e.torrentDir("Film")
+	writeFiles(t, dir, map[string]string{"13184cde": "\x1a\x45\xdf\xa3 seeding"})
+
+	out, err := e.finisher().Finish(context.Background(), torrentDownload("Film"), dir, "")
+
+	require.NoError(t, err)
+	assert.Contains(t, listing(t, out), "13184cde", "a seeded file keeps its name")
+}

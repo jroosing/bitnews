@@ -3,6 +3,7 @@ package par2_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -140,6 +141,34 @@ func TestRepairRenamesObfuscatedFiles(t *testing.T) {
 	_, err = toolFor(t).Repair(context.Background(), s.dir)
 	require.NoError(t, err, "a second run finds it already done")
 	assert.ElementsMatch(t, setListing, s.listing(t))
+}
+
+// Fully obfuscated posts name the PAR2 files like the data: random hex, no
+// extension. They are found by their content and given a .par2 name, so the
+// set is used and the data gets its real names back.
+func TestRepairFindsObfuscatedPAR2FilesByContent(t *testing.T) {
+	s := makeSet(t, 6, two)
+	s.rename(t, "a.bin", "13184cde52aaba45")
+	s.rename(t, "b.bin", "8f491bbf0db79b93")
+	s.rename(t, "set.par2", "21cb82676987e551")
+	s.rename(t, "set.vol0+3.par2", "b7578fd2e094aa01")
+	s.rename(t, "set.vol3+3.par2", "77e1c0de99aa1b2c")
+
+	out, err := toolFor(t).Repair(context.Background(), s.dir)
+
+	require.NoError(t, err)
+	assert.True(t, out.HasPAR2)
+	s.requireOriginals(t)
+	var par2s, rest []string
+	for _, n := range s.listing(t) {
+		if strings.HasSuffix(n, ".par2") {
+			par2s = append(par2s, n)
+		} else {
+			rest = append(rest, n)
+		}
+	}
+	assert.ElementsMatch(t, []string{"a.bin", "b.bin"}, rest, "no obfuscated name is left")
+	assert.Len(t, par2s, 3, "every PAR2 file now has a .par2 name")
 }
 
 func TestRepairRenamesAnObfuscatedFileOverAWrongOneAndDropsTheBackup(t *testing.T) {

@@ -1,9 +1,11 @@
 package par2
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -83,6 +85,45 @@ func (t Repairer) memoryMB() int {
 		return t.MemoryMB
 	}
 	return DefaultMemoryMB
+}
+
+// adoptPAR2Files gives a .par2 name to every file directly in dir that is a
+// PAR2 file by content but not by name. Fully obfuscated posts name the PAR2
+// files like the data (random hex, no extension); without the extension
+// neither inspect nor par2 would know them, the data would keep its random
+// names and the PAR2 files would be left in the output. The new name is the
+// old one plus ".par2", made safe and unique; nothing is overwritten.
+func adoptPAR2Files(dir string) error {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range ents {
+		name := e.Name()
+		if !e.Type().IsRegular() || strings.EqualFold(filepath.Ext(name), ".par2") || !startsWithPAR2(filepath.Join(dir, name)) {
+			continue
+		}
+		safe, err := fsutil.SafeName(name + ".par2")
+		if err != nil {
+			continue
+		}
+		if err := os.Rename(filepath.Join(dir, name), fsutil.Unique(filepath.Join(dir, safe))); err != nil {
+			return fmt.Errorf("par2: name PAR2 file %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// startsWithPAR2 reports whether the file at p begins with a PAR2 packet.
+func startsWithPAR2(p string) bool {
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, len(packetMagic))
+	_, err = io.ReadFull(f, head)
+	return err == nil && bytes.Equal(head, packetMagic)
 }
 
 // setInfo is what we learn about a directory before par2 is started.
@@ -215,8 +256,10 @@ func (t Repairer) run(ctx context.Context, si *setInfo) (tool.Result, error) {
 // and the damaged copies under obfuscated names are removed afterwards, also
 // when nothing needed repairing (the leftovers of an interrupted repair).
 //
-// A directory without a usable PAR2 set (no .par2 file, or none with a main
-// packet) is not an error: it yields HasPAR2 false.
+// PAR2 files are found by content too: one without a .par2 name (a fully
+// obfuscated post) is given one first (adoptPAR2Files). A directory without a
+// usable PAR2 set (no PAR2 file, or none with a main packet) is not an error:
+// it yields HasPAR2 false.
 //
 // Errors: *core.RecoveryShortfall when the recovery blocks on disk do not
 // cover the damage (par2 changes nothing then); core.ErrRepairFailed when
@@ -228,6 +271,9 @@ func (t Repairer) run(ctx context.Context, si *setInfo) (tool.Result, error) {
 // error.
 func (t Repairer) Repair(ctx context.Context, dir string) (core.RepairOutcome, error) {
 	if err := ctx.Err(); err != nil {
+		return core.RepairOutcome{}, err
+	}
+	if err := adoptPAR2Files(dir); err != nil {
 		return core.RepairOutcome{}, err
 	}
 	si, err := inspect(dir)

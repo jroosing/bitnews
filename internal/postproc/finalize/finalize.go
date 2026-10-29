@@ -129,6 +129,7 @@ func (f *Finisher) Finish(ctx context.Context, d core.Download, dir, unpackedDir
 			return "", err
 		}
 		f.dotUnderscores(ctx, d, dir)
+		f.nameVideo(ctx, d, dir)
 	}
 
 	// Already where it belongs (a torrent the engine relocated, or equal
@@ -181,11 +182,26 @@ func (f *Finisher) dotUnderscores(ctx context.Context, d core.Download, dir stri
 	}
 }
 
+// nameVideo gives an obfuscated video its Download's name (tidy.NameVideo):
+// a fully obfuscated post without a usable PAR2 set leaves the movie under a
+// random name without an extension, which media managers do not import. It
+// runs for NZB Downloads only (a torrent's files are being seeded). A failure
+// is logged and never fails the Download.
+func (f *Finisher) nameVideo(ctx context.Context, d core.Download, dir string) {
+	r, ok, err := tidy.NameVideo(dir, d.Name)
+	if ok {
+		f.log.InfoContext(ctx, "finalize: named the obfuscated video after the download", "download", string(d.ID), "from", r.From, "to", r.To)
+	}
+	if err != nil {
+		f.log.WarnContext(ctx, "finalize: could not name the obfuscated video", "download", string(d.ID), "error", err)
+	}
+}
+
 // Destination returns the directory Finish would move d to, before a name
 // clash is resolved with fsutil.Unique: the Category's folder override for
 // the Download's protocol, else <complete root>/<category>, else <complete
-// root>, then the sanitized Download name. The torrent runner uses it to relocate a torrent to the same
-// place without a rehash.
+// root>, then the sanitized Download name. The torrent runner uses it to
+// relocate a torrent to the same place without a rehash.
 func (f *Finisher) Destination(ctx context.Context, d core.Download) (string, error) {
 	if f.deps.Settings == nil || f.deps.Categories == nil {
 		return "", errors.New("finalize: Settings and Categories are required")

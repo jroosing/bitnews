@@ -117,7 +117,7 @@ Torrent only: Seeding runs in parallel from Fetched until the Share Limit is rea
 
 ## Post-processing
 
-- **Verify** runs `par2 v` (and `par2 r -O` to rename obfuscated files) after checking the file names in the PAR2 set.
+- **Verify and repair** run one `par2 r`, which also renames obfuscated files, after checking the file names in the PAR2 set. PAR2 files are found by content, so hash-named ones from fully obfuscated posts count. When no PAR2 set renamed the movie, Finish names the largest file after the Download if its content is a video (SABnzbd's deobfuscation, M14).
 - **Repair** runs `par2 r`. It runs only when Verify finds damage.
 - **Unpack** runs `7zz` (RAR 2–5, 7z, zip, multi-volume, passwords on stdin). It lists the archive first and enforces the entry, size and ratio caps, extracts to a staging dir, then walks the result and rejects `..`, absolute, symlink, hardlink and special entries (ADR-0007).
 - One Download is post-processed at a time by default (configurable). Fetching continues meanwhile: Usenet Download B fetches while A is post-processing.

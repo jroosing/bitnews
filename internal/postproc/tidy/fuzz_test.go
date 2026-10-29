@@ -23,3 +23,20 @@ func FuzzClean(f *testing.F) {
 		}
 	})
 }
+
+// FuzzVideoExt checks that VideoExt never panics on any bytes and only
+// returns a known extension.
+func FuzzVideoExt(f *testing.F) {
+	f.Add([]byte{0x1a, 0x45, 0xdf, 0xa3})
+	f.Add([]byte("\x00\x00\x00\x20ftypqt  "))
+	f.Add([]byte("RIFF\x00\x00\x00\x00AVI "))
+	f.Add([]byte{0x47})
+	f.Add([]byte{})
+	f.Fuzz(func(t *testing.T, head []byte) {
+		switch ext := tidy.VideoExt(head); ext {
+		case "", ".mkv", ".mp4", ".mov", ".avi", ".wmv", ".mpg", ".ts", ".m2ts":
+		default:
+			t.Fatalf("VideoExt = %q", ext)
+		}
+	})
+}
