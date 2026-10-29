@@ -1,0 +1,146 @@
+index|downloads_added_at_id|CREATE INDEX downloads_added_at_id ON downloads (added_at, id)
+--
+index|downloads_category_id|CREATE INDEX downloads_category_id ON downloads (category_id)
+--
+index|downloads_state|CREATE INDEX downloads_state ON downloads (state)
+--
+index|servers_priority_name|CREATE INDEX servers_priority_name ON servers (priority, name)
+--
+index|sessions_user_id|CREATE INDEX sessions_user_id ON sessions (user_id)
+--
+table|app_key|CREATE TABLE app_key (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    key        TEXT NOT NULL CHECK (key <> ''),
+    updated_at INTEGER NOT NULL
+) STRICT
+--
+table|categories|CREATE TABLE categories (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL UNIQUE,
+    usenet_dir TEXT NOT NULL DEFAULT ''
+, torrent_dir TEXT NOT NULL DEFAULT '') STRICT
+--
+table|download_sources|CREATE TABLE download_sources (
+    download_id TEXT PRIMARY KEY REFERENCES downloads (id) ON DELETE CASCADE,
+    nzb_path    TEXT NOT NULL,
+    password    TEXT
+) STRICT
+--
+table|downloads|CREATE TABLE downloads (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    source_kind    TEXT NOT NULL CHECK (source_kind IN ('nzb', 'torrent')),
+    -- NULL when the Download has no Category.
+    category_id    TEXT REFERENCES categories (id) ON DELETE SET NULL,
+    state          TEXT NOT NULL CHECK (state IN (
+                       'added', 'fetching_metadata', 'queued', 'fetching',
+                       'fetched', 'post_processing', 'ready', 'failed')),
+    priority       TEXT NOT NULL DEFAULT 'normal'
+                       CHECK (priority IN ('force', 'high', 'normal', 'low')),
+    queue_position INTEGER NOT NULL DEFAULT 0,
+    paused         INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+    -- NULL unless the Download failed.
+    failure_reason TEXT CHECK (failure_reason IS NULL OR failure_reason IN (
+                       'missing_articles', 'repair_insufficient', 'archive_unsupported',
+                       'archive_password', 'archive_corrupt', 'disk_full',
+                       'path_violation', 'source_invalid', 'internal')),
+    failure_detail TEXT NOT NULL DEFAULT '',
+    total_bytes    INTEGER NOT NULL DEFAULT 0 CHECK (total_bytes >= 0),
+    done_bytes     INTEGER NOT NULL DEFAULT 0 CHECK (done_bytes >= 0),
+    added_at       INTEGER NOT NULL,
+    fetched_at     INTEGER,
+    ready_at       INTEGER,
+    updated_at     INTEGER NOT NULL,
+    output_path    TEXT NOT NULL DEFAULT ''
+) STRICT
+--
+table|schema_migrations|CREATE TABLE schema_migrations (
+	version    INTEGER PRIMARY KEY,
+	name       TEXT    NOT NULL,
+	applied_at INTEGER NOT NULL
+)
+--
+table|servers|CREATE TABLE servers (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL UNIQUE,
+    host            TEXT NOT NULL,
+    port            INTEGER NOT NULL DEFAULT 563 CHECK (port BETWEEN 1 AND 65535),
+    username        TEXT NOT NULL DEFAULT '',
+    password        TEXT NOT NULL DEFAULT '',
+    max_connections INTEGER NOT NULL DEFAULT 8 CHECK (max_connections BETWEEN 1 AND 100),
+    retention_days  INTEGER NOT NULL DEFAULT 0 CHECK (retention_days >= 0),
+    priority        INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0),
+    enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at      INTEGER NOT NULL
+) STRICT
+--
+table|sessions|CREATE TABLE sessions (
+    token_hash   BLOB PRIMARY KEY CHECK (length(token_hash) = 32),
+    user_id      TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at   INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL
+) STRICT, WITHOUT ROWID
+--
+table|settings|CREATE TABLE settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL CHECK (json_valid(value)),
+    updated_at INTEGER NOT NULL
+) STRICT
+--
+table|torrent_pieces|CREATE TABLE torrent_pieces (
+    info_hash   TEXT PRIMARY KEY CHECK (length(info_hash) = 40),
+    piece_count INTEGER NOT NULL CHECK (piece_count BETWEEN 0 AND 4194304),
+    bitmap      BLOB NOT NULL CHECK (length(bitmap) = (piece_count + 7) / 8),
+    updated_at  INTEGER NOT NULL
+) STRICT
+--
+table|torrent_sources|CREATE TABLE torrent_sources (
+    download_id  TEXT PRIMARY KEY REFERENCES downloads(id) ON DELETE CASCADE,
+    info_hash    TEXT NOT NULL UNIQUE CHECK (length(info_hash) = 40),
+    torrent_path TEXT NULL,
+    magnet       TEXT NULL,
+    created_at   INTEGER NOT NULL,
+    CHECK (torrent_path IS NOT NULL OR magnet IS NOT NULL)
+) STRICT
+--
+table|torrent_state|CREATE TABLE torrent_state (
+    download_id           TEXT PRIMARY KEY REFERENCES downloads (id) ON DELETE CASCADE,
+    uploaded              INTEGER NOT NULL DEFAULT 0 CHECK (uploaded >= 0),
+    seeding_seconds       INTEGER NOT NULL DEFAULT 0 CHECK (seeding_seconds >= 0),
+    ratio_limit           REAL NULL,
+    seeding_limit_seconds INTEGER NULL,
+    moved                 INTEGER NOT NULL DEFAULT 0 CHECK (moved IN (0, 1)),
+    location              TEXT NULL,
+    updated_at            INTEGER NOT NULL
+) STRICT
+--
+table|usenet_progress|CREATE TABLE usenet_progress (
+    download_id TEXT PRIMARY KEY REFERENCES downloads (id) ON DELETE CASCADE,
+    blob        BLOB NOT NULL,
+    updated_at  INTEGER NOT NULL
+) STRICT
+--
+table|usenet_reports|CREATE TABLE usenet_reports (
+    download_id      TEXT PRIMARY KEY REFERENCES downloads (id) ON DELETE CASCADE,
+    missing_articles INTEGER NOT NULL CHECK (missing_articles >= 0),
+    missing_bytes    INTEGER NOT NULL CHECK (missing_bytes >= 0),
+    damaged_articles INTEGER NOT NULL CHECK (damaged_articles >= 0),
+    damaged_bytes    INTEGER NOT NULL CHECK (damaged_bytes >= 0),
+    missing_files    INTEGER NOT NULL CHECK (missing_files >= 0),
+    updated_at       INTEGER NOT NULL
+) STRICT
+--
+table|usenet_undeferred|CREATE TABLE usenet_undeferred (
+    download_id TEXT NOT NULL REFERENCES downloads (id) ON DELETE CASCADE,
+    file_index  INTEGER NOT NULL CHECK (file_index >= 0),
+    fetched     INTEGER NOT NULL DEFAULT 0 CHECK (fetched IN (0, 1)),
+    PRIMARY KEY (download_id, file_index)
+) STRICT, WITHOUT ROWID
+--
+table|users|CREATE TABLE users (
+    id            TEXT PRIMARY KEY,
+    username      TEXT NOT NULL UNIQUE,
+    password_hash BLOB NOT NULL,
+    created_at    INTEGER NOT NULL
+) STRICT
+--

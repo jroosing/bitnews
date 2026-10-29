@@ -1,0 +1,82 @@
+{
+  "key_file": "qIaAVr+S7y0aHvGZeJRZk/OF9HjDgVGfcX+uXVyLVUo=\n",
+  "master_key": "qIaAVr+S7y0aHvGZeJRZk/OF9HjDgVGfcX+uXVyLVUo=",
+  "passwords": [
+    {
+      "password": "correct horse battery staple",
+      "phc": "$argon2id$v=19$m=64,t=2,p=2$EDKGrjlm6vwKDOZFnOTIpw$yynGyykMlyd95frv2wj7vzO5c21ctaoj8qcLRJSGsKs"
+    },
+    {
+      "password": "pässwörd-日本語-🔑-längd",
+      "phc": "$argon2id$v=19$m=64,t=2,p=2$9GQ4wm3t29j3M4uPhm4r7Q$xZZ7qZhq1iwpi9qaNsX/jO+KDq1GoKDFleLmAO0J6nI"
+    }
+  ],
+  "sealed": [
+    {
+      "table": "servers",
+      "column": "password",
+      "row_id": "srv1",
+      "plaintext": "s3cret-pa55word",
+      "stored": "v1:2+afySgEIBngJyzFHoKC3NKW5kNTtVYH49jggCOMv76QtZhr/yK7xeHlwlkorBZJ/sKkM11PBg=="
+    },
+    {
+      "table": "servers",
+      "column": "username",
+      "row_id": "srv1",
+      "plaintext": "",
+      "stored": "v1:GECe+2AGfz4GmLwwV6TSRxp/JJ/FFDoFCy5ZsOONgOiMl2L6AjnMMg=="
+    },
+    {
+      "table": "servers",
+      "column": "password",
+      "row_id": "srv-é",
+      "plaintext": "pässwörd-日本語-🔑",
+      "stored": "v1:hwR5RU8LtE5Ke0xv5TjHFR5ER/A2F3QZRSLCWwuJ+AO/331eSSndtVpXE3y4XMXON46iv4TZS7eKBm4e26yFd7k="
+    },
+    {
+      "table": "app_key",
+      "column": "key",
+      "row_id": "1",
+      "plaintext": "bitnews_abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqr",
+      "stored": "v1:u+q1llJdplYgdAT04EGZFdRuzR7mrieB5HR74tgJ0GFOk6+Qp5X91V5zY7rKJ70WK15irJrCbe+TwyxvIkPeUdv43gunAuU/S1q5Whnh0x0Rm64/xoU9vshdEck1XbtxzHQ="
+    },
+    {
+      "table": "t",
+      "column": "c",
+      "row_id": "",
+      "plaintext": "x",
+      "stored": "v1:+Psz+4exbhohkYXJECImlA6eISWSb9ACT2Tg+UXAacjkN7fAiUhW1hI="
+    },
+    {
+      "table": "settings",
+      "column": "value",
+      "row_id": "long",
+      "plaintext": "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789",
+      "stored": "v1:bT8/yuoyQ6umUhf9CIv8uW/fSKAKGjTAJxs0eos4A725imKLtIBkaxvAoIlC0BpnMfoZJzQt0YDATeOqrZUDIC3JSTgIuM+0gusuH46OI8Iu5HaYU1K8aMCuFCQfHclLg1+ZE9W4DX4pm9JXSYMUY7Mnb2CqS2CuLYJty7qKxFtgbrhGGkvk0ecq9XkvVeWmMEE1VThapZkdAnc5asAWc1iJehq+36eGO29ArVzv61WTlNwrB6BEeL7L3/GYOvGYyKbCF9mlS3YphPrU15FEPd3wijGD276XWs2dStKmG6Xwtj42XJCtY7BTH9Rw6AxG71G5vZal1phmSq2FrUF7Q2FrQsVIuxfnBe1lbAorAi73fZkSSxrCoEe2RLMhYGTZ52bbaBX9CFl2VhNpt6ePSdfVgI2HLJcFvjBhS6P7E/Ue/dpb2Qrk2oLV2cf02UE7AQyBJaEIJ4mpSohEm1ECbWPPSAcD0LqrCl/rSfPS4ahU6ucmsPM3lYg4XbqEJor9niXvR3I6W3suRP+UFBIjBriH16h6PtXS4zwa02diuh7OtY1WJUmgbeAckRD6yc0qGbOgvFlQvsU="
+    },
+    {
+      "table": "t",
+      "column": "c",
+      "row_id": "r",
+      "plaintext": "line1\nline2\t\"quoted\" \\ \u003c\u0026\u003e",
+      "stored": "v1:Ghv8a9OuNYZeLBmIc2/2d4Yz5pjOeZ3KNy/MGRLYRnNcChYHpeEGeQFgDOPqnmFm/ah71fefhNv2tNpTLbS5Dhlp"
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "session",
+      "plaintext": "byeawxcgn32parhsaqc5bywwfjq2jzdapkiyomli3lteoa54aqpa",
+      "hash_hex": "76c5d00842ab07a1a2e9d90b8b1bd2a700c7add2921a4eeec2e0b7db08b4f60d"
+    },
+    {
+      "kind": "app_key",
+      "plaintext": "bitnews_d5fr4w7mee6o4mvat6bham2ciolrsheckqngcmpemljzucmw4sna",
+      "hash_hex": "c260ed78e25364d724fac20b8b1e8caee2e9837dd50ff45404f3d32d6e0f6d29"
+    },
+    {
+      "kind": "",
+      "plaintext": "abc",
+      "hash_hex": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    }
+  ]
+}

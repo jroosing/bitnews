@@ -1,0 +1,86 @@
+{
+  "master_key": "AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o=",
+  "key_file": "AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o=\n",
+  "sealed": [
+    {
+      "table": "servers",
+      "column": "password",
+      "row_id": "srv1",
+      "plaintext": "s3cret-pa55word",
+      "stored": "v1:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXxvpAZXteZvWyDHPgbBidseg4FgHpCWoM+6BP0aTI5g=="
+    },
+    {
+      "table": "servers",
+      "column": "username",
+      "row_id": "srv1",
+      "plaintext": "",
+      "stored": "v1:HyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2vH//HZkcqWk2rp9R17thHA=="
+    },
+    {
+      "table": "servers",
+      "column": "password",
+      "row_id": "srv-é",
+      "plaintext": "pässwörd-日本語-🔑",
+      "stored": "v1:Pj9AQUJDREVGR0hJSktMTU5PUFFSU1RVqAjgwuhjiw1b1UWthv02LA0nJmlWYxhW20BmLczmfETag+9O8yvq6QM="
+    },
+    {
+      "table": "app_key",
+      "column": "key",
+      "row_id": "1",
+      "plaintext": "bitnews_abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqr",
+      "stored": "v1:XV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0qLsrTuKpPhSRDWezxBlrNcCGJm7fT1KBTnbY5gI9lqzQFH5sDhVS2ZxPCzwYO9RkXaK/xWIJU0/fkowuI0NidIbULhUvQAcgs6s="
+    },
+    {
+      "table": "t",
+      "column": "c",
+      "row_id": "",
+      "plaintext": "x",
+      "stored": "v1:fH1+f4CBgoOEhYaHiImKi4yNjo+QkZKT8i7yNANoxwn5XMYd8bd/CIc="
+    },
+    {
+      "table": "settings",
+      "column": "value",
+      "row_id": "long",
+      "plaintext": "0123456789012345678901234567890123456789012345678901234567890123456789",
+      "stored": "v1:m5ydnp+goaKjpKWmp6ipqqusra6vsLGyvvnBM9ydm1wmk7i4eaYrGOwJFlwhgxKH87B6kYUa+e9caOoy2ZxJ1hEAQ97mvxPhRKLYj7e5LqFQS0NlY9ph7mIPcTgWJp5hBN9jGOpgWU9L1mX15mc="
+    },
+    {
+      "table": "t",
+      "column": "c",
+      "row_id": "r",
+      "plaintext": "line1\nline2\t\"quoted\" \\ <&>",
+      "stored": "v1:uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR8hwoIIFPIuMNeVD4pnL0dWC/KQj1lxHO9rzNJ8b+VjKDMhHyjIOtXGbO"
+    }
+  ],
+  "passwords": [
+    {
+      "password": "correct horse battery staple",
+      "phc": "$argon2id$v=19$m=64,t=2,p=2$BQgLDhEUFxodICMmKSwvMg$UTD1S5eaTpvlaJ8Z83wj/RwgD4L1KCGljPNgP0OvPr0"
+    },
+    {
+      "password": "pässwörd-日本語-🔑-längd",
+      "phc": "$argon2id$v=19$m=32,t=1,p=1$FhkcHyIlKCsuMTQ3Oj1AQ0ZJTE9SVVhb$BM1r/RT03Z6AhA8AkvqoXIr429zTe/MC"
+    },
+    {
+      "password": "twelve chars",
+      "phc": "$argon2id$v=19$m=16,t=3,p=1$JyotMDM2OTw$uhthYldtcZq+sM6gr50BEQ"
+    }
+  ],
+  "tokens": [
+    {
+      "kind": "session",
+      "plaintext": "a4kcclr3jbkwe334rglkhmf5zll6j4p6bmmckmr7jrmwm44arwna",
+      "hash_hex": "385e05b874cc0841f1ecb60c8c3a67a429f74750fc588baa98d0cc2a13b1c1b4"
+    },
+    {
+      "kind": "app_key",
+      "plaintext": "bitnews_mjxxzcmwuoyl3swx4ty74cyyeuzd6tczmzzybdm2u62mdtw35d2q",
+      "hash_hex": "bae46d3e1818f58af862c6ab707123174b3751c6e4c9eb8570db5b5603e1714c"
+    },
+    {
+      "kind": "",
+      "plaintext": "abc",
+      "hash_hex": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    }
+  ]
+}
