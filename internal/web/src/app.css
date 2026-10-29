@@ -12,7 +12,9 @@
  * To change the accent colour, edit the --accent* values (light and dark).
  */
 
-@import "tailwindcss";
+/* source(none): only the files below are scanned for classes, not the whole
+   repository, so a word in a comment elsewhere cannot add a rule. */
+@import "tailwindcss" source(none);
 
 @source "../assets/static/js";
 @source "../*.go";
