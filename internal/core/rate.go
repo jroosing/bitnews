@@ -22,10 +22,17 @@ type rateSample struct {
 // NewRateWindow returns a RateWindow over span.
 func NewRateWindow(span time.Duration) *RateWindow { return &RateWindow{span: span} }
 
-// Add records the cumulative byte count at time at. Samples closer than
-// 100 ms to the previous one replace it, which bounds the memory.
+// mergeStep bounds the memory: samples are kept at least this far apart,
+// except the newest, which moves with every Add until it is mergeStep past the
+// one before it.
+const mergeStep = 100 * time.Millisecond
+
+// Add records the cumulative byte count at time at. Merging measures the
+// distance to the sample before the newest, never to the newest itself:
+// otherwise samples that come faster than mergeStep would keep replacing a
+// single sample, and a window of one sample has no rate.
 func (w *RateWindow) Add(at time.Time, total int64) {
-	if n := len(w.samples); n > 0 && at.Sub(w.samples[n-1].at) < 100*time.Millisecond {
+	if n := len(w.samples); n >= 2 && at.Sub(w.samples[n-2].at) < mergeStep {
 		w.samples[n-1] = rateSample{at, total}
 	} else {
 		w.samples = append(w.samples, rateSample{at, total})

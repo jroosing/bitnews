@@ -50,3 +50,19 @@ func TestRateWindowDoesNotDropToZeroForAQuietSecond(t *testing.T) {
 	w.Add(t0.Add(5*time.Second), 8000)
 	assert.Equal(t, int64(1600), w.Rate(t0.Add(5*time.Second)), "a quiet second lowers the average, it does not zero it")
 }
+
+// A fast Usenet download reports an Article every few milliseconds. The
+// window keeps its memory small by merging samples, but must still span its
+// whole duration, or the rate reads 0 while bytes pour in.
+func TestRateWindowKeepsMeasuringWhenSamplesComeFasterThanTheMergeStep(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	w := core.NewRateWindow(core.DefaultRateWindow)
+	var total int64
+	for i := range 1000 { // a sample every 10 ms for 10 s at 1 MB/s
+		total += 10_000
+		w.Add(t0.Add(time.Duration(i)*10*time.Millisecond), total)
+		if i > 0 && i%100 == 0 {
+			assert.InDelta(t, 1_000_000, w.Rate(t0.Add(time.Duration(i)*10*time.Millisecond)), 20_000, "after %d ms", i*10)
+		}
+	}
+}
