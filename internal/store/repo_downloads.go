@@ -293,3 +293,62 @@ func fromNullMillis(ms sql.NullInt64) time.Time {
 func nullString(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
 
 func nullID(id core.ID) sql.NullString { return nullString(string(id)) }
+
+// finishedAt is core.FinishedAt in SQL.
+const finishedAt = `(CASE WHEN state = 'ready' AND ready_at IS NOT NULL THEN ready_at ELSE updated_at END)`
+
+// History implements core.DownloadRepo.
+func (r *DownloadRepo) History(ctx context.Context, q core.HistoryQuery) (core.HistoryPage, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 25
+	}
+	limit = min(limit, MaxListLimit)
+	where := []string{"state IN ('ready', 'failed')"}
+	var args []any
+	if q.State != "" {
+		where = append(where, "state = ?")
+		args = append(args, string(q.State))
+	}
+	if q.CategoryID != "" {
+		where = append(where, "category_id = ?")
+		args = append(args, string(q.CategoryID))
+	}
+	if q.SourceKind != "" {
+		where = append(where, "source_kind = ?")
+		args = append(args, string(q.SourceKind))
+	}
+	filter := strings.Join(where, " AND ")
+	var p core.HistoryPage
+	db := r.db.Reader()
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE `+filter, args...).Scan(&p.Total); err != nil {
+		return core.HistoryPage{}, mapErr("count history", err)
+	}
+	pageWhere, pageArgs := filter, args
+	if q.BeforeID != "" {
+		cursor := []any{q.BeforeAt, q.BeforeAt, string(q.BeforeID)}
+		newer := filter + ` AND (` + finishedAt + ` > ? OR (` + finishedAt + ` = ? AND id >= ?))`
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE `+newer, append(args[:len(args):len(args)], cursor...)...).Scan(&p.Newer); err != nil {
+			return core.HistoryPage{}, mapErr("count history", err)
+		}
+		pageWhere = filter + ` AND (` + finishedAt + ` < ? OR (` + finishedAt + ` = ? AND id < ?))`
+		pageArgs = append(args[:len(args):len(args)], cursor...)
+	}
+	rows, err := db.QueryContext(ctx, `SELECT `+downloadColumns+` FROM downloads WHERE `+pageWhere+
+		` ORDER BY `+finishedAt+` DESC, id DESC LIMIT ?`, append(pageArgs, limit)...)
+	if err != nil {
+		return core.HistoryPage{}, mapErr("list history", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		d, err := scanDownload(rows)
+		if err != nil {
+			return core.HistoryPage{}, mapErr("list history", err)
+		}
+		p.Items = append(p.Items, d)
+	}
+	if err := rows.Err(); err != nil {
+		return core.HistoryPage{}, mapErr("list history", err)
+	}
+	return p, nil
+}

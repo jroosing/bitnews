@@ -112,21 +112,27 @@ func (s *Server) registerHistoryRoutes() {
 	s.handleAuthed("POST /history/{id}/resume", s.historySeedingToggle(false))
 }
 
+// categoryNames maps the Category IDs to their names.
+func (s *Server) categoryNames(r *http.Request) (map[core.ID]string, error) {
+	names := map[core.ID]string{}
+	if s.Categories == nil {
+		return names, nil
+	}
+	cats, err := s.Categories.List(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range cats {
+		names[c.ID] = c.Name
+	}
+	return names, nil
+}
+
 // historyRowByID builds the History row of one Download.
-func (s *Server) historyRowByID(r *http.Request, id core.ID) (historyRow, error) {
+func (s *Server) historyRowByID(r *http.Request, id core.ID, names map[core.ID]string) (historyRow, error) {
 	d, err := s.Downloads.Get(r.Context(), id)
 	if err != nil {
 		return historyRow{}, err
-	}
-	names := map[core.ID]string{}
-	if s.Categories != nil {
-		cats, err := s.Categories.List(r.Context())
-		if err != nil {
-			return historyRow{}, err
-		}
-		for _, c := range cats {
-			names[c.ID] = c.Name
-		}
 	}
 	return historyRowOf(time.Now(), s.View.Of(r.Context(), d), names, s.Settings.Current().Seeding), nil
 }
@@ -154,7 +160,12 @@ func (s *Server) historySeedingToggle(pause bool) http.HandlerFunc {
 			s.redirect(w, r, "/history")
 			return
 		}
-		row, err := s.historyRowByID(r, id)
+		names, err := s.categoryNames(r)
+		if err != nil {
+			s.queueError(w, r, err)
+			return
+		}
+		row, err := s.historyRowByID(r, id, names)
 		if err != nil {
 			s.queueError(w, r, err)
 			return
@@ -171,6 +182,11 @@ func (s *Server) getHistorySeeding(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	names, err := s.categoryNames(r)
+	if err != nil {
+		s.queueError(w, r, err)
+		return
+	}
 	var rows []historyRow
 	seen := map[string]bool{}
 	for _, id := range r.URL.Query()["id"] {
@@ -181,7 +197,7 @@ func (s *Server) getHistorySeeding(w http.ResponseWriter, r *http.Request) {
 		if len(seen) > maxSeedingPoll {
 			break
 		}
-		row, err := s.historyRowByID(r, core.ID(id))
+		row, err := s.historyRowByID(r, core.ID(id), names)
 		if err != nil || row.Seed == nil {
 			continue
 		}

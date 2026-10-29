@@ -1,31 +1,22 @@
 package web
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/a-h/templ"
 
-	"github.com/jroosing/bitnews/internal/app"
 	"github.com/jroosing/bitnews/internal/core"
-	"github.com/jroosing/bitnews/internal/store"
 	"github.com/jroosing/bitnews/internal/view"
 )
 
 const (
 	// historyPageSize is how many rows one page of the history shows.
 	historyPageSize = 25
-	// historyScanCap bounds how many Downloads one request reads to sort the
-	// history. It is far above what a person accumulates; past it the oldest
-	// entries are left out of the list.
-	historyScanCap = 50_000
 )
 
 // historyFilter is the filter bar of the history page, as parsed from the
@@ -93,7 +84,7 @@ func parseHistoryFilter(q url.Values, cats []core.Category) historyFilter {
 
 var cursorRE = regexp.MustCompile(`^(\d{1,19})-([A-Za-z0-9_]{1,64})$`)
 
-// parseCursor splits "<unix nanoseconds>-<id>".
+// parseCursor splits "<unix milliseconds>-<id>".
 func parseCursor(s string) (at int64, id string, ok bool) {
 	m := cursorRE.FindStringSubmatch(s)
 	if m == nil {
@@ -107,23 +98,14 @@ func parseCursor(s string) (at int64, id string, ok bool) {
 }
 
 func cursorOf(d core.Download) string {
-	return strconv.FormatInt(historyTime(d).UnixNano(), 10) + "-" + string(d.ID)
+	return strconv.FormatInt(historyTime(d).UnixMilli(), 10) + "-" + string(d.ID)
 }
 
 // historyTime is when a Download finished, which is what the history is
 // ordered by: ReadyAt for a Ready one, else the last update (the moment it
 // Failed; Failed is terminal, so nothing updates it afterwards but an edit of
-// its Category or Priority), else when it was added.
-func historyTime(d core.Download) time.Time {
-	t := d.UpdatedAt
-	if d.State == core.StateReady && !d.ReadyAt.IsZero() {
-		t = d.ReadyAt
-	}
-	if t.IsZero() {
-		t = d.AddedAt
-	}
-	return t
-}
+// its Category or Priority); see core.FinishedAt.
+func historyTime(d core.Download) time.Time { return core.FinishedAt(d) }
 
 // historyRow is one entry of the list.
 type historyRow struct {
@@ -169,7 +151,6 @@ type historyPage struct {
 	NewestHref string // set when the page is not the first
 	// Empty-state wording for the current filter.
 	EmptyTitle, EmptyBody string
-	Truncated             bool
 	Unavailable           bool
 }
 
@@ -192,12 +173,19 @@ func historyData(s *Server, r *http.Request) (any, error) {
 		}
 	}
 	f := parseHistoryFilter(r.URL.Query(), cats)
-	all, truncated, err := s.historyEntries(ctx, f)
+	q := core.HistoryQuery{
+		State: core.State(f.State), SourceKind: core.SourceKind(f.Kind), CategoryID: core.ID(f.Category),
+		Limit: historyPageSize,
+	}
+	if at, id, ok := parseCursor(f.Before); ok {
+		q.BeforeAt, q.BeforeID = at, core.ID(id)
+	}
+	hp, err := s.Downloads.History(ctx, q)
 	if err != nil {
 		return nil, err
 	}
 
-	p := historyPage{Filter: f, Total: len(all), Truncated: truncated}
+	p := historyPage{Filter: f, Total: hp.Total}
 	p.StateOpts = []option{{"", "Ready and failed"}, {"ready", "Ready"}, {"failed", "Failed"}}
 	p.KindOpts = []option{{"", "Usenet and torrents"}, {"nzb", "Usenet (NZB)"}, {"torrent", "Torrents"}}
 	p.CatOpts = []option{{"", "All categories"}}
@@ -206,20 +194,11 @@ func historyData(s *Server, r *http.Request) (any, error) {
 		names[c.ID] = c.Name
 		p.CatOpts = append(p.CatOpts, option{string(c.ID), histClean(c.Name, 100)})
 	}
-
-	start := 0
-	if at, id, ok := parseCursor(f.Before); ok {
-		start = len(all)
-		for i, d := range all {
-			if olderThan(d, at, id) {
-				start = i
-				break
-			}
-		}
+	if q.BeforeID != "" {
 		p.NewestHref = f.href("")
 	}
-	page := all[start:min(start+historyPageSize, len(all))]
-	if start+len(page) < len(all) && len(page) > 0 {
+	page := hp.Items
+	if hp.Newer+len(page) < hp.Total && len(page) > 0 {
 		p.NextHref = f.href(cursorOf(page[len(page)-1]))
 		p.AppendHref = p.NextHref + "&append=1"
 	}
@@ -229,7 +208,7 @@ func historyData(s *Server, r *http.Request) (any, error) {
 		p.Rows = append(p.Rows, historyRowOf(now, s.View.Of(ctx, d), names, seeding))
 	}
 	if len(page) > 0 {
-		p.First, p.Last = start+1, start+len(page)
+		p.First, p.Last = hp.Newer+1, hp.Newer+len(page)
 		if r.URL.Query().Get("append") == "1" {
 			// "Show older" appended these rows to the ones above.
 			p.First = 1
@@ -237,53 +216,6 @@ func historyData(s *Server, r *http.Request) (any, error) {
 	}
 	p.EmptyTitle, p.EmptyBody = historyEmpty(f)
 	return p, nil
-}
-
-// olderThan reports whether d sorts after the cursor in newest-first order.
-func olderThan(d core.Download, at int64, id string) bool {
-	t := historyTime(d).UnixNano()
-	return t < at || (t == at && string(d.ID) < id)
-}
-
-// historyEntries reads every Ready and Failed Download matching the filter
-// (except the paging cursor) and returns them newest first. The Download
-// service lists oldest first with a forward-only cursor, so the whole result
-// is read, which for a personal history is a few hundred rows at most.
-func (s *Server) historyEntries(ctx context.Context, f historyFilter) (all []core.Download, truncated bool, err error) {
-	states := []core.State{core.StateReady, core.StateFailed}
-	switch f.State {
-	case "ready":
-		states = states[:1]
-	case "failed":
-		states = states[1:]
-	}
-	for _, st := range states {
-		for after := ""; ; {
-			page, err := s.Downloads.List(ctx, app.ListFilter{
-				State: st, Kind: core.SourceKind(f.Kind), CategoryID: core.ID(f.Category),
-				After: after, Limit: store.MaxListLimit,
-			})
-			if err != nil {
-				return nil, false, fmt.Errorf("history: list %s downloads: %w", st, err)
-			}
-			all = append(all, page.Items...)
-			if page.Next == "" {
-				break
-			}
-			if len(all) >= historyScanCap {
-				truncated = true
-				break
-			}
-			after = page.Next
-		}
-	}
-	slices.SortFunc(all, func(a, b core.Download) int {
-		if c := historyTime(b).Compare(historyTime(a)); c != 0 {
-			return c
-		}
-		return strings.Compare(string(b.ID), string(a.ID))
-	})
-	return all, truncated, nil
 }
 
 func historyRowOf(now time.Time, v view.View, categories map[core.ID]string, seeding core.SeedingSettings) historyRow {

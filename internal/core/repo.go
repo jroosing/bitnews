@@ -57,6 +57,8 @@ type DownloadRepo interface {
 	// unknown ID is ErrNotFound.
 	UpdateDisplay(ctx context.Context, id ID, name string, totalBytes int64) error
 	Delete(ctx context.Context, id ID) error
+	// History returns one page of the finished Downloads, newest first.
+	History(ctx context.Context, q HistoryQuery) (HistoryPage, error)
 	// DeleteUnlessIn deletes the Download unless its State is one of states
 	// (ErrConflict), checked and deleted atomically.
 	DeleteUnlessIn(ctx context.Context, id ID, states []State) error
@@ -152,4 +154,36 @@ func ListAll(ctx context.Context, repo DownloadRepo, q DownloadQuery) ([]Downloa
 		}
 		q.After = next
 	}
+}
+
+// HistoryQuery selects one page of the finished Downloads (Ready and Failed),
+// newest first by when they finished: ReadyAt for a Ready one, else
+// UpdatedAt (the moment it Failed).
+type HistoryQuery struct {
+	// State is StateReady or StateFailed; empty means both.
+	State      State
+	CategoryID ID
+	SourceKind SourceKind
+	// BeforeAt (Unix milliseconds) and BeforeID continue after the last row
+	// of the previous page; an empty BeforeID starts at the newest.
+	BeforeAt int64
+	BeforeID ID
+	// Limit caps the page; zero means 25.
+	Limit int
+}
+
+// HistoryPage is one page of the history with the counts a summary needs.
+type HistoryPage struct {
+	Items []Download
+	// Total counts every Download the query matches, Newer the ones that
+	// come before the page.
+	Total, Newer int
+}
+
+// FinishedAt is when a Download finished, as the history orders it.
+func FinishedAt(d Download) time.Time {
+	if d.State == StateReady && !d.ReadyAt.IsZero() {
+		return d.ReadyAt
+	}
+	return d.UpdatedAt
 }

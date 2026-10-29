@@ -9,9 +9,6 @@ func historySummary(p historyPage) string {
 		noun = "download"
 	}
 	s := "Showing " + strconv.Itoa(p.First) + " to " + strconv.Itoa(p.Last) + " of " + strconv.Itoa(p.Total) + " " + noun
-	if p.Truncated {
-		s += " (the oldest are left out)"
-	}
 	return s
 }
 

@@ -123,6 +123,16 @@ func (s *DownloadService) All(ctx context.Context, f ListFilter) ([]core.Downloa
 	return ds, nil
 }
 
+// History returns one page of the finished Downloads, newest first (see
+// core.HistoryQuery).
+func (s *DownloadService) History(ctx context.Context, q core.HistoryQuery) (core.HistoryPage, error) {
+	p, err := s.downloads.History(ctx, q)
+	if err != nil {
+		return core.HistoryPage{}, fmt.Errorf("app: history: %w", err)
+	}
+	return p, nil
+}
+
 // ListFilter selects one page of Downloads. Zero-valued fields match
 // everything.
 type ListFilter struct {

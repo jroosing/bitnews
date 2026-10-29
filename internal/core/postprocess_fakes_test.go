@@ -134,6 +134,10 @@ func (r *ppRepo) Delete(_ context.Context, id core.ID) error {
 	return nil
 }
 
+func (r *ppRepo) History(context.Context, core.HistoryQuery) (core.HistoryPage, error) {
+	return core.HistoryPage{}, nil
+}
+
 func (r *ppRepo) DeleteUnlessIn(_ context.Context, id core.ID, states []core.State) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
