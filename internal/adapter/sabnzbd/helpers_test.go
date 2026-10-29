@@ -400,9 +400,3 @@ func errorOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 	require.False(t, out.Status, rec.Body.String())
 	return out.Error
 }
-
-func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
-
-func countOf(s, sub string) int { return strings.Count(s, sub) }
-
-func stringsReplace(s, old, repl string) string { return strings.Replace(s, old, repl, 1) }

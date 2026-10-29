@@ -358,6 +358,8 @@ The fixtures are the spec, as in M4. M5-09 (dropped) was to record real Sonarr/R
 - **Labels:** area:adapter, area:torrent, area:ci, ready-for-agent
 - **Depends on:** M5-11, M4-06
 
+- **Status:** the replay part is removed with M4-06 (no recordings, see M5-09); the e2e test stands.
+
 **Goal:** Run the qBit fixtures in CI through the M4-06 harness, and add an e2e test without internet.
 
 **Work**

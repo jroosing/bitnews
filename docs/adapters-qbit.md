@@ -1,8 +1,8 @@
 # qBittorrent adapter (`/api/v2/`)
 
-Implementation notes for M5-10 to M5-12; the design is in [m5-torrents.md](milestones/m5-torrents.md). Package `internal/adapter/qbit`, fixtures in `internal/adapter/qbit/testdata/contract/`.
+Implementation notes for M5-10 to M5-12; the design is in [m5-torrents.md](milestones/m5-torrents.md). Package `internal/adapter/qbit`.
 
-**Read this first: nothing here was checked against recorded traffic.** M5-09 (the recordings) was dropped. The adapter was written from the qBittorrent WebUI API documentation and from what Sonarr and Radarr are known to parse, and the fixtures are **hand-written, not recorded**. Each says so in its `provenance` field and a test insists on it. When real use shows a difference, fix the adapter and, where useful, replace the fixture with a recording (change its provenance): what real Sonarr and Radarr do overrides this page. The Sonarr-shaped decode structs in `sonarr_shapes_test.go` were written from memory of Sonarr's C# classes.
+**Read this first: nothing here was checked against recorded traffic.** M5-09 (the recordings) was dropped. The adapter was written from the qBittorrent WebUI API documentation and from what Sonarr and Radarr are known to parse, and its tests are **hand-written, not recorded**. When real use shows a difference, fix the adapter and add a test for what real Sonarr and Radarr do: that overrides this page. The Sonarr-shaped decode structs in `sonarr_shapes_test.go` were written from memory of Sonarr's C# classes.
 
 ## Wiring
 
@@ -71,9 +71,7 @@ Reads accept GET and POST; calls that change something need POST (`405` with `Al
 
 ## Tests
 
-`go test ./internal/adapter/qbit` has the auth flows (`auth_test.go`), the state table and import hold-off (`status_test.go`), `torrents/info` with filters, paging and sorting, the 10,000 torrent listing (about 1 s under `-race`) (`info_test.go`), add and the hostile inputs (`add_test.go`), the other calls (`mutate_test.go`), Sonarr-shaped decoding (`sonarr_shapes_test.go`), the contract fixtures through `adaptertest` (`contract_test.go`, with a deliberately broken fixture proving a readable diff) and two fuzz targets (`FuzzParseHashes`, `FuzzRequest`). `internal/api/qbit_test.go` covers the mount, the gate, cross-adapter rejection and log redaction. The in-memory engine fake (the ports plus the `view.LiveSource` of a real `view.Module` over the test store) is in `helpers_test.go`.
-
-`adaptertest` got two backwards-compatible additions: `capture` accepts `header:Name:REGEX` (the SID from `Set-Cookie`), and expected object keys may hold `{{variables}}`.
+`go test ./internal/adapter/qbit` has the auth flows (`auth_test.go`), the state table and import hold-off (`status_test.go`), `torrents/info` with filters, paging and sorting, the 10,000 torrent listing (about 1 s under `-race`) (`info_test.go`), add and the hostile inputs (`add_test.go`), the other calls (`mutate_test.go`), Sonarr-shaped decoding (`sonarr_shapes_test.go`) and two fuzz targets (`FuzzParseHashes`, `FuzzRequest`). `internal/api/qbit_test.go` covers the mount, the gate, cross-adapter rejection and log redaction. The in-memory engine fake (the ports plus the `view.LiveSource` of a real `view.Module` over the test store) is in `helpers_test.go`.
 
 ## Open questions for real use and the daemon
 

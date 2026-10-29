@@ -77,7 +77,7 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | M4-03 |  | SAB adapter — routing, auth, version and config modes | area:adapter, ready-for-agent | done |
 | M4-04 |  | SAB adapter — addfile and addurl | area:adapter, ready-for-agent | done |
 | M4-05 |  | SAB adapter — queue, history, delete and the status mapping | area:adapter, ready-for-agent | done |
-| M4-06 |  | SAB adapter contract test suite | area:adapter, area:ci, ready-for-agent | done (hand-written fixtures, not recorded; M4-01 dropped) |
+| M4-06 |  | SAB adapter contract test suite | area:adapter, area:ci, ready-for-agent | removed (hand-written fixtures and harness deleted; M4-01 dropped) |
 | M4-07 | [#1](https://github.com/jroosing/bitnews/issues/1) | End-to-end check with Sonarr and Radarr | area:adapter, area:deploy, ready-for-human | open |
 
 ### [M5 — Torrents](m5-torrents.md)
@@ -96,7 +96,7 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | M5-09 |  | Record media manager ↔ qBittorrent traffic fixtures | area:adapter, ready-for-human | dropped (real use reports what to fix) |
 | M5-10 |  | qBit adapter — auth and app endpoints | area:adapter, ready-for-agent | done |
 | M5-11 |  | qBit adapter — torrents endpoints and state mapping | area:adapter, ready-for-agent | done |
-| M5-12 |  | qBit contract tests and local swarm end-to-end | area:adapter, area:torrent, area:ci, ready-for-agent | done (hand-written fixtures; the daemon end-to-end test is in; the real Sonarr/Radarr checklist is open) |
+| M5-12 |  | qBit contract tests and local swarm end-to-end | area:adapter, area:torrent, area:ci, ready-for-agent | done (replay fixtures removed with M4-06; the daemon end-to-end test is in; the real Sonarr/Radarr checklist is open) |
 
 ### [M6 — Web UI](m6-ui.md)
 

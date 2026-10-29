@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
-<file poster="poster@example.invalid" date="1700000000" subject="&quot;a.rar&quot; yEnc (1/1)">
-<groups><group>alt.binaries.test</group></groups>
-<segments><segment bytes="10240" number="1">part1@example.invalid</segment></segments>
-</file>
-</nzb>

@@ -9,5 +9,5 @@ Media managers (Sonarr, Radarr, Prowlarr) have no generic download-client API; t
 
 ## Consequences
 
-- The adapters must stay compatible with media-manager releases. Contract tests should replay recorded media-manager requests.
+- The adapters must stay compatible with media-manager releases. Contract tests should replay recorded media-manager requests. (Update: no recordings were made, M4-01 and M5-09 were dropped, and the hand-written replay harness was removed; the adapters are covered by per-call unit tests and fixed from real Sonarr/Radarr reports.)
 - The "completed" status in both adapters means Ready, not Fetched.
