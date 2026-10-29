@@ -1,10 +1,10 @@
 name: ci
 
+# Only a release (a tag push) runs CI, to save Actions minutes. Run
+# `make check` locally before pushing to main.
 on:
   push:
-    branches: [main]
     tags: ['*']
-  pull_request:
 
 permissions:
   contents: read
@@ -14,7 +14,6 @@ env:
 
 jobs:
   lint:
-    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +24,6 @@ jobs:
       - run: make vuln
 
   test:
-    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,15 +54,9 @@ jobs:
           path: dist/
           retention-days: 7
 
-  # Image for ghcr.io, linux/amd64 only, tagged `latest`, plus the tag name on
-  # a tag push (no commit-hash tag). Never runs for pull requests. On a
-  # tag lint and test are skipped, so the job waits for them only when they ran.
+  # Image for ghcr.io, linux/amd64 only, tagged `latest` and the tag name
+  # (no commit-hash tag), once lint, test and build passed.
   docker-image:
-    if: >-
-      !cancelled() && github.event_name == 'push' &&
-      needs.build.result == 'success' &&
-      !contains(fromJSON('["failure","cancelled"]'), needs.lint.result) &&
-      !contains(fromJSON('["failure","cancelled"]'), needs.test.result)
     needs: [lint, test, build]
     runs-on: ubuntu-latest
     permissions:
@@ -81,13 +73,7 @@ jobs:
       - name: Build and push
         run: |
           short="$(git rev-parse --short HEAD)"
-          version="$short"
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          tags=(-t "$image:latest")
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            version="$GITHUB_REF_NAME"
-            tags+=(-t "$image:$version")
-          fi
           docker buildx build --platform linux/amd64 \
-            --build-arg VERSION="$version" --build-arg COMMIT="$short" \
-            "${tags[@]}" --push .
+            --build-arg VERSION="$GITHUB_REF_NAME" --build-arg COMMIT="$short" \
+            -t "$image:latest" -t "$image:$GITHUB_REF_NAME" --push .

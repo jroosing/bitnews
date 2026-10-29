@@ -48,7 +48,7 @@ Then write `FROM golang:1.27.3@sha256:<digest>` and `FROM alpine:3.21@sha256:<di
 
 ### Publishing the image by hand
 
-CI builds and pushes the image on every push to `main`, but you can do the same from your own machine, for example when CI is unavailable. The image is linux/amd64 only; building it on an Apple Silicon Mac works without emulation, because the Go compile cross-compiles and the two tools are static downloads.
+CI builds and pushes the image only for a release (a tag push), so `latest` is the newest release. You can do the same from your own machine, for example to publish a build of `main` or when CI is unavailable. The image is linux/amd64 only; building it on an Apple Silicon Mac works without emulation, because the Go compile cross-compiles and the two tools are static downloads.
 
 1. Create a GitHub personal access token (classic) with the `write:packages` scope.
 2. `docker login ghcr.io -u <your GitHub user>` and paste the token as the password.
