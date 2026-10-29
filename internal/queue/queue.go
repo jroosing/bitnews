@@ -55,7 +55,7 @@ type Protocol interface {
 }
 
 // Config is what New needs. Every field but Logger, MinFree, FreeSpace,
-// Now and Wake is required.
+// Now, Wake and the intervals is required.
 type Config struct {
 	// Source is the kind of the Queue's Downloads.
 	Source    core.SourceKind
@@ -73,6 +73,11 @@ type Config struct {
 	// Wake asks the runner for another pass.
 	Wake   func()
 	Logger *slog.Logger
+	// ProgressInterval throttles the progress events of one Download; zero
+	// is core.DefaultProgressInterval. DoneBytesInterval is how often its
+	// DoneBytes is stored; zero is DefaultDoneBytesInterval.
+	ProgressInterval  time.Duration
+	DoneBytesInterval time.Duration
 }
 
 // Queue is the Queue of one Source kind. Its methods are safe for concurrent
@@ -81,9 +86,12 @@ type Queue struct {
 	cfg Config
 	log *slog.Logger
 
+	throttle *core.ProgressThrottle
+
 	mu      sync.Mutex
 	reasons map[string]string // Pause reason -> detail
 	held    map[core.ID]time.Time
+	stored  map[core.ID]time.Time // when Progress last stored DoneBytes
 }
 
 // New returns the Queue described by cfg.
@@ -97,13 +105,20 @@ func New(cfg Config) (*Queue, error) {
 	if cfg.Wake == nil {
 		cfg.Wake = func() {}
 	}
+	if cfg.ProgressInterval <= 0 {
+		cfg.ProgressInterval = core.DefaultProgressInterval
+	}
+	if cfg.DoneBytesInterval <= 0 {
+		cfg.DoneBytesInterval = DefaultDoneBytesInterval
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.Default()
 	}
 	return &Queue{
 		cfg: cfg, log: log.With("queue", string(cfg.Source)),
-		reasons: map[string]string{}, held: map[core.ID]time.Time{},
+		throttle: core.NewProgressThrottle(cfg.Now, cfg.ProgressInterval),
+		reasons:  map[string]string{}, held: map[core.ID]time.Time{}, stored: map[core.ID]time.Time{},
 	}, nil
 }
 

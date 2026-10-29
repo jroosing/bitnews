@@ -35,8 +35,6 @@ type tor struct {
 	// fetched is set once the torrent is complete: it is Seeding and no
 	// longer part of the Queue.
 	fetched bool
-	// lastWrite is when DoneBytes was last stored.
-	lastWrite time.Time
 
 	// The Seeding counters of earlier runs and the Download's own Share
 	// Limit (nil: the default), read from the record when the torrent was
@@ -113,7 +111,7 @@ func (r *Runner) setRunning(t *tor, running bool) {
 	if running {
 		err = r.engine.Resume(t.hash)
 	} else {
-		r.throttle.Flush(t.id)
+		r.q.ForgetProgress(t.id)
 		err = r.engine.Pause(t.hash)
 	}
 	if err != nil {

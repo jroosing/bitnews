@@ -66,7 +66,7 @@ func (r *Runner) onFetched(ctx context.Context, t *tor) {
 	if st, err := r.engine.Stats(t.hash); err == nil && st.Size > 0 {
 		_ = r.cfg.Downloads.UpdateProgress(ctx, t.id, st.Size, st.Size)
 	}
-	r.throttle.Flush(t.id)
+	r.q.ForgetProgress(t.id)
 	r.moveToComplete(ctx, d, t)
 	r.persistOne(context.WithoutCancel(ctx), t)
 	if ctx.Err() != nil {

@@ -22,16 +22,15 @@ var (
 
 // Runner runs the Usenet Queue. Create it with New and call Run once.
 type Runner struct {
-	cfg      Config
-	log      *slog.Logger
-	clock    Clock
-	q        *queue.Queue
-	pools    *poolSet
-	throttle *core.ProgressThrottle
-	store    ProgressStore
-	volumes  VolumeStore
-	lim      *limiter
-	wake     chan struct{}
+	cfg     Config
+	log     *slog.Logger
+	clock   Clock
+	q       *queue.Queue
+	pools   *poolSet
+	store   ProgressStore
+	volumes VolumeStore
+	lim     *limiter
+	wake    chan struct{}
 
 	mu          sync.Mutex
 	runCtx      context.Context
@@ -86,7 +85,6 @@ func New(cfg Config) (*Runner, error) {
 		factory = defaultFactory
 	}
 	r.pools = newPoolSet(factory, r.log)
-	r.throttle = core.NewProgressThrottle(r.clock.Now, core.DefaultProgressInterval)
 	r.lim = newLimiter(r.clock)
 	r.wake = make(chan struct{}, 1)
 	r.jobs = map[core.ID]*job{}
@@ -95,7 +93,7 @@ func New(cfg Config) (*Runner, error) {
 	q, err := queue.New(queue.Config{
 		Source: core.SourceNZB, Downloads: cfg.Downloads, Bus: cfg.Bus, Settings: cfg.Settings,
 		Protocol: protocol{r}, MinFree: cfg.MinFree, FreeSpace: free,
-		Now: r.clock.Now, Wake: r.poke, Logger: r.log,
+		Now: r.clock.Now, Wake: r.poke, Logger: r.log, DoneBytesInterval: r.cfg.DoneBytesInterval,
 	})
 	if err != nil {
 		return nil, err

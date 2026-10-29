@@ -31,7 +31,6 @@ type Runner struct {
 	hashes    map[core.ID]core.InfoHash // remembered info hashes, see hashOf
 	needSweep bool
 	recMu     sync.Mutex // serialises read-modify-write of the records
-	throttle  *core.ProgressThrottle
 	wg        sync.WaitGroup
 }
 
@@ -68,7 +67,6 @@ func New(cfg Config) (*Runner, error) {
 	r.cfg.PersistInterval = orDefault(cfg.PersistInterval, defaultPersistInterval)
 	r.cfg.LimitInterval = orDefault(cfg.LimitInterval, defaultLimitInterval)
 	r.cfg.DiskCheckInterval = orDefault(cfg.DiskCheckInterval, defaultDiskCheckInterval)
-	r.throttle = core.NewProgressThrottle(r.now, orDefault(cfg.ProgressInterval, core.DefaultProgressInterval))
 	r.wake = make(chan struct{}, 1)
 	r.tors = map[core.ID]*tor{}
 	r.bad = map[core.ID]struct{}{}
@@ -76,6 +74,7 @@ func New(cfg Config) (*Runner, error) {
 	q, err := queue.New(queue.Config{
 		Source: core.SourceTorrent, Downloads: cfg.Downloads, Bus: cfg.Bus, Settings: cfg.Settings,
 		Protocol: protocol{r}, MinFree: cfg.MinFree, FreeSpace: free, Now: r.now, Wake: r.poke, Logger: r.log,
+		ProgressInterval: cfg.ProgressInterval, DoneBytesInterval: r.cfg.DoneBytesInterval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("torrent runner: %w", err)

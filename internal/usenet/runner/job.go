@@ -80,8 +80,8 @@ type jobState struct {
 	fatal error
 	// nextSave and nextDisk are when the resume blob is saved and free
 	// space checked next.
-	nextSave, nextDisk, nextDB time.Time
-	rate                       *rateWindow
+	nextSave, nextDisk time.Time
+	rate               *rateWindow
 	// total is the Download's size in bytes.
 	total int64
 
@@ -189,7 +189,6 @@ func (r *Runner) fetchOne(ctx context.Context, j *job, d core.Download) {
 	}
 	now := r.clock.Now()
 	st.nextSave, st.nextDisk = now.Add(r.cfg.SaveInterval), now.Add(r.cfg.DiskCheckInterval)
-	st.nextDB = now.Add(r.cfg.DoneBytesInterval)
 	st.rate.add(now, st.done)
 	st.total = d.TotalBytes
 	if st.total == 0 {
@@ -335,23 +334,13 @@ func (r *Runner) onResult(ctx context.Context, j *job, id core.ID, stop context.
 	if diskDue {
 		st.nextDisk = now.Add(r.cfg.DiskCheckInterval)
 	}
-	dbDue := now.After(st.nextDB)
-	if dbDue {
-		st.nextDB = now.Add(r.cfg.DoneBytesInterval)
-	}
 	st.rate.add(now, st.done)
 	done, total, rate := st.done, st.total, st.rate.rate(now)
 	remaining := max(total-done, 0)
 	st.mu.Unlock()
 
-	if !st.supplement && r.throttle.Allow(id, done, total) {
-		r.cfg.Bus.Publish(core.DownloadProgress{ID: id, DoneBytes: done, TotalBytes: total, BytesPerSecond: rate})
-		if total > 0 && done == total {
-			st.finalSent.Store(true)
-		}
-	}
-	if dbDue && !st.supplement {
-		r.storeDoneBytes(ctx, id, done, 0)
+	if !st.supplement && r.q.Progress(ctx, id, done, total, rate) && total > 0 && done == total {
+		st.finalSent.Store(true)
 	}
 
 	if diskDue && !r.q.Fits(ctx, remaining) {
@@ -449,7 +438,7 @@ func (r *Runner) complete(ctx context.Context, j *job, d core.Download, p plan, 
 		if !st.finalSent.Load() {
 			r.cfg.Bus.Publish(core.DownloadProgress{ID: d.ID, DoneBytes: doneBytes, TotalBytes: max(st.total, doneBytes)})
 		}
-		r.throttle.Flush(d.ID)
+		r.q.ForgetProgress(d.ID)
 		r.mu.Lock()
 		r.reports[d.ID] = detail
 		r.mu.Unlock()

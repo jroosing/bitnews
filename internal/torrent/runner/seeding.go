@@ -93,7 +93,7 @@ func (r *Runner) drop(ctx context.Context, id core.ID) {
 		return
 	}
 	t.cancel()
-	r.throttle.Flush(id)
+	r.q.ForgetProgress(id)
 	if err := r.engine.Remove(context.WithoutCancel(ctx), t.hash); err != nil && !errors.Is(err, core.ErrNotFound) {
 		r.log.Warn("torrent runner: cannot remove the torrent from the engine", "id", id, "err", err)
 	}
@@ -242,7 +242,7 @@ func (r *Runner) syncPaused(ctx context.Context, d core.Download) {
 	r.mu.Unlock()
 	switch {
 	case d.Paused && !was:
-		r.throttle.Flush(t.id)
+		r.q.ForgetProgress(t.id)
 		if err := r.engine.Pause(t.hash); err != nil {
 			r.log.Warn("torrent runner: cannot pause seeding", "id", t.id, "err", err)
 		}
