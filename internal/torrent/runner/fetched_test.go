@@ -32,6 +32,32 @@ func (h *harness) record(id core.ID) core.TorrentRecord {
 	return rec
 }
 
+// All bytes written is not all pieces verified: anacrolix counts chunks that
+// still wait for their piece's hash as done. Only the engine's Seeding state
+// says every piece passed.
+func TestAllBytesWrittenIsNotFetchedUntilThePiecesAreVerified(t *testing.T) {
+	h := newHarness(t)
+	a := h.addTorrent()
+	h.start()
+	h.waitState(a.ID, core.StateFetching)
+
+	h.engine.SetStats(hashOf(a.ID), core.TorrentStats{State: core.TorrentDownloading, Size: 1000, DoneBytes: 1000})
+	time.Sleep(100 * time.Millisecond) // ten samples
+
+	assert.Equal(t, core.StateFetching, h.get(a.ID).State)
+}
+
+func TestASeedingTorrentWhoseEventWasLostIsFetchedOnTheNextSample(t *testing.T) {
+	h := newHarness(t)
+	a := h.addTorrent()
+	h.start()
+	h.waitState(a.ID, core.StateFetching)
+
+	h.engine.SetStats(hashOf(a.ID), core.TorrentStats{State: core.TorrentSeeding, Size: 1000, DoneBytes: 1000})
+
+	h.waitState(a.ID, core.StateFetched)
+}
+
 func TestFetchedPersistsTheStateKeepsSeedingAndMovesToTheCompleteLocation(t *testing.T) {
 	h := newHarness(t)
 	h.destUnder(h.complete)

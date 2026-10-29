@@ -18,7 +18,9 @@ func (r *Runner) sample(ctx context.Context) {
 			}
 			continue
 		}
-		if st.Size > 0 && st.DoneBytes >= st.Size {
+		// Seeding, not DoneBytes: DoneBytes counts written chunks whose piece
+		// is not hashed yet.
+		if st.State == core.TorrentSeeding {
 			r.fetched(t) // the event may have been dropped
 			continue
 		}
