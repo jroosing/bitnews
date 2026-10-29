@@ -216,7 +216,7 @@ nginx needs the original `Host` header passed on (`proxy_set_header Host $host;`
 
 What bitnews checks behind a proxy:
 
-- Cookie-authenticated, state-changing requests (such as login) must carry an `Origin` header that matches the request's `Host` or an entry of `allowed_hosts`. If the proxy rewrites `Host` to an internal name, login fails with `403 csrf_origin_invalid`. Pass the original `Host` through (Caddy and Traefik do by default), or list the public name in **Settings → Security → allowed_hosts**.
+- State-changing browser requests (such as login) must come from bitnews's own page: the browser's `Sec-Fetch-Site`, or an `Origin` that matches the request's `Host` or an entry of `allowed_hosts` (ADR-0013). If the proxy rewrites `Host` to an internal name, login fails with `403 csrf_origin_invalid`. Pass the original `Host` through (Caddy and Traefik do by default), or list the public name in **Settings → Security → allowed_hosts**.
 - The session cookie is `Secure` when the request arrived over HTTPS, either directly or through a **trusted proxy** that sets `X-Forwarded-Proto`. `X-Forwarded-For` is honoured only when the direct peer is in **`trusted_proxies`**. Add the proxy's address or Docker network CIDR there, and nothing else.
 - `allowed_hosts` is mandatory before you can enable *disable auth* or *LAN bypass*; a request with any other `Host` then gets `421`. Both options are off by default and show a permanent warning in the UI. Prefer neither. These settings live in the database and are edited through the UI or by a logged-in session over the API (`PUT /api/v1/settings`; an API key may not change the `auth` section), not through environment variables.
 

@@ -48,7 +48,6 @@ func TestCategoriesCardShowsAnEmptyStateAndTheAddForm(t *testing.T) {
 	assert.Equal(t, "/settings/categories", attr(form, "hx-post"))
 	assert.Equal(t, "category-name", attr(find(form, func(n *html.Node) bool { return n.Data == "label" }), "for"))
 	assert.Contains(t, attr(byID(doc, "category-name"), "aria-describedby"), "category-name-help")
-	assert.NotNil(t, find(form, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "_csrf" }))
 	assert.Equal(t, "categoryForm", attr(form, "x-data"))
 }
 
@@ -274,12 +273,12 @@ func mustCatID(t *testing.T, e *env, name string) core.ID {
 func TestPlainCategoryFormPostRedirectsBackOrShowsTheError(t *testing.T) {
 	e, b := settingsSignedIn(t)
 
-	rec := b.post("/settings/categories", url.Values{"name": {"tv"}, "_csrf": {b.csrf()}})
+	rec := b.post("/settings/categories", url.Values{"name": {"tv"}})
 	assert.Equal(t, http.StatusOK, rec.Code, "the whole page again")
 	assert.NotNil(t, find(parseHTML(t, rec.Body.String()), func(n *html.Node) bool { return n.Data == "html" }))
 	assert.Equal(t, []string{"tv"}, categoryNames(t, e))
 
-	rec = b.post("/settings/categories", url.Values{"name": {"BAD"}, "_csrf": {b.csrf()}})
+	rec = b.post("/settings/categories", url.Values{"name": {"BAD"}})
 	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	assert.NotNil(t, byID(parseHTML(t, rec.Body.String()), "category-name-error"))
 }

@@ -390,7 +390,7 @@ func TestTestUnsavedServerValidatesAndSavesNothing(t *testing.T) {
 	assert.Equal(t, 563, e.prober.probed[0].Port)
 }
 
-func TestServerWriteRoutesNeedTheKeyOrASessionWithCSRF(t *testing.T) {
+func TestServerWriteRoutesNeedTheKey(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	s := e.createServer(e.apiKey(), newServerBody("main", ""))
@@ -405,15 +405,13 @@ func TestServerWriteRoutesNeedTheKeyOrASessionWithCSRF(t *testing.T) {
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
 			anonymous := e.do(rt.method, rt.path, rt.body)
-			noToken := e.do(rt.method, rt.path, rt.body, withCookie(sess.cookie))
+			viaSession := e.do(rt.method, rt.path, rt.body, sess.mods()...)
 
 			assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
-			require.Equal(t, http.StatusForbidden, noToken.Code)
-			assert.Equal(t, "csrf_token_invalid", errorOf(t, noToken))
+			assert.Equal(t, http.StatusUnauthorized, viaSession.Code)
 		})
 	}
-	// A session with the token may use them.
-	rec := e.do("POST", "/api/v1/servers/test", `{"host":"h.example.com"}`, sess.mods()...)
+	rec := e.do("POST", "/api/v1/servers/test", `{"host":"h.example.com"}`, withBearer(e.apiKey()))
 	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.False(t, strings.Contains(rec.Body.String(), "error"))
 }

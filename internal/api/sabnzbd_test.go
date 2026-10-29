@@ -54,9 +54,7 @@ func TestOnlyTheKeyAsAParameterOpensTheSABnzbdRoute(t *testing.T) {
 func TestDisabledAuthAndLANBypassNeverReachTheSABnzbdRoute(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withSABnzbd())
-	sess := e.login()
-	require.Equal(t, http.StatusOK, e.do("PUT", "/api/v1/settings", openAuthJSON, sess.mods()...).Code)
-	require.Equal(t, http.StatusOK, e.do("GET", "/api/v1/downloads", "").Code, "the UI is open")
+	e.openAuth()
 
 	rec := e.do("GET", "/sabnzbd/api?mode=queue&output=json", "")
 

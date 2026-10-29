@@ -658,10 +658,6 @@ func ServerForm(v serverFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = CSRFField(v.CSRF).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
 		if v.ID != "" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<input type=\"hidden\" name=\"server_id\" value=\"")
 			if templ_7745c5c3_Err != nil {
@@ -670,7 +666,7 @@ func ServerForm(v serverFormView) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.ID).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 156, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 155, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 			if templ_7745c5c3_Err != nil {
@@ -881,7 +877,7 @@ func ProbeResult(v probeView) templ.Component {
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(v.Title + ".")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 232, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 231, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -895,7 +891,7 @@ func ProbeResult(v probeView) templ.Component {
 				var templ_7745c5c3_Var31 string
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(" " + v.Timing)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 234, Col: 21}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 233, Col: 21}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 				if templ_7745c5c3_Err != nil {
@@ -905,7 +901,7 @@ func ProbeResult(v probeView) templ.Component {
 				var templ_7745c5c3_Var32 string
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(" " + v.Body)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 236, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 235, Col: 19}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
@@ -946,7 +942,7 @@ func ProbeResult(v probeView) templ.Component {
 				var templ_7745c5c3_Var35 string
 				templ_7745c5c3_Var35, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.role()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 241, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 240, Col: 56}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 				if templ_7745c5c3_Err != nil {
@@ -959,7 +955,7 @@ func ProbeResult(v probeView) templ.Component {
 				var templ_7745c5c3_Var36 string
 				templ_7745c5c3_Var36, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.probe()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 241, Col: 81}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 240, Col: 81}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 				if templ_7745c5c3_Err != nil {
@@ -1007,7 +1003,7 @@ func ProbeResult(v probeView) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(v.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 251, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 250, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -1021,7 +1017,7 @@ func ProbeResult(v probeView) templ.Component {
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(v.Timing)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 254, Col: 16}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 253, Col: 16}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -1031,7 +1027,7 @@ func ProbeResult(v probeView) templ.Component {
 				var templ_7745c5c3_Var39 string
 				templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(v.Body)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 256, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 255, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 				if templ_7745c5c3_Err != nil {
@@ -1050,7 +1046,7 @@ func ProbeResult(v probeView) templ.Component {
 				var templ_7745c5c3_Var40 string
 				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs("Server said: " + v.Detail)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 260, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 259, Col: 68}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 				if templ_7745c5c3_Err != nil {
@@ -1131,7 +1127,7 @@ func ProbeResult(v probeView) templ.Component {
 					var templ_7745c5c3_Var43 string
 					templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(st.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 274, Col: 24}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 273, Col: 24}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 					if templ_7745c5c3_Err != nil {
@@ -1144,7 +1140,7 @@ func ProbeResult(v probeView) templ.Component {
 					var templ_7745c5c3_Var44 string
 					templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(": " + st.srText())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 275, Col: 50}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_servers.templ`, Line: 274, Col: 50}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 					if templ_7745c5c3_Err != nil {

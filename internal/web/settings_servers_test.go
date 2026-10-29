@@ -576,7 +576,6 @@ func TestAServerWithAnUnreadablePasswordIsFlaggedAndCanBeFixed(t *testing.T) {
 func TestHTMLPostsWithoutHTMXRedirectOrExplainTheError(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	form := serverForm("alpha")
-	form.Set("_csrf", b.csrf())
 
 	rec := b.post("/settings/servers", form)
 

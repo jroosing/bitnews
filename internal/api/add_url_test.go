@@ -150,16 +150,13 @@ func TestAddByURLSendsNoAmbientCredentialsAndABitnewsUserAgent(t *testing.T) {
 	})
 	e, _ := newAddEnv(t, withAddOptions(app.WithHTTPClient(&http.Client{Jar: jar})))
 	key := e.apiKey()
-	sess := e.login()
 	body := jsonURL(ix.URL+"/start", "")
 
-	// Once with an API key, once with a session cookie + CSRF.
 	e.addedDownload(e.addURL(key, body))
-	e.addedDownload(e.do("POST", "/api/v1/downloads", body, sess.mods()...))
 
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	require.Len(t, ix.reqs, 4)
+	require.Len(t, ix.reqs, 2)
 	for _, r := range ix.reqs {
 		assert.Empty(t, r.Header.Get("Authorization"))
 		assert.Empty(t, r.Header.Get("Cookie"), "no cookies, not even ones the indexer set")

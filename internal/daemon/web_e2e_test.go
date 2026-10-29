@@ -53,17 +53,6 @@ func (w *webClient) do(method, path string, form url.Values) (*http.Response, st
 	return resp, string(b)
 }
 
-var csrfMeta = regexp.MustCompile(`<meta name="csrf-token" content="([0-9a-f]+)">`)
-
-func (w *webClient) csrf() string {
-	w.t.Helper()
-	resp, body := w.do("GET", "/queue", nil)
-	require.Equal(w.t, http.StatusOK, resp.StatusCode)
-	m := csrfMeta.FindStringSubmatch(body)
-	require.NotNil(w.t, m, "no csrf meta tag")
-	return m[1]
-}
-
 // The whole first-run story over real HTTP: setup, sign out, sign in, a wrong
 // password until the backoff says how long to wait.
 func TestE2EWebFirstRunSetupLogoutLoginAndBackoff(t *testing.T) {
@@ -107,7 +96,7 @@ func TestE2EWebFirstRunSetupLogoutLoginAndBackoff(t *testing.T) {
 	assert.Equal(t, "default-src 'self'; frame-ancestors 'none'", resp.Header.Get("Content-Security-Policy"))
 
 	// Sign out: the session is gone.
-	resp, _ = w.do("POST", "/logout", url.Values{"_csrf": {w.csrf()}})
+	resp, _ = w.do("POST", "/logout", url.Values{})
 	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
 	assert.Equal(t, "/login", resp.Header.Get("Location"))
 	resp, _ = w.do("GET", "/queue", nil)
@@ -119,7 +108,7 @@ func TestE2EWebFirstRunSetupLogoutLoginAndBackoff(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode, body)
 	resp, _ = w.do("GET", "/queue", nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	resp, _ = w.do("POST", "/logout", url.Values{"_csrf": {w.csrf()}})
+	resp, _ = w.do("POST", "/logout", url.Values{})
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
 
 	// Wrong passwords: a generic message, then the backoff.

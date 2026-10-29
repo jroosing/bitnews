@@ -350,8 +350,7 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 	speed.apply()
 	started := settings.Current()
 	webUI, err := web.New(web.Deps{
-		Logger: log, Version: deps.Version.Version,
-		Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
+		Logger: log, Version: deps.Version.Version, Sessions: sessions, UIAuth: uiAuth, Setup: setup, Settings: settings,
 		Downloads: downloadService, Categories: categoryService, Servers: serverService, Bus: bus,
 		Adder: adder, AppKey: appKey, View: views,
 		Runtime: runtime, Config: &webConfig{started: started, portOverride: deps.Torrent.Port, port: tport},
@@ -369,8 +368,6 @@ func Build(ctx context.Context, deps Deps) (d *Daemon, err error) {
 		Servers:    serverService,
 		Settings:   settings,
 		Setup:      setup,
-		Sessions:   sessions,
-		UIAuth:     uiAuth,
 		AppKey:     appKey,
 		Bus:        bus,
 

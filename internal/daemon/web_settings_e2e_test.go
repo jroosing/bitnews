@@ -41,7 +41,6 @@ func (w *webClient) hx(method, path string, form url.Values) (*http.Response, st
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", w.base)
 	req.Header.Set("HX-Request", "true")
-	req.Header.Set("X-CSRF-Token", w.csrf())
 	resp, err := w.c.Do(req)
 	require.NoError(w.t, err)
 	b, err := io.ReadAll(resp.Body)

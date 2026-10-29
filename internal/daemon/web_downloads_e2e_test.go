@@ -23,16 +23,15 @@ import (
 	"github.com/jroosing/bitnews/internal/usenet/nntp/nntptest"
 )
 
-// htmxPost sends a multipart or form post like htmx does: CSRF header,
-// HX-Request and the same-origin Origin.
-func (w *webClient) htmxPost(path string, ct string, body io.Reader, csrf string) (*http.Response, string) {
+// htmxPost sends a multipart or form post like htmx does: HX-Request and
+// the same-origin Origin.
+func (w *webClient) htmxPost(path string, ct string, body io.Reader) (*http.Response, string) {
 	w.t.Helper()
 	req, err := http.NewRequest("POST", w.base+path, body)
 	require.NoError(w.t, err)
 	req.Header.Set("Content-Type", ct)
 	req.Header.Set("Origin", w.base)
 	req.Header.Set("HX-Request", "true")
-	req.Header.Set("X-CSRF-Token", csrf)
 	resp, err := w.c.Do(req)
 	require.NoError(w.t, err)
 	b, err := io.ReadAll(resp.Body)
@@ -41,15 +40,14 @@ func (w *webClient) htmxPost(path string, ct string, body io.Reader, csrf string
 	return resp, string(b)
 }
 
-func (w *webClient) htmxForm(path string, form url.Values, csrf string) (*http.Response, string) {
-	return w.htmxPost(path, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()), csrf)
+func (w *webClient) htmxForm(path string, form url.Values) (*http.Response, string) {
+	return w.htmxPost(path, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
 }
 
-func (w *webClient) login() string {
+func (w *webClient) login() {
 	w.t.Helper()
 	resp, body := w.do("POST", "/login", url.Values{"username": {"admin"}, "password": {"correct horse battery staple"}})
 	require.Equal(w.t, http.StatusSeeOther, resp.StatusCode, body)
-	return w.csrf()
 }
 
 // The whole story of M6-04 over real HTTP: add an NZB in the dialog, see it
@@ -61,7 +59,7 @@ func TestE2EWebAddHistoryDetailAndRemove(t *testing.T) {
 	e.start()
 	srv := e.addServer("main", 0)
 	w := newWebClient(t, e.ts.URL)
-	csrf := w.login()
+	w.login()
 
 	// Add an NZB through the "New download" dialog.
 	fxOK := nntptest.BuildFixture(t, map[string][]byte{"ok.bin": payload(30_000, 1)}, 10_000)
@@ -75,7 +73,7 @@ func TestE2EWebAddHistoryDetailAndRemove(t *testing.T) {
 	require.NoError(t, mw.WriteField("name", "UI.Added.Release"))
 	require.NoError(t, mw.WriteField("priority", "normal"))
 	require.NoError(t, mw.Close())
-	resp, body := w.htmxPost("/downloads/add", mw.FormDataContentType(), &buf, csrf)
+	resp, body := w.htmxPost("/downloads/add", mw.FormDataContentType(), &buf)
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	assert.Contains(t, resp.Header.Get("HX-Trigger"), "download-added")
 
@@ -120,9 +118,9 @@ func TestE2EWebAddHistoryDetailAndRemove(t *testing.T) {
 	assert.NotContains(t, history, "UI.Added.Release")
 
 	// Remove the Failed one keeping files; remove the Ready one with them.
-	resp, body = w.htmxForm("/downloads/"+string(failed.ID)+"/delete", url.Values{"delete_data": {"0"}, "from": {"history"}}, csrf)
+	resp, body = w.htmxForm("/downloads/"+string(failed.ID)+"/delete", url.Values{"delete_data": {"0"}, "from": {"history"}})
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
-	resp, body = w.htmxForm("/downloads/"+string(ready.ID)+"/delete", url.Values{"delete_data": {"1"}, "from": {"history"}}, csrf)
+	resp, body = w.htmxForm("/downloads/"+string(ready.ID)+"/delete", url.Values{"delete_data": {"1"}, "from": {"history"}})
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	assert.NoDirExists(t, ready.OutputPath)
 	assert.DirExists(t, filepath.Dir(ready.OutputPath), "the complete root stays")
@@ -142,7 +140,7 @@ func TestE2EWebTorrentDetailAndShareLimit(t *testing.T) {
 	e.engine = fake
 	e.start()
 	w := newWebClient(t, e.ts.URL)
-	csrf := w.login()
+	w.login()
 
 	data, _ := coretest.BuildTorrent("Detail.Torrent", []coretest.TorrentEntry{
 		{Path: []string{"a.mkv"}, Size: 20000}, {Path: []string{"sub", "b.txt"}, Size: 5},
@@ -154,7 +152,7 @@ func TestE2EWebTorrentDetailAndShareLimit(t *testing.T) {
 	_, err = fw.Write(data)
 	require.NoError(t, err)
 	require.NoError(t, mw.Close())
-	resp, body := w.htmxPost("/downloads/add", mw.FormDataContentType(), &buf, csrf)
+	resp, body := w.htmxPost("/downloads/add", mw.FormDataContentType(), &buf)
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	var list struct {
 		Items []dl `json:"items"`
@@ -183,12 +181,12 @@ func TestE2EWebTorrentDetailAndShareLimit(t *testing.T) {
 	_, page := w.do("GET", "/downloads/"+string(id), nil)
 	assert.Contains(t, page, "Global default: no limit")
 
-	resp, body = w.htmxForm("/downloads/"+string(id)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {"1.5"}, "minutes": {"60"}}, csrf)
+	resp, body = w.htmxForm("/downloads/"+string(id)+"/share-limit", url.Values{"mode": {"custom"}, "ratio": {"1.5"}, "minutes": {"60"}})
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	_, page = w.do("GET", "/downloads/"+string(id), nil)
 	assert.Contains(t, page, "Own limit: ratio 1.5 or seed for 1 h 0 min")
 
-	resp, body = w.htmxForm("/downloads/"+string(id)+"/share-limit", url.Values{"mode": {"default"}}, csrf)
+	resp, body = w.htmxForm("/downloads/"+string(id)+"/share-limit", url.Values{"mode": {"default"}})
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
 	_, page = w.do("GET", "/downloads/"+string(id), nil)
 	assert.Contains(t, page, "Global default: no limit")

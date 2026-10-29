@@ -10,7 +10,6 @@ import (
 // appKeyView is the "API key" card (M7-05, ADR-0006): the one key that
 // Sonarr, Radarr and scripts use, shown as plain text with a Copy button.
 type appKeyView struct {
-	CSRF string
 	// Unavailable is set when the build has no app key service.
 	Unavailable bool
 	// Key is the key. It is in the HTML of this card only (the text and the
@@ -30,7 +29,7 @@ type appKeyView struct {
 const appKeyPath = "/settings/security/app-key"
 
 func (s *Server) appKeyViewFor(r *http.Request) appKeyView {
-	v := appKeyView{CSRF: settingsCSRF(r)}
+	v := appKeyView{}
 	if s.AppKey == nil {
 		v.Unavailable = true
 		return v
@@ -71,7 +70,7 @@ func (s *Server) postAppKeyRotate(w http.ResponseWriter, r *http.Request) {
 		v.Confirm = &confirmView{
 			ID: "appkey", Action: appKeyPath, Title: "Rotate the API key",
 			Heading: "Check this before you rotate the key", Label: "Yes, rotate the key",
-			CSRF: v.CSRF, Cancel: "/settings/security",
+			Cancel: "/settings/security",
 			Bullets: []string{
 				"bitnews makes a new key and the old one stops working at once, for SABnzbd, qBittorrent and the API.",
 				"Right away, every client (Sonarr, Radarr, scripts) stops working until updated with the new key.",

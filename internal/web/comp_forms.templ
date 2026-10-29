@@ -323,7 +323,6 @@ type SettingsFormProps struct {
 	Action   string
 	Title    string
 	Subtitle string
-	CSRF     string
 	Error    string // a problem that belongs to no field
 	Saved    bool   // plain-POST success note
 	Dirty    bool   // start in the unsaved state, after a failed save, so Save stays enabled
@@ -366,7 +365,6 @@ templ SettingsForm(p SettingsFormProps) {
 			}
 			novalidate
 		>
-			@CSRFField(p.CSRF)
 			<div class="card-body space-y-6">
 				if p.Saved {
 					@Alert(AlertProps{Variant: AlertSuccess, Title: "Saved", Body: "Your changes were saved."})

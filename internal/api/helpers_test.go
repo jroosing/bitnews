@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -87,6 +88,7 @@ type env struct {
 	clock     *clock
 	log       *syncBuffer
 	users     *store.UserRepo
+	sessions  *auth.SessionService
 	downloads *store.DownloadRepo
 	cats      *store.CategoryRepo
 	servers   *store.ServerRepo
@@ -156,10 +158,8 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	require.NoError(t, err)
 	e.setup, err = auth.NewSetup(ctx, e.users, logger, auth.WithClock(e.clock.Now))
 	require.NoError(t, err)
-	sessions, err := auth.NewSessionService(store.NewSessionRepo(db), e.users,
+	e.sessions, err = auth.NewSessionService(store.NewSessionRepo(db), e.users,
 		auth.WithSessionClock(e.clock.Now), auth.WithSessionLogger(logger))
-	require.NoError(t, err)
-	uiAuth, err := auth.NewUIAuth(sessions, e.settings.Current)
 	require.NoError(t, err)
 	e.appKey, err = auth.NewAppKeyService(ctx, store.NewAppKeyRepo(db), auth.WithAppKeyLogger(logger))
 	require.NoError(t, err)
@@ -181,8 +181,6 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 		Servers:    app.NewServerService(e.servers, e.bus, e.prober, appOpts...),
 		Settings:   e.settings,
 		Setup:      e.setup,
-		Sessions:   sessions,
-		UIAuth:     uiAuth,
 		AppKey:     e.appKey,
 		Bus:        e.bus,
 		InstanceID: "instance-1",
@@ -230,31 +228,22 @@ func withBearer(key string) func(*http.Request) { return withHeader("Authorizati
 // session is a logged-in browser: its cookie and CSRF token.
 type session struct {
 	cookie *http.Cookie
-	csrf   string
 }
 
-// mods returns the request modifiers that authenticate as this session, with
-// the CSRF header for state-changing requests.
+// mods returns the request modifiers that send this session's cookie, as
+// the browser does on a same-origin request.
 func (s session) mods() []func(*http.Request) {
-	return []func(*http.Request){withCookie(s.cookie), withHeader(auth.CSRFHeader, s.csrf)}
+	return []func(*http.Request){withCookie(s.cookie), withHeader("Sec-Fetch-Site", "same-origin")}
 }
 
-// login logs in as admin through the API.
+// login opens a UI session for admin, as the web UI's sign-in does. The API
+// accepts nothing but the app key, so its cookie and CSRF token must open
+// nothing there.
 func (e *env) login() session {
 	e.t.Helper()
-	rec := e.do("POST", "/api/v1/auth/login", `{"username":"admin","password":"`+adminPassword+`"}`)
-	require.Equal(e.t, http.StatusOK, rec.Code, rec.Body.String())
-	var out struct {
-		CSRFToken string `json:"csrf_token"`
-	}
-	decode(e.t, rec, &out)
-	for _, c := range rec.Result().Cookies() {
-		if c.Name == auth.SessionCookieName {
-			return session{cookie: &http.Cookie{Name: c.Name, Value: c.Value}, csrf: out.CSRFToken}
-		}
-	}
-	e.t.Fatal("login set no session cookie")
-	return session{}
+	token, err := e.sessions.Login(context.Background(), "admin", adminPassword, netip.MustParseAddr("127.0.0.1"))
+	require.NoError(e.t, err)
+	return session{cookie: &http.Cookie{Name: auth.SessionCookieName, Value: token}}
 }
 
 // apiKey returns the app key's plaintext.
@@ -272,8 +261,13 @@ func (e *env) addDownload(name string, offset time.Duration) core.Download {
 	return d
 }
 
-// openAuthJSON is a settings body that turns disable-auth on for the host
-// "example.com", which httptest requests carry.
-const openAuthJSON = `{"queues":{"usenet":1,"torrent":5},
-"auth":{"disable_auth":true,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":["example.com"]},
-"paths":{"usenet":{"incomplete":"/a","complete":"/b"},"torrent":{"incomplete":"/c","complete":"/d"}}}`
+// openAuth turns on disable auth and LAN bypass, as the UI's security page
+// can: the adapters and the API must stay closed anyway.
+func (e *env) openAuth() {
+	e.t.Helper()
+	s := e.settings.Current()
+	s.Auth.DisableAuth = true
+	s.Auth.LANBypassCIDRs = []string{"0.0.0.0/0", "::/0"}
+	s.Auth.AllowedHosts = []string{"example.com"}
+	require.NoError(e.t, e.settings.Update(context.Background(), s))
+}

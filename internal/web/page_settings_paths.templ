@@ -22,7 +22,7 @@ templ PathsCard(v pathsView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "paths", Action: "/settings/paths", Title: "Download folders",
 		Subtitle: "Where bitnews keeps downloads while they run and after they finish.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save folders",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save folders",
 	}) {
 		@Alert(AlertProps{Variant: AlertInfo, Title: "Changes apply to new downloads only", Body: "Downloads that already exist keep the folders they started with. New downloads use the folders below."})
 		<div class="rounded-xl border border-dashed border-line-strong bg-surface-2 px-4 py-3.5 text-sm text-fg-muted">
@@ -80,7 +80,6 @@ templ CategoriesCard(v categoriesView) {
 			x-data="categoryForm"
 			class="border-t border-line p-5"
 		>
-			@CSRFField(v.CSRF)
 			<h3 class="text-sm font-semibold">Add a category</h3>
 			if v.Error != "" {
 				<div class="mt-3">
@@ -189,7 +188,6 @@ templ CategoryEditRow(r categoryRow) {
 				{ Hx{Post: "/settings/categories/" + r.ID, Target: "closest tr", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
 				class="w-full text-left"
 			>
-				@CSRFField(r.CSRF)
 				<div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
 					@Field(FieldProps{
 						ID: "category-dir-" + r.ID, Name: "dir_override", Label: "Folder for " + r.Name, Optional: true, Value: r.Dir,

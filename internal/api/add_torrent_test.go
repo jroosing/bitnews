@@ -513,7 +513,7 @@ func TestAddTorrentWhenTheSourceCannotBeStoredLeavesNothing(t *testing.T) {
 	assert.Empty(t, list)
 }
 
-func TestAddTorrentNeedsTheKeyOrASessionWithCSRF(t *testing.T) {
+func TestAddTorrentNeedsTheKey(t *testing.T) {
 	t.Parallel()
 	e, _ := newAddEnv(t)
 	sess := e.login()
@@ -524,19 +524,16 @@ func TestAddTorrentNeedsTheKeyOrASessionWithCSRF(t *testing.T) {
 
 	anonymous := e.do("POST", "/api/v1/downloads", body, ctMod)
 	anonymousMagnet := e.do("POST", "/api/v1/downloads", magnet)
-	noToken := e.do("POST", "/api/v1/downloads", body, withCookie(sess.cookie), ctMod)
-	noTokenMagnet := e.do("POST", "/api/v1/downloads", magnet, withCookie(sess.cookie))
-	withToken := e.do("POST", "/api/v1/downloads", body, append(sess.mods(), ctMod)...)
-	magnetWithToken := e.do("POST", "/api/v1/downloads", jsonMagnet("magnet:?xt=urn:btih:"+strings.Repeat("2", 40), ""), sess.mods()...)
+	viaSession := e.do("POST", "/api/v1/downloads", body, append(sess.mods(), ctMod)...)
+	viaSessionMagnet := e.do("POST", "/api/v1/downloads", magnet, sess.mods()...)
+	viaKey := e.do("POST", "/api/v1/downloads", body, withBearer(e.apiKey()), ctMod)
+	magnetViaKey := e.do("POST", "/api/v1/downloads", jsonMagnet("magnet:?xt=urn:btih:"+strings.Repeat("2", 40), ""), withBearer(e.apiKey()))
 
-	assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
-	assert.Equal(t, http.StatusUnauthorized, anonymousMagnet.Code)
-	for _, rec := range []*httptest.ResponseRecorder{noToken, noTokenMagnet} {
-		assert.Equal(t, http.StatusForbidden, rec.Code)
-		assert.Equal(t, "csrf_token_invalid", errorOf(t, rec))
+	for _, rec := range []*httptest.ResponseRecorder{anonymous, anonymousMagnet, viaSession, viaSessionMagnet} {
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	}
-	assert.Equal(t, http.StatusCreated, withToken.Code, withToken.Body.String())
-	assert.Equal(t, http.StatusCreated, magnetWithToken.Code, magnetWithToken.Body.String())
+	assert.Equal(t, http.StatusCreated, viaKey.Code, viaKey.Body.String())
+	assert.Equal(t, http.StatusCreated, magnetViaKey.Code, magnetViaKey.Body.String())
 	assert.Len(t, leftovers(t, e.torrentRoot()), 2, "only the accepted request left a download dir")
 }
 

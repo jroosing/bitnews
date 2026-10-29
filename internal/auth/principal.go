@@ -33,10 +33,6 @@ type Principal struct {
 	// UserID and Username are set for PrincipalSession only.
 	UserID   core.ID
 	Username string
-
-	// csrf is the CSRF token the request must present when Kind is
-	// ambient. It is unexported so a logged Principal does not leak it.
-	csrf string
 }
 
 // ambient reports whether the credential travels without the caller choosing
@@ -57,11 +53,6 @@ func (p Principal) AuthMode() string {
 	}
 	return ""
 }
-
-// CSRFToken is the synchronizer token this principal must send in
-// X-CSRF-Token on state-changing requests. The web UI puts it into its pages.
-// It is empty for an API key, which needs none.
-func (p Principal) CSRFToken() string { return p.csrf }
 
 type principalKey struct{}
 

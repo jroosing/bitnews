@@ -225,7 +225,7 @@ func TestActionOnADownloadThatFinishedMeanwhileRemovesTheRow(t *testing.T) {
 	assert.True(t, refresh)
 }
 
-func TestActionsNeedASessionAndACSRFToken(t *testing.T) {
+func TestActionsNeedASessionAndTheSameSite(t *testing.T) {
 	q := newQueueEnv(t)
 	d := q.add(core.Download{State: core.StateFetching})
 	path := "/queue/" + string(d.ID) + "/pause"
@@ -234,13 +234,10 @@ func TestActionsNeedASessionAndACSRFToken(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, "/login", rec.Header().Get("HX-Redirect"))
 
-	rec = q.b.post(path, url.Values{}, htmx()) // signed in, no token
+	rec = q.b.post(path, url.Values{}, htmx(), header("Sec-Fetch-Site", "cross-site")) // signed in, another site
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 
-	rec = q.b.post(path, url.Values{}, htmx(), header("X-CSRF-Token", strings.Repeat("0", 64)))
-	assert.Equal(t, http.StatusForbidden, rec.Code)
-
-	rec = q.b.post(path, url.Values{}, htmx(), header("X-CSRF-Token", q.tok), header("Origin", "https://evil.test"))
+	rec = q.b.post(path, url.Values{}, htmx(), header("Origin", "https://evil.test"))
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 
 	assert.False(t, q.get(d.ID).Paused, "nothing happened")
@@ -250,7 +247,7 @@ func TestPlainFormPostWorksWithoutJavaScript(t *testing.T) {
 	q := newQueueEnv(t)
 	d := q.add(core.Download{State: core.StateFetching})
 
-	rec := q.b.post("/queue/"+string(d.ID)+"/pause", url.Values{"_csrf": {q.tok}})
+	rec := q.b.post("/queue/"+string(d.ID)+"/pause", url.Values{})
 
 	assert.Equal(t, http.StatusSeeOther, rec.Code)
 	assert.Equal(t, "/queue", location(rec))
@@ -260,7 +257,7 @@ func TestPlainFormPostWorksWithoutJavaScript(t *testing.T) {
 func TestPlainFormErrorShowsAnErrorPage(t *testing.T) {
 	q := newQueueEnv(t)
 
-	rec := q.b.post("/queue/nope/pause", url.Values{"_csrf": {q.tok}})
+	rec := q.b.post("/queue/nope/pause", url.Values{})
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	assert.Contains(t, rec.Body.String(), "no longer exists")

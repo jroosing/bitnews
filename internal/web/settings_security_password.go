@@ -12,7 +12,6 @@ import (
 // passwordView is the "Password" card. The password fields are write-only:
 // nothing typed is ever sent back.
 type passwordView struct {
-	CSRF   string
 	Errors map[string]string
 	Error  string
 	Dirty  bool
@@ -27,7 +26,7 @@ type passwordView struct {
 
 func (s *Server) passwordViewFor(r *http.Request) passwordView {
 	p, ok := auth.FromContext(r.Context())
-	return passwordView{CSRF: settingsCSRF(r), Unavailable: !ok || p.Kind != auth.PrincipalSession}
+	return passwordView{Unavailable: !ok || p.Kind != auth.PrincipalSession}
 }
 
 func (s *Server) registerPasswordRoutes() {

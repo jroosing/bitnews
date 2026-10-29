@@ -378,14 +378,6 @@ templ CopyButton(text string) {
 	</span>
 }
 
-// CSRFField is the hidden field plain form posts use. csrf is the session's
-// CSRF token (View.CSRF); empty renders nothing.
-templ CSRFField(csrf string) {
-	if csrf != "" {
-		<input type="hidden" name="_csrf" value={ csrf }/>
-	}
-}
-
 // EmptyProps are the parameters of EmptyState.
 type EmptyProps struct {
 	Icon        IconName // default IconInbox

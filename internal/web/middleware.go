@@ -1,16 +1,10 @@
 package web
 
 import (
-	"bytes"
-	"encoding/json"
-	"maps"
-	"mime"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
-
-	"github.com/jroosing/bitnews/internal/auth"
 )
 
 // contentSecurityPolicy is the strict CSP of every UI response: only the
@@ -44,109 +38,8 @@ func secure(next http.Handler) http.Handler {
 	})
 }
 
-// formCSRF lets a plain (non-JavaScript) form post carry its CSRF token in
-// the hidden "_csrf" field. It copies the field into the X-CSRF-Token header
-// when the header is absent, before auth.CSRF looks. htmx requests send the
-// header themselves (app.js), so this changes nothing for them.
-func formCSRF(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions &&
-			r.Header.Get(auth.CSRFHeader) == "" && isFormContent(r.Header.Get("Content-Type")) {
-			if err := r.ParseForm(); err == nil {
-				if tok := r.PostForm.Get("_csrf"); tok != "" {
-					r.Header.Set(auth.CSRFHeader, tok)
-				}
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func isFormContent(ct string) bool {
-	mt, _, err := mime.ParseMediaType(ct)
-	return err == nil && mt == "application/x-www-form-urlencoded"
-}
-
 // htmx reports whether the request came from htmx.
 func isHTMX(r *http.Request) bool { return r.Header.Get("HX-Request") == "true" }
-
-// htmlErrors turns the JSON errors that the auth middleware writes (401, 403
-// CSRF, 421 Host, 500) into UI responses: a redirect to the login page, an
-// error page, or, for htmx, a redirect header or a toast. Anything the inner
-// handler writes that is not such an error passes through untouched.
-func (s *Server) htmlErrors(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		iw := &interceptWriter{dst: w, header: http.Header{}}
-		next.ServeHTTP(iw, r)
-		if !iw.intercepted {
-			return
-		}
-		s.authFailure(w, r, iw.status, iw.errorCode())
-	})
-}
-
-// interceptWriter holds back a JSON error response so htmlErrors can replace
-// it. Its header map is private until the first WriteHeader decides.
-type interceptWriter struct {
-	dst         http.ResponseWriter
-	header      http.Header
-	decided     bool
-	intercepted bool
-	status      int
-	body        bytes.Buffer
-}
-
-func (w *interceptWriter) Header() http.Header {
-	if w.decided && !w.intercepted {
-		return w.dst.Header()
-	}
-	return w.header
-}
-
-func (w *interceptWriter) WriteHeader(code int) {
-	if w.decided {
-		return
-	}
-	w.decided = true
-	if code >= 400 && strings.HasPrefix(w.header.Get("Content-Type"), "application/json") {
-		w.intercepted, w.status = true, code
-		return
-	}
-	maps.Copy(w.dst.Header(), w.header)
-	w.dst.WriteHeader(code)
-}
-
-func (w *interceptWriter) Write(p []byte) (int, error) {
-	if !w.decided {
-		w.WriteHeader(http.StatusOK)
-	}
-	if w.intercepted {
-		if w.body.Len() < 4096 {
-			w.body.Write(p)
-		}
-		return len(p), nil
-	}
-	return w.dst.Write(p)
-}
-
-func (w *interceptWriter) Flush() {
-	if w.decided && !w.intercepted {
-		_ = http.NewResponseController(w.dst).Flush()
-	}
-}
-
-func (w *interceptWriter) Unwrap() http.ResponseWriter { return w.dst }
-
-// errorCode is the "code" of the intercepted JSON error body.
-func (w *interceptWriter) errorCode() string {
-	var body struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	_ = json.Unmarshal(w.body.Bytes(), &body)
-	return body.Error.Code
-}
 
 // authFailure answers a failed authentication or CSRF check.
 func (s *Server) authFailure(w http.ResponseWriter, r *http.Request, status int, code string) {

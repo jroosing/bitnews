@@ -156,12 +156,12 @@ func TestInvalidSpeedLimitsAreRefused(t *testing.T) {
 	}
 }
 
-func TestQueueControlsNeedASessionAndCSRF(t *testing.T) {
+func TestQueueControlsNeedASessionAndTheSameSite(t *testing.T) {
 	q := newQueueEnv(t)
 
 	rec := q.env.browser().post("/queues/usenet/pause", url.Values{}, htmx())
 	assert.Equal(t, http.StatusNoContent, rec.Code)
-	rec = q.b.post("/queues/usenet/pause", url.Values{}, htmx())
+	rec = q.b.post("/queues/usenet/pause", url.Values{}, htmx(), header("Origin", "https://evil.test"))
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Empty(t, q.rt.recorded())
 }

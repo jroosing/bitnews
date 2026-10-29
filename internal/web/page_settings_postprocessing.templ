@@ -47,7 +47,7 @@ templ PostprocessingNamesCard(v cardView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "postprocessing", Action: "/settings/postprocessing", Title: "Tidy names",
 		Subtitle: "Two optional clean-ups for NZB downloads. Both are off until you turn them on.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save options",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save options",
 	}) {
 		@PostprocessingOption(PostprocessingOptionProps{
 			ID: "clean-names", Name: "clean_names", Label: "Clean release names",

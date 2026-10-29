@@ -33,7 +33,6 @@ func TestTorrentPageShowsTheConnectionSettings(t *testing.T) {
 	require.NotNil(t, form)
 	assert.Equal(t, "post", attr(form, "method"))
 	assert.Equal(t, "/settings/torrent", attr(form, "hx-post"))
-	assert.NotNil(t, find(form, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "_csrf" }))
 	assert.Equal(t, "51413", attr(byID(doc, "listen-port"), "value"), "the default port")
 	for _, id := range []string{"dht", "pex"} {
 		assert.True(t, hasAttr(byID(doc, id), "checked"), id)
@@ -413,7 +412,6 @@ func TestBadShareLimitsAreRejectedNextToTheirFields(t *testing.T) {
 func TestTorrentPlainFormPostRendersThePageAgain(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	form := seedingForm("3", "", "pause")
-	form.Set("_csrf", b.csrf())
 
 	rec := b.post("/settings/torrent/seeding", form)
 
@@ -440,7 +438,6 @@ func addTransferResponses(t *testing.T, out map[string]*httptest.ResponseRecorde
 		out["POST "+path+" ("+name+")"] = b.settingsPost(path, form)
 	}
 	plain := func(path string, form url.Values) {
-		form.Set("_csrf", b.csrf())
 		out["POST "+path+" (plain form)"] = b.post(path, form)
 	}
 	post("saved", "/settings/speed", speedLimitsForm("global_down_kbps", "1000", "torrent_up_kbps", "100"))

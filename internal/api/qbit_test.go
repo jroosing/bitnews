@@ -192,9 +192,7 @@ func TestOneKeyOpensTheOwnAPISABnzbdAndQBitAndNothingElseDoes(t *testing.T) {
 func TestDisabledAuthAndLANBypassNeverReachTheQBitRoute(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, withQBit(&nullEngine{}))
-	sess := e.login()
-	require.Equal(t, http.StatusOK, e.do("PUT", "/api/v1/settings", openAuthJSON, sess.mods()...).Code)
-	require.Equal(t, http.StatusOK, e.do("GET", "/api/v1/downloads", "").Code, "the UI is open")
+	e.openAuth()
 
 	rec := e.do("GET", "/api/v2/torrents/info", "")
 

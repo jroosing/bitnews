@@ -13,9 +13,6 @@ templ Head(v *View) {
 	<meta name="color-scheme" content="light dark"/>
 	<meta name="referrer" content="same-origin"/>
 	<meta name="htmx-config" content={ htmxConfig }/>
-	if v.CSRF != "" {
-		<meta name="csrf-token" content={ v.CSRF }/>
-	}
 	<title>
 		if v.Title != "" {
 			{ v.Title + " · " }
@@ -128,7 +125,6 @@ templ AccountMenu(m UserMenu) {
 			if m.CanSignOut {
 				<div class="menu-sep"></div>
 				<form method="post" action="/logout">
-					@CSRFField(m.CSRF)
 					<button type="submit" role="menuitem" class="menu-item">
 						@Icon(IconSignOut, "size-5 text-fg-subtle")
 						{ "Sign out" }

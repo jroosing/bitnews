@@ -19,7 +19,7 @@ Optional: `ContentDir` (finds a torrent's own root directory on disk for `torren
 - Every request re-checks that the session's key generation is still the current one, so rotating the key ends every session with the next request.
 - Rate limit: failures are counted **per client IP only** (the client IP honours the trusted proxies). The username is deliberately not a key, because anyone could then lock the media manager out by failing its username. After 5 failures the IP is answered `403` with `Your IP address has been banned after too many failed authentication attempts.` for the backoff of `auth.LoginLimiter` (1 s, doubling, 15 min at most), even with the right password. The adapter's own limiter instance means failures here never lock the UI.
 - Without a valid session every call except login is `403 Forbidden`, whatever the path (an unknown path does not give itself away).
-- CSRF: a non-safe request whose `Origin` or `Referer` names another host than `Host` (or an entry of the allowed hosts) is `401 Unauthorized`; `Origin: null`, two `Origin` headers and unparsable values count as foreign. Sonarr and Radarr send neither header, which passes. Login is checked too.
+- CSRF: a non-safe browser request from another site (`Sec-Fetch-Site`, or an `Origin` that is neither `Host` nor an allowed host) is `401 Unauthorized`; a request without these headers (Sonarr, Radarr) passes (`auth.CheckOrigin`, ADR-0013).
 
 ## Endpoints
 

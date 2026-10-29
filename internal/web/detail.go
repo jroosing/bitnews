@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/jroosing/bitnews/internal/app"
-	"github.com/jroosing/bitnews/internal/auth"
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/view"
 )
@@ -137,8 +136,6 @@ type detailPage struct {
 	LiveHref string
 	// Removed is set by the live fragment when the Download is gone.
 	Removed bool
-	// CSRF is the token for the plain forms inside the fragment.
-	CSRF string
 }
 
 // getDetail renders the whole detail page.
@@ -158,7 +155,6 @@ func (s *Server) getDetail(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) renderDetail(w http.ResponseWriter, r *http.Request, status int, page detailPage) {
 	v := s.newView(r, histClean(page.Name, 80))
-	page.CSRF = v.CSRF
 	v.Page = page
 	s.renderComponent(w, r, status, DetailPage(v, page))
 }
@@ -558,8 +554,5 @@ func (s *Server) shareFormAgain(w http.ResponseWriter, r *http.Request, d core.D
 }
 
 func (s *Server) renderShareCard(w http.ResponseWriter, r *http.Request, status int, page detailPage) {
-	if p, ok := auth.FromContext(r.Context()); ok {
-		page.CSRF = p.CSRFToken()
-	}
 	s.renderComponent(w, r, status, ShareCard(page))
 }

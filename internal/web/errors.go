@@ -28,6 +28,6 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 	page := errorPage{Status: status, Heading: heading, Message: message, Href: "/", HrefLabel: "Back to bitnews"}
 	// An error page is anonymous: it shows no account menu, whatever the
 	// request's principal.
-	v.CSRF, v.AuthMode = "", ""
+	v.AuthMode = ""
 	s.renderComponent(w, r, status, ErrorPage(v, page))
 }

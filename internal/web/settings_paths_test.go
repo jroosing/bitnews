@@ -51,7 +51,6 @@ func TestPathsPageShowsTheCurrentFoldersInLabelledGroups(t *testing.T) {
 	assert.Equal(t, "post", attr(form, "method"))
 	assert.Equal(t, "/settings/paths", attr(form, "action"))
 	assert.Equal(t, "/settings/paths", attr(form, "hx-post"))
-	assert.NotNil(t, find(form, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "_csrf" }), "works without JavaScript")
 	legends := findAll(form, func(n *html.Node) bool { return n.Data == "legend" })
 	require.Len(t, legends, 2)
 	assert.Equal(t, "Usenet", text(legends[0]))
@@ -216,7 +215,6 @@ func TestNestedFoldersAreRejectedOnTheInnerField(t *testing.T) {
 func TestPlainFormPostRendersThePageAgain(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	form := pathsForm(t)
-	form.Set("_csrf", b.csrf())
 
 	rec := b.post("/settings/paths", form)
 
@@ -232,7 +230,7 @@ func TestPlainFormPostRendersThePageAgain(t *testing.T) {
 	assert.NotNil(t, byID(parseHTML(t, rec.Body.String()), "usenet-complete-error"))
 }
 
-func TestMutatingSettingsRoutesNeedASessionAndACSRFToken(t *testing.T) {
+func TestMutatingSettingsRoutesNeedASessionAndTheSameSite(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	cat, err := e.cats.Create(context.Background(), "tv", "")
 	require.NoError(t, err)
@@ -270,10 +268,7 @@ func TestMutatingSettingsRoutesNeedASessionAndACSRFToken(t *testing.T) {
 		assert.Equal(t, http.StatusSeeOther, anon.Code, "%s %s signed out", rt.method, rt.path)
 		assert.Equal(t, "/login", location(anon), "%s %s", rt.method, rt.path)
 
-		noToken := send(b)
-		assert.Equal(t, http.StatusForbidden, noToken.Code, "%s %s without a CSRF token", rt.method, rt.path)
-
-		crossSite := send(b, header("X-CSRF-Token", b.csrf()), header("Origin", "https://evil.test"))
+		crossSite := send(b, header("Origin", "https://evil.test"))
 		assert.Equal(t, http.StatusForbidden, crossSite.Code, "%s %s from another origin", rt.method, rt.path)
 	}
 	// Nothing above had any effect.

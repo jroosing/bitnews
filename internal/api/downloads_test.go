@@ -64,18 +64,18 @@ func (e *env) subscribe() func() []core.Event {
 	}
 }
 
-func TestListDownloadsRequiresAuthenticationAndAcceptsSessionOrKey(t *testing.T) {
+func TestListDownloadsNeedsTheKeyAndNothingElse(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	sess := e.login()
 
 	anonymous := e.do("GET", "/api/v1/downloads", "")
-	viaSession := e.do("GET", "/api/v1/downloads", "", withCookie(sess.cookie))
+	viaSession := e.do("GET", "/api/v1/downloads", "", sess.mods()...)
 	viaKey := e.do("GET", "/api/v1/downloads", "", withBearer(e.apiKey()))
 	viaBadKey := e.do("GET", "/api/v1/downloads", "", withBearer("bn_nope"))
 
 	assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
-	assert.Equal(t, http.StatusOK, viaSession.Code)
+	assert.Equal(t, http.StatusUnauthorized, viaSession.Code, "a UI session opens nothing in the API")
 	assert.Equal(t, http.StatusOK, viaKey.Code)
 	assert.Equal(t, http.StatusUnauthorized, viaBadKey.Code)
 }
@@ -249,19 +249,18 @@ func TestWriteRoutesRefuseUnauthenticatedCallersAndAWrongKey(t *testing.T) {
 	assert.Equal(t, d, stored)
 }
 
-func TestWriteRoutesNeedTheCSRFTokenForSessionsButNotForKeys(t *testing.T) {
+func TestWriteRoutesNeedTheKeyAndNoCSRFToken(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	d := e.addDownload("movie", 0)
 	sess := e.login()
 	path := "/api/v1/downloads/" + string(d.ID) + "/pause"
 
-	noToken := e.do("POST", path, "", withCookie(sess.cookie))
-	withToken := e.do("POST", path, "", sess.mods()...)
+	viaSession := e.do("POST", path, "", sess.mods()...)
+	viaKey := e.do("POST", path, "", withBearer(e.apiKey()))
 
-	assert.Equal(t, http.StatusForbidden, noToken.Code)
-	assert.Equal(t, "csrf_token_invalid", errorOf(t, noToken))
-	assert.Equal(t, http.StatusOK, withToken.Code)
+	assert.Equal(t, http.StatusUnauthorized, viaSession.Code)
+	assert.Equal(t, http.StatusOK, viaKey.Code)
 }
 
 func patchPath(d core.Download) string { return "/api/v1/downloads/" + string(d.ID) }

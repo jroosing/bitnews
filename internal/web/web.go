@@ -65,7 +65,9 @@ type Server struct {
 	assets *assets
 	head   headAssets
 	mux    *http.ServeMux
-	csrf   func(http.Handler) http.Handler
+	// csrf and authed are auth.CSRF and UIAuth.Middleware answering with
+	// the UI's pages (authFailure).
+	csrf, authed func(http.Handler) http.Handler
 
 	pages  []Page
 	live   liveHub             // the /ui/events streams (queue_events.go)
@@ -103,11 +105,15 @@ func New(deps Deps) (*Server, error) {
 	}
 	s := &Server{
 		Deps: deps, assets: a, head: head, mux: http.NewServeMux(),
-		csrf:   auth.CSRF(deps.Settings.Current),
 		routes: map[string][]string{},
 		// SO_BINDTODEVICE is Linux only (docs/network-binding.md).
 		interfaceBinding: runtime.GOOS == "linux",
 	}
+	fail := func(w http.ResponseWriter, r *http.Request, status int, code, _ string) {
+		s.authFailure(w, r, status, code)
+	}
+	s.csrf = auth.CSRF(deps.Settings.Current, fail)
+	s.authed = deps.UIAuth.Middleware(fail)
 	s.registerRoutes()
 	s.root = secure(http.HandlerFunc(s.dispatch))
 	return s, nil
@@ -150,17 +156,16 @@ func (s *Server) handle(pattern string, h http.Handler) {
 }
 
 // handleOpen registers a route without authentication (login, setup). Unsafe
-// methods still get the CSRF Origin check, and the JSON errors it produces
-// become UI responses.
+// methods still get the cross-origin check.
 func (s *Server) handleOpen(pattern string, h http.HandlerFunc) {
-	s.handle(pattern, formCSRF(s.htmlErrors(s.csrf(h))))
+	s.handle(pattern, s.csrf(h))
 }
 
 // handleAuthed registers a route behind UIAuth and CSRF: a session, or the
 // disable-auth / LAN bypass principal. Unauthenticated requests are
 // redirected to the login page.
 func (s *Server) handleAuthed(pattern string, h http.HandlerFunc) {
-	s.handle(pattern, formCSRF(s.htmlErrors(s.UIAuth.Middleware(s.csrf(h)))))
+	s.handle(pattern, s.authed(s.csrf(h)))
 }
 
 // dispatch routes the request through the mux and answers 405 for a known

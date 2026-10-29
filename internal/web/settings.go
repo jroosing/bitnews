@@ -12,7 +12,6 @@ import (
 	"github.com/a-h/templ"
 
 	"github.com/jroosing/bitnews/internal/app"
-	"github.com/jroosing/bitnews/internal/auth"
 	"github.com/jroosing/bitnews/internal/core"
 )
 
@@ -154,15 +153,6 @@ func (s *Server) renderSettingsPage(w http.ResponseWriter, r *http.Request, stat
 	v := s.newView(r, sec.Title)
 	v.Page = settingsPageFor(settingsSections(), sec, data)
 	s.renderComponent(w, r, status, sec.Component(v, v.Page.(settingsPage)))
-}
-
-// settingsCSRF is the CSRF token of the request's principal, for the hidden
-// _csrf field of forms that also work without JavaScript.
-func settingsCSRF(r *http.Request) string {
-	if p, ok := auth.FromContext(r.Context()); ok {
-		return p.CSRFToken()
-	}
-	return ""
 }
 
 // settingsTrigger sets the HX-Trigger header: a toast (level success, info,

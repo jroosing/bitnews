@@ -91,7 +91,6 @@ type denv struct {
 	torrents *fakeTorrents
 	detail   *fakeDetail
 	b        *browser
-	tok      string
 	n        int
 	root     string
 }
@@ -213,7 +212,7 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 	srv, err := api.New(api.Config{
 		Logger: logger, Downloads: d.svc, Adder: adder, Categories: d.catSvc,
 		Servers:  deps.Servers,
-		Settings: e.settings, Setup: e.setup, Sessions: e.sessions, UIAuth: uiAuth,
+		Settings: e.settings, Setup: e.setup,
 		AppKey: appKey,
 		Bus:    bus, Web: webUI,
 	})
@@ -222,7 +221,6 @@ func newDetailEnv(t *testing.T, opts ...dopt) *denv {
 	d.env = e
 	d.b = e.browser()
 	d.b.login()
-	d.tok = d.b.csrf()
 	return d
 }
 
@@ -282,7 +280,7 @@ func (d *denv) act(path string, form url.Values) *httptest.ResponseRecorder {
 	if form == nil {
 		form = url.Values{}
 	}
-	return d.b.post(path, form, htmx(), header("X-CSRF-Token", d.tok))
+	return d.b.post(path, form, htmx())
 }
 
 // formPart is one part of a multipart upload.
@@ -319,7 +317,6 @@ func (d *denv) postRaw(path, body, contentType string, opts ...reqOpt) *httptest
 	r.Header.Set("Content-Type", contentType)
 	r.Header.Set("Origin", "http://example.com")
 	r.Header.Set("HX-Request", "true")
-	r.Header.Set("X-CSRF-Token", d.tok)
 	for _, o := range opts {
 		o(r)
 	}

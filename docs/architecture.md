@@ -172,7 +172,7 @@ The defaults follow the TRaSH-guides layout:
 
 ## Authentication
 
-- **UI:** session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` behind HTTPS), CSRF token on state-changing requests, login rate limiting with backoff. On first start a setup screen creates the admin; `BITNEWS_ADMIN_PASSWORD_FILE` can bootstrap it instead.
+- **UI:** session cookie (`HttpOnly`, `SameSite=Strict`, `Secure` behind HTTPS), the standard library's cross-origin check on state-changing requests (ADR-0013), login rate limiting with backoff. On first start a setup screen creates the admin; `BITNEWS_ADMIN_PASSWORD_FILE` can bootstrap it instead.
 - **Optional, UI only, off by default:** *disable auth* and *LAN bypass*. LAN bypass takes an explicit CIDR list; `X-Forwarded-For` is honoured only from configured trusted proxies. While LAN bypass is active, the UI shows a permanent warning banner; Settings → Security warns about both options. CSRF and Host-header checks stay on regardless, to block drive-by requests and DNS rebinding.
 - **Adapters and own API:** always authenticated, never bypassed.
   - One app key serves all three ([ADR-0006](adr/0006-simplify-filesystem-permissions-and-api-key.md)): the SAB `apikey` parameter, the qBit password (fixed username `bitnews`) and `Authorization: Bearer` on the own API. Full access, no scopes, rotated from Settings → Security.

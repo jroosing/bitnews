@@ -203,7 +203,6 @@ func TestAccessFormWorksWithoutJavaScript(t *testing.T) {
 	setAuth(t, e, func(a *core.Auth) { a.AllowedHosts = []string{"example.com"} })
 	form := accessForm(false, "192.168.1.0/24")
 	form.Set("confirmed", "1")
-	form.Set("_csrf", b.csrf())
 
 	rec := b.post("/settings/security/access", form)
 
@@ -348,11 +347,11 @@ func TestCancellingAConfirmationReloadsTheCardWithoutChanges(t *testing.T) {
 	assert.Nil(t, byID(doc, "access-confirm"))
 }
 
-func TestSecurityCardsRejectAPostWithoutTheCSRFToken(t *testing.T) {
+func TestSecurityCardsRejectAPostFromAnotherSite(t *testing.T) {
 	_, b := settingsSignedIn(t)
 
 	for _, path := range []string{"/settings/security/access", "/settings/security/hosts"} {
-		rec := b.post(path, url.Values{}, htmx())
+		rec := b.post(path, url.Values{}, htmx(), header("Origin", "https://evil.test"))
 
 		assert.Equal(t, http.StatusForbidden, rec.Code, path)
 	}
@@ -617,11 +616,11 @@ func TestKeyCardAndRotateWorkWhileSignInIsOff(t *testing.T) {
 	assert.NotEmpty(t, e.appKey.Current())
 }
 
-func TestKeyRoutesRejectAPostWithoutTheCSRFToken(t *testing.T) {
+func TestKeyRoutesRejectAPostFromAnotherSite(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	key := e.appKey.Current()
 
-	rec := b.post("/settings/security/app-key", url.Values{"confirmed": {"1"}}, htmx())
+	rec := b.post("/settings/security/app-key", url.Values{"confirmed": {"1"}}, htmx(), header("Sec-Fetch-Site", "cross-site"))
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Equal(t, key, e.appKey.Current())

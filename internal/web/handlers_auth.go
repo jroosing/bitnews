@@ -14,22 +14,11 @@ import (
 	"github.com/jroosing/bitnews/internal/core"
 )
 
-// signedIn reports whether the request already has a principal, without
-// failing the request when it has none. It runs UIAuth against a sink.
+// signedIn reports whether the request already has a principal.
 func (s *Server) signedIn(r *http.Request) bool {
-	found := false
-	s.UIAuth.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
-		found = true
-	})).ServeHTTP(discardWriter{}, r)
-	return found
+	_, ok := s.UIAuth.Principal(r)
+	return ok
 }
-
-// discardWriter drops whatever the probe writes.
-type discardWriter struct{}
-
-func (discardWriter) Header() http.Header         { return http.Header{} }
-func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
-func (discardWriter) WriteHeader(int)             {}
 
 // getRoot is the front door: setup if no admin exists, the queue if signed
 // in, else the login page.

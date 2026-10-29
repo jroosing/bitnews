@@ -77,36 +77,16 @@ func TestPutSettingsRejectsInvalidSettingsListingTheProblems(t *testing.T) {
 	}
 }
 
-func TestPutSettingsThatChangeAuthRequireASessionNotAnAPIKey(t *testing.T) {
+func TestPutSettingsCannotChangeTheAuthSection(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	key := e.apiKey()
-	sess := e.login()
 	openAuth := `{"queues":{"usenet":1,"torrent":5},
 "auth":{"disable_auth":true,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":["example.com"]},
 "paths":{"usenet":{"incomplete":"/a","complete":"/b"},"torrent":{"incomplete":"/c","complete":"/d"}}}`
 
-	byKey := e.do("PUT", "/api/v1/settings", openAuth, withBearer(key))
-	bySession := e.do("PUT", "/api/v1/settings", openAuth, sess.mods()...)
+	byKey := e.do("PUT", "/api/v1/settings", openAuth, withBearer(e.apiKey()))
 
 	require.Equal(t, http.StatusForbidden, byKey.Code, byKey.Body.String())
 	assert.Equal(t, "session_required", errorOf(t, byKey))
-	require.Equal(t, http.StatusOK, bySession.Code, bySession.Body.String())
-	assert.True(t, e.settings.Current().Auth.DisableAuth, "the session's change must apply")
-}
-
-func TestSettingsChangesTakeEffectOnAuthenticationAtOnce(t *testing.T) {
-	t.Parallel()
-	e := newEnv(t)
-	sess := e.login()
-	open := `{"queues":{"usenet":1,"torrent":5},
-"auth":{"disable_auth":true,"lan_bypass_cidrs":[],"trusted_proxies":[],"allowed_hosts":["example.com"]},
-"paths":{"usenet":{"incomplete":"/a","complete":"/b"},"torrent":{"incomplete":"/c","complete":"/d"}}}`
-	require.Equal(t, http.StatusOK, e.do("PUT", "/api/v1/settings", open, sess.mods()...).Code)
-
-	anonymous := e.do("GET", "/api/v1/downloads", "")
-	wrongHost := e.do("GET", "/api/v1/downloads", "", func(r *http.Request) { r.Host = "evil.example" })
-
-	assert.Equal(t, http.StatusOK, anonymous.Code)
-	assert.Equal(t, http.StatusMisdirectedRequest, wrongHost.Code)
+	assert.False(t, e.settings.Current().Auth.DisableAuth, "the auth section is changed in the UI only")
 }

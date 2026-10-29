@@ -465,11 +465,11 @@ func TestAddHostileNamesAreEscapedInTheToastAndForm(t *testing.T) {
 	assert.NotContains(t, rec.Body.String(), "<script>alert")
 }
 
-func TestAddNeedsTheCSRFTokenAndASession(t *testing.T) {
+func TestAddNeedsASessionAndTheSameSite(t *testing.T) {
 	d := newDetailEnv(t)
 	body, ct := multipartBody(t, formPart{name: "file", filename: "a.nzb", value: nzbXML("x")})
 
-	rec := d.postRaw("/downloads/add", body, ct, header("X-CSRF-Token", ""))
+	rec := d.postRaw("/downloads/add", body, ct, header("Sec-Fetch-Site", "cross-site"))
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 
 	rec = d.postRaw("/downloads/add", body, ct, header("Origin", "https://evil.test"))
@@ -489,7 +489,6 @@ func TestAddWithoutHTMXRedirectsToTheNewDownload(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/downloads/add", strings.NewReader(body))
 	r.Header.Set("Content-Type", ct)
 	r.Header.Set("Origin", "http://example.com")
-	r.Header.Set("X-CSRF-Token", d.tok)
 
 	rec := d.b.send(r)
 

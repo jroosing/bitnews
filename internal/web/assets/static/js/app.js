@@ -12,14 +12,6 @@
 
   // ---- htmx wiring (works without Alpine) -------------------------------
 
-  // Every htmx request carries the CSRF token from the <meta> tag.
-  document.addEventListener("htmx:configRequest", function (evt) {
-    var meta = document.querySelector('meta[name="csrf-token"]');
-    if (meta && meta.content) {
-      evt.detail.headers["X-CSRF-Token"] = meta.content;
-    }
-  });
-
   // htmx: a failed request without a server-provided toast gets a generic one.
   document.addEventListener("htmx:sendError", function () {
     toast({ level: "danger", message: "Could not reach the server. Check your connection." });

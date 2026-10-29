@@ -26,13 +26,11 @@ type serversPageData struct {
 
 // serversView is the card with the table of servers.
 type serversView struct {
-	CSRF  string
 	Items []serverRow
 }
 
 // serverRow is one server in the table. It never holds the password.
 type serverRow struct {
-	CSRF                string
 	ID                  string
 	Name                string
 	Host                string
@@ -49,7 +47,6 @@ type serverRow struct {
 
 // serverFormView is the add / edit dialog.
 type serverFormView struct {
-	CSRF string
 	// ID is empty when adding.
 	ID                                                                  string
 	Name, Host, Port, Username, MaxConnections, RetentionDays, Priority string
@@ -106,16 +103,16 @@ func (s *Server) serversViewFor(r *http.Request) (serversView, error) {
 	if err != nil {
 		return serversView{}, err
 	}
-	v := serversView{CSRF: settingsCSRF(r), Items: make([]serverRow, 0, len(servers))}
+	v := serversView{Items: make([]serverRow, 0, len(servers))}
 	for i, srv := range servers {
-		v.Items = append(v.Items, s.serverRowOf(v.CSRF, srv, i == 0, i == len(servers)-1))
+		v.Items = append(v.Items, s.serverRowOf(srv, i == 0, i == len(servers)-1))
 	}
 	return v, nil
 }
 
-func (s *Server) serverRowOf(csrf string, srv core.Server, first, last bool) serverRow {
+func (s *Server) serverRowOf(srv core.Server, first, last bool) serverRow {
 	return serverRow{
-		CSRF: csrf, ID: string(srv.ID), Name: srv.Name, Host: srv.Host, Port: srv.Port,
+		ID: string(srv.ID), Name: srv.Name, Host: srv.Host, Port: srv.Port,
 		MaxConnections: srv.MaxConnections, RetentionDays: srv.RetentionDays, Retention: retentionText(srv.RetentionDays),
 		Priority: srv.Priority, Enabled: srv.Enabled, PasswordUnavailable: srv.PasswordUnavailable, First: first, Last: last,
 	}
@@ -251,9 +248,9 @@ func (in serverInput) nameInvalid() bool {
 }
 
 // formViewOf rebuilds the dialog from what was typed.
-func (in serverInput) formView(csrf, id string, errs map[string]string) serverFormView {
+func (in serverInput) formView(id string, errs map[string]string) serverFormView {
 	return serverFormView{
-		CSRF: csrf, ID: id, Name: in.Name, Host: in.Host, Port: in.Port, Username: in.Username,
+		ID: id, Name: in.Name, Host: in.Host, Port: in.Port, Username: in.Username,
 		MaxConnections: in.MaxConnections, RetentionDays: in.RetentionDays, Priority: in.Priority,
 		Enabled: in.Enabled, Errors: errs,
 	}
@@ -294,7 +291,7 @@ func (s *Server) getServerNew(w http.ResponseWriter, r *http.Request) {
 		priority = max(priority, srv.Priority+1)
 	}
 	s.renderServerForm(w, r, http.StatusOK, serverFormView{
-		CSRF: settingsCSRF(r), Port: strconv.Itoa(core.DefaultServerPort), MaxConnections: "8",
+		Port: strconv.Itoa(core.DefaultServerPort), MaxConnections: "8",
 		RetentionDays: "0", Priority: strconv.Itoa(priority), Enabled: true,
 	})
 }
@@ -308,16 +305,16 @@ func (s *Server) getServerEdit(w http.ResponseWriter, r *http.Request) {
 		s.settingsFail(w, r, "server", err)
 		return
 	}
-	v := serverFormViewOf(settingsCSRF(r), srv)
+	v := serverFormViewOf(srv)
 	if r.URL.Query().Get("reenter") == "1" && srv.PasswordUnavailable {
 		v.Errors = map[string]string{"password": "Enter the password again."}
 	}
 	s.renderServerForm(w, r, http.StatusOK, v)
 }
 
-func serverFormViewOf(csrf string, srv core.Server) serverFormView {
+func serverFormViewOf(srv core.Server) serverFormView {
 	return serverFormView{
-		CSRF: csrf, ID: string(srv.ID), Name: srv.Name, Host: srv.Host, Port: strconv.Itoa(srv.Port), Username: srv.Username,
+		ID: string(srv.ID), Name: srv.Name, Host: srv.Host, Port: strconv.Itoa(srv.Port), Username: srv.Username,
 		MaxConnections: strconv.Itoa(srv.MaxConnections), RetentionDays: strconv.Itoa(srv.RetentionDays),
 		Priority: strconv.Itoa(srv.Priority), Enabled: srv.Enabled,
 		HasPassword: srv.Password.Reveal() != "" || srv.PasswordUnavailable, PasswordUnavailable: srv.PasswordUnavailable,
@@ -369,7 +366,7 @@ func (s *Server) postServerCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	in := serverInputOf(r)
 	spec, errs := in.parse()
-	v := in.formView(settingsCSRF(r), "", errs)
+	v := in.formView("", errs)
 	if len(errs) > 0 {
 		v.Error = "Some fields need fixing. Nothing was saved."
 		s.serverRejected(w, r, v)
@@ -424,7 +421,7 @@ func (s *Server) postServerUpdate(w http.ResponseWriter, r *http.Request) {
 	if stored.PasswordUnavailable && in.Password == "" {
 		errs["password"] = "Enter the password again. The stored one can no longer be read."
 	}
-	v := in.formView(settingsCSRF(r), string(id), errs)
+	v := in.formView(string(id), errs)
 	v.HasPassword, v.PasswordUnavailable = stored.Password.Reveal() != "" || stored.PasswordUnavailable, stored.PasswordUnavailable
 	if len(errs) > 0 {
 		v.Error = "Some fields need fixing. Nothing was saved."

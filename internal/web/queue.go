@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/jroosing/bitnews/internal/app"
-	"github.com/jroosing/bitnews/internal/auth"
 	"github.com/jroosing/bitnews/internal/core"
 	"github.com/jroosing/bitnews/internal/view"
 )
@@ -72,7 +71,6 @@ type queueRow struct {
 type queueRowCtx struct {
 	queueRow
 	Cats []catOption
-	CSRF string
 	// OOB renders the row's live cells for an out-of-band swap.
 	OOB bool
 }
@@ -98,12 +96,10 @@ type queueSection struct {
 	LimitDown, LimitUp     string // text: "5.0 MB/s" or "No limit"
 	LimitDownKB, LimitUpKB int64
 	HasUpLimit             bool
-	CSRF                   string
 }
 
 // queueView is what the queue templates receive.
 type queueView struct {
-	CSRF     string
 	Sections []queueSection
 	// More counts the Downloads left out because of maxQueueRows.
 	More int
@@ -111,27 +107,19 @@ type queueView struct {
 
 // queueData is the Data function of the queue page.
 func queueData(s *Server, r *http.Request) (any, error) {
-	return s.loadQueue(r.Context(), csrfOf(r))
-}
-
-// csrfOf is the CSRF token of the request's principal.
-func csrfOf(r *http.Request) string {
-	if p, ok := auth.FromContext(r.Context()); ok {
-		return p.CSRFToken()
-	}
-	return ""
+	return s.loadQueue(r.Context())
 }
 
 // loadQueue reads the Downloads and the runtime state and builds the view.
-func (s *Server) loadQueue(ctx context.Context, csrf string) (*queueView, error) {
+func (s *Server) loadQueue(ctx context.Context) (*queueView, error) {
 	cats, names, err := s.categoryOptions(ctx)
 	if err != nil {
 		return nil, err
 	}
-	v := &queueView{CSRF: csrf}
+	v := &queueView{}
 	left := maxQueueRows
 	for _, kind := range []core.SourceKind{core.SourceNZB, core.SourceTorrent} {
-		sec := s.newSection(kind, csrf)
+		sec := s.newSection(kind)
 		views, err := s.queueViews(ctx, kind)
 		if err != nil {
 			return nil, err
@@ -145,7 +133,7 @@ func (s *Server) loadQueue(ctx context.Context, csrf string) (*queueView, error)
 				continue
 			}
 			left--
-			sec.Rows = append(sec.Rows, queueRowCtx{queueRow: newQueueRow(dv, names[dv.Download.CategoryID]), Cats: cats, CSRF: csrf})
+			sec.Rows = append(sec.Rows, queueRowCtx{queueRow: newQueueRow(dv, names[dv.Download.CategoryID]), Cats: cats})
 		}
 		markEnds(sec.Rows)
 		v.Sections = append(v.Sections, sec)
@@ -226,8 +214,8 @@ func (s *Server) queueViews(ctx context.Context, kind core.SourceKind) ([]view.V
 }
 
 // newSection builds the card header state of one Queue.
-func (s *Server) newSection(kind core.SourceKind, csrf string) queueSection {
-	sec := queueSection{CSRF: csrf}
+func (s *Server) newSection(kind core.SourceKind) queueSection {
+	sec := queueSection{}
 	switch kind {
 	case core.SourceTorrent:
 		sec.Kind, sec.Title, sec.Subtitle = "torrent", "Torrents", "Magnet links and .torrent files. Finished torrents that keep seeding are in the history."
@@ -338,7 +326,7 @@ func (s *Server) getQueueFragment(w http.ResponseWriter, r *http.Request) {
 
 // renderQueueLists writes the two Queues as a fragment.
 func (s *Server) renderQueueLists(w http.ResponseWriter, r *http.Request, status int) {
-	data, err := s.loadQueue(r.Context(), csrfOf(r))
+	data, err := s.loadQueue(r.Context())
 	if err != nil {
 		s.Logger.Error("queue fragment failed", "err", err)
 		s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "bitnews could not load the queue. Details are in the server log.")

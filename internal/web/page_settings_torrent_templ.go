@@ -236,7 +236,7 @@ func TorrentConnectionCard(v connectionView) templ.Component {
 		templ_7745c5c3_Err = SettingsForm(SettingsFormProps{
 			ID: "connection", Action: "/settings/torrent", Title: "Connection",
 			Subtitle: "How other torrent users find and talk to bitnews.",
-			CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save connection",
+			Error:    v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save connection",
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var5), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -450,7 +450,7 @@ func TorrentBindingCard(v bindingView) templ.Component {
 		templ_7745c5c3_Err = SettingsForm(SettingsFormProps{
 			ID: "binding", Action: "/settings/torrent/binding", Title: "Network binding",
 			Subtitle: "Keep Usenet or torrent traffic on your VPN. If the VPN goes down, that traffic stops instead of using your normal connection.",
-			CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save binding",
+			Error:    v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save binding",
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var15), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -526,7 +526,7 @@ func TorrentSeedingCard(v seedingView) templ.Component {
 		templ_7745c5c3_Err = SettingsForm(SettingsFormProps{
 			ID: "seeding", Action: "/settings/torrent/seeding", Title: "Share Limit defaults",
 			Subtitle: "When bitnews stops seeding a finished torrent. Changes apply right away.",
-			CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save defaults",
+			Error:    v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save defaults",
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var17), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

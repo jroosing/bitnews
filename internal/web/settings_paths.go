@@ -23,7 +23,6 @@ type pathsPageData struct {
 
 // pathsView is the "Download folders" card.
 type pathsView struct {
-	CSRF   string
 	Groups []pathsGroup
 	// Error is a problem that belongs to no single field.
 	Error string
@@ -60,9 +59,9 @@ var pathsGroupDefs = []struct{ key, title, summary, protocol string }{
 
 // pathsViewFrom builds the card for the given folders. The Errors map is
 // keyed by form field name.
-func pathsViewFrom(csrf string, paths core.Paths, errs map[string]string) pathsView {
+func pathsViewFrom(paths core.Paths, errs map[string]string) pathsView {
 	roots := map[string]core.Roots{"usenet": paths.Usenet, "torrent": paths.Torrent}
-	v := pathsView{CSRF: csrf}
+	v := pathsView{}
 	for _, d := range pathsGroupDefs {
 		r := roots[d.key]
 		v.Groups = append(v.Groups, pathsGroup{
@@ -147,7 +146,7 @@ var pathsCard = &settingsCard{
 		for _, name := range pathsFields {
 			typed[name] = strings.TrimSpace(v.V[name])
 		}
-		pv := pathsViewFrom(v.CSRF, pathsOf(typed), v.E)
+		pv := pathsViewFrom(pathsOf(typed), v.E)
 		pv.Error, pv.Dirty, pv.Saved = v.Error, v.Dirty, v.Saved
 		return pv
 	},

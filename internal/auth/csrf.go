@@ -1,10 +1,6 @@
 package auth
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"net"
 	"net/http"
 	"net/url"
@@ -13,52 +9,26 @@ import (
 	"github.com/jroosing/bitnews/internal/core"
 )
 
-// CSRFHeader carries the synchronizer token on state-changing requests.
-const CSRFHeader = "X-CSRF-Token"
-
-const csrfContext = "bitnews-csrf-v1"
-
-// CSRFToken derives the synchronizer token of a session:
-// hex(HMAC-SHA256(key = session token, message = "bitnews-csrf-v1")).
-// Deriving it needs no storage, only the session token, which the server
-// sees in the cookie. A page on another origin can neither read it (same
-// origin policy) nor compute it (it never sees the cookie).
-func CSRFToken(sessionToken string) string {
-	mac := hmac.New(sha256.New, []byte(sessionToken))
-	mac.Write([]byte(csrfContext))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
 // CSRF returns middleware that protects state-changing requests (anything but
-// GET, HEAD and OPTIONS) from cross-site forgery. Mount it after the
-// authentication middleware.
+// GET, HEAD and OPTIONS) from cross-site forgery with the standard library's
+// http.CrossOriginProtection (CheckOrigin). A browser says where a request
+// comes from (Sec-Fetch-Site, or else Origin against Host); one from another
+// site is refused unless it comes from one of the allowed hosts. A request
+// with neither header (a script, curl) passes: it carries no credential a
+// hostile page could make the browser send. An API-key request is exempt: its
+// credential is not ambient. Mount it after the authentication middleware.
 //
-//   - The Origin header, if present, must name the request's own Host or one
-//     of the allowed_hosts. "null" and malformed values are refused.
-//   - A request authenticated by cookie, LAN bypass or disable-auth must also
-//     send the principal's token in X-CSRF-Token.
-//   - An API-key request is exempt from both: its credential is not ambient.
-//   - A request with no principal (login) gets only the Origin check.
-//
-// Failures are 403.
-func CSRF(settings func() core.Settings) func(http.Handler) http.Handler {
+// Failures are 403 csrf_origin_invalid, answered by fail (nil: JSON).
+func CSRF(settings func() core.Settings, fail Failure) func(http.Handler) http.Handler {
+	fail = orJSON(fail)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if safeMethod(r.Method) {
+			if p, ok := FromContext(r.Context()); ok && !p.ambient() {
 				next.ServeHTTP(w, r)
 				return
 			}
-			p, hasPrincipal := FromContext(r.Context())
-			if hasPrincipal && !p.ambient() {
-				next.ServeHTTP(w, r)
-				return
-			}
-			if !originAllowed(r.Header.Values("Origin"), r.Host, settings().Auth.AllowedHosts) {
-				writeError(w, http.StatusForbidden, "csrf_origin_invalid", "the Origin header does not match this server")
-				return
-			}
-			if hasPrincipal && !tokenMatches(r.Header.Get(CSRFHeader), p.csrf) {
-				writeError(w, http.StatusForbidden, "csrf_token_invalid", "the X-CSRF-Token header is missing or wrong")
+			if err := CheckOrigin(r, settings().Auth.AllowedHosts); err != nil {
+				fail(w, r, http.StatusForbidden, "csrf_origin_invalid", "the request comes from another site")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -66,36 +36,19 @@ func CSRF(settings func() core.Settings) func(http.Handler) http.Handler {
 	}
 }
 
-func safeMethod(m string) bool {
-	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
-}
-
-// tokenMatches compares in constant time. An empty expected token never
-// matches, so a principal built without one cannot be satisfied by an
-// empty header.
-func tokenMatches(got, want string) bool {
-	return want != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
-}
-
-// originAllowed applies the Origin rule: absent is fine (non-browser or
-// same-origin GET-like request); present must be one origin whose host is the
-// request's Host or an allowed host.
-func originAllowed(origins []string, requestHost string, allowedHosts []string) bool {
-	switch len(origins) {
-	case 0:
-		return true
-	case 1:
-	default:
-		return false
+// CheckOrigin is the cross-origin rule of bitnews: a request from a page
+// under one of the allowed hosts (any scheme of http and https, any port)
+// passes; otherwise the standard library's http.CrossOriginProtection
+// decides, which lets same-origin requests and requests without Origin and
+// Sec-Fetch-Site through and refuses the rest of the unsafe ones.
+func CheckOrigin(r *http.Request, allowedHosts []string) error {
+	if o := r.Header.Get("Origin"); o != "" {
+		u, err := url.Parse(o)
+		if err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.User == nil && hostInList(u.Host, allowedHosts) {
+			return nil
+		}
 	}
-	u, err := url.Parse(origins[0])
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
-		return false
-	}
-	if strings.EqualFold(u.Host, requestHost) {
-		return true
-	}
-	return hostInList(u.Host, allowedHosts)
+	return http.NewCrossOriginProtection().Check(r)
 }
 
 // hostInList reports whether host (a Host header value, port ignored) is in

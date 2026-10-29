@@ -34,8 +34,6 @@ type Config struct {
 	Servers    *app.ServerService
 	Settings   *app.SettingsService
 	Setup      *auth.Setup
-	Sessions   *auth.SessionService
-	UIAuth     *auth.UIAuth
 	// AppKey is the one key that authenticates the own API (Bearer), SABnzbd
 	// and qBittorrent.
 	AppKey *auth.AppKeyService
@@ -92,7 +90,7 @@ type Server struct {
 // New builds the Server and its routes.
 func New(cfg Config) (*Server, error) {
 	if cfg.Downloads == nil || cfg.Adder == nil || cfg.Categories == nil || cfg.Servers == nil || cfg.Settings == nil || cfg.Setup == nil ||
-		cfg.Sessions == nil || cfg.UIAuth == nil || cfg.AppKey == nil || cfg.Bus == nil {
+		cfg.AppKey == nil || cfg.Bus == nil {
 		return nil, errors.New("api: Config is missing a service")
 	}
 	if cfg.Logger == nil {

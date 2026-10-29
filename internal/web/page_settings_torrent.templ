@@ -20,7 +20,7 @@ templ TorrentConnectionCard(v connectionView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "connection", Action: "/settings/torrent", Title: "Connection",
 		Subtitle: "How other torrent users find and talk to bitnews.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save connection",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save connection",
 	}) {
 		if v.Restart {
 			@Alert(AlertProps{Variant: AlertInfo, ID: "connection-restart", Title: "Saved, waiting for a restart", Body: "Your changes are saved. Restart bitnews to start using them."})
@@ -113,7 +113,7 @@ templ TorrentBindingCard(v bindingView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "binding", Action: "/settings/torrent/binding", Title: "Network binding",
 		Subtitle: "Keep Usenet or torrent traffic on your VPN. If the VPN goes down, that traffic stops instead of using your normal connection.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save binding",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save binding",
 	}) {
 		if v.Restart {
 			@Alert(AlertProps{Variant: AlertInfo, ID: "binding-restart", Title: "Saved, waiting for a restart", Body: "Your changes are saved. Restart bitnews to start using them."})
@@ -131,7 +131,7 @@ templ TorrentSeedingCard(v seedingView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "seeding", Action: "/settings/torrent/seeding", Title: "Share Limit defaults",
 		Subtitle: "When bitnews stops seeding a finished torrent. Changes apply right away.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save defaults",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save defaults",
 	}) {
 		<p class="text-sm text-fg-muted">A Share Limit is a ratio (how much you uploaded compared to the torrent size) or a seeding time. These are the defaults: a single torrent, or Sonarr and Radarr, can set its own, which wins. With both fields empty, bitnews never stops seeding on its own.</p>
 		<div class="grid gap-4 sm:grid-cols-2">

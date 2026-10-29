@@ -13,7 +13,6 @@ import (
 
 // categoriesView is the "Categories" card: the table and the add form.
 type categoriesView struct {
-	CSRF  string
 	Items []categoryRow
 	// The add form: what was typed and what was wrong with it.
 	Name, Dir           string
@@ -23,7 +22,6 @@ type categoriesView struct {
 
 // categoryRow is one row of the table, read-only or being edited.
 type categoryRow struct {
-	CSRF  string
 	ID    string
 	Name  string
 	Dir   string // the override; empty means the default folder
@@ -42,10 +40,9 @@ func (s *Server) categoriesViewFor(r *http.Request, base categoriesView) (catego
 	if err != nil {
 		return categoriesView{}, err
 	}
-	base.CSRF = settingsCSRF(r)
 	base.Items = make([]categoryRow, 0, len(cats))
 	for _, c := range cats {
-		base.Items = append(base.Items, categoryRow{CSRF: base.CSRF, ID: string(c.ID), Name: c.Name, Dir: c.DirOverride})
+		base.Items = append(base.Items, categoryRow{ID: string(c.ID), Name: c.Name, Dir: c.DirOverride})
 	}
 	return base, nil
 }
@@ -86,7 +83,7 @@ func (s *Server) respondCategories(w http.ResponseWriter, r *http.Request, statu
 		s.renderComponent(w, r, status, CategoriesCard(v))
 		return
 	}
-	d := pathsPageData{Paths: pathsViewFrom(settingsCSRF(r), s.Settings.Current().Paths, nil), Categories: v}
+	d := pathsPageData{Paths: pathsViewFrom(s.Settings.Current().Paths, nil), Categories: v}
 	s.renderSettingsPage(w, r, status, "paths", d)
 }
 
@@ -136,7 +133,7 @@ func (s *Server) findCategory(r *http.Request) (categoryRow, bool, error) {
 	id := core.ID(r.PathValue("id"))
 	for _, c := range cats {
 		if c.ID == id {
-			return categoryRow{CSRF: settingsCSRF(r), ID: string(c.ID), Name: c.Name, Dir: c.DirOverride}, true, nil
+			return categoryRow{ID: string(c.ID), Name: c.Name, Dir: c.DirOverride}, true, nil
 		}
 	}
 	return categoryRow{}, false, nil

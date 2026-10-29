@@ -229,7 +229,7 @@ func PostprocessingNamesCard(v cardView) templ.Component {
 		templ_7745c5c3_Err = SettingsForm(SettingsFormProps{
 			ID: "postprocessing", Action: "/settings/postprocessing", Title: "Tidy names",
 			Subtitle: "Two optional clean-ups for NZB downloads. Both are off until you turn them on.",
-			CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save options",
+			Error:    v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save options",
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var10), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

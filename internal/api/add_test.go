@@ -414,7 +414,7 @@ func TestAddRejectsOtherContentTypesWith415(t *testing.T) {
 	assert.Empty(t, leftovers(t, root))
 }
 
-func TestAddNeedsTheKeyOrASessionWithCSRF(t *testing.T) {
+func TestAddNeedsTheKey(t *testing.T) {
 	t.Parallel()
 	e, root := newAddEnv(t)
 	sess := e.login()
@@ -422,13 +422,12 @@ func TestAddNeedsTheKeyOrASessionWithCSRF(t *testing.T) {
 	ctMod := withHeader("Content-Type", ct)
 
 	anonymous := e.do("POST", "/api/v1/downloads", body, ctMod)
-	noToken := e.do("POST", "/api/v1/downloads", body, withCookie(sess.cookie), ctMod)
-	withToken := e.do("POST", "/api/v1/downloads", body, append(sess.mods(), ctMod)...)
+	viaSession := e.do("POST", "/api/v1/downloads", body, append(sess.mods(), ctMod)...)
+	viaKey := e.do("POST", "/api/v1/downloads", body, withBearer(e.apiKey()), ctMod)
 
 	assert.Equal(t, http.StatusUnauthorized, anonymous.Code)
-	assert.Equal(t, http.StatusForbidden, noToken.Code)
-	assert.Equal(t, "csrf_token_invalid", errorOf(t, noToken))
-	assert.Equal(t, http.StatusCreated, withToken.Code, withToken.Body.String())
+	assert.Equal(t, http.StatusUnauthorized, viaSession.Code)
+	assert.Equal(t, http.StatusCreated, viaKey.Code, viaKey.Body.String())
 	assert.Len(t, leftovers(t, root), 2, "only the accepted request left a download dir")
 }
 

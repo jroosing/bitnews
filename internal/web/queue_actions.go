@@ -126,7 +126,7 @@ func (s *Server) answerLists(w http.ResponseWriter, r *http.Request, toast strin
 // is not in the queue any more (it finished meanwhile) answers an empty row,
 // which removes it, and asks for a refresh of the lists.
 func (s *Server) answerRow(w http.ResponseWriter, r *http.Request, id core.ID) {
-	v, err := s.loadQueue(r.Context(), csrfOf(r))
+	v, err := s.loadQueue(r.Context())
 	if err != nil {
 		s.Logger.Error("queue row failed", "err", err)
 		s.queueError(w, r, err)

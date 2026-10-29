@@ -2,10 +2,8 @@ package qbit
 
 import (
 	"mime"
-	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"strings"
 
 	"github.com/jroosing/bitnews/internal/auth"
@@ -126,51 +124,9 @@ func (c *call) logout() {
 	c.ok()
 }
 
-// sameOrigin applies the CSRF rule of qBittorrent: when the request carries
-// an Origin or a Referer it must name this host (or an allowed host). Media
-// managers send neither, so absent headers pass.
+// sameOrigin is the CSRF rule of the adapter: a browser request must come
+// from this origin or an allowed host (auth.CheckOrigin). Media managers send
+// neither Origin nor Sec-Fetch-Site, so they pass.
 func (h *handler) sameOrigin(r *http.Request) bool {
-	origins, referers := r.Header.Values("Origin"), r.Header.Values("Referer")
-	if len(origins) > 1 || len(referers) > 1 {
-		return false
-	}
-	allowed := h.Settings.Current().Auth.AllowedHosts
-	for _, v := range append(origins, referers...) {
-		if strings.TrimSpace(v) == "" {
-			continue
-		}
-		u, err := url.Parse(strings.TrimSpace(v))
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
-			return false
-		}
-		if !strings.EqualFold(u.Host, r.Host) && !hostListed(u.Host, allowed) {
-			return false
-		}
-	}
-	return true
-}
-
-func hostListed(host string, list []string) bool {
-	h := hostOnly(host)
-	if h == "" {
-		return false
-	}
-	for _, e := range list {
-		if hostOnly(e) == h {
-			return true
-		}
-	}
-	return false
-}
-
-// hostOnly lowercases a host[:port] value and strips the port, the brackets
-// of an IPv6 literal and a trailing dot.
-func hostOnly(hostport string) string {
-	h := strings.TrimSpace(hostport)
-	if host, _, err := net.SplitHostPort(h); err == nil {
-		h = host
-	} else {
-		h = strings.TrimSuffix(strings.TrimPrefix(h, "["), "]")
-	}
-	return strings.TrimSuffix(strings.ToLower(h), ".")
+	return auth.CheckOrigin(r, h.Settings.Current().Auth.AllowedHosts) == nil
 }

@@ -9,7 +9,6 @@ import (
 
 // Routes the gate lets through while setup is open.
 const (
-	setupPath  = "/api/v1/setup"
 	healthPath = "/api/v1/health"
 	staticPath = "/static/"
 
@@ -22,8 +21,7 @@ const (
 )
 
 // Gate wraps next so that, while first-run setup is open, every request gets
-// 503 setup_required except POST /api/v1/setup, GET /api/v1/health, static
-// assets and the web UI's setup pages (GET / and GET /login, which redirect
+// 503 setup_required except GET /api/v1/health, static assets and the web UI's setup pages (GET / and GET /login, which redirect
 // to /setup, and GET and POST /setup). Once setup is done it costs one atomic load per request and never
 // queries the database.
 func Gate(next http.Handler, setup *Setup) http.Handler {
@@ -40,8 +38,6 @@ func Gate(next http.Handler, setup *Setup) http.Handler {
 func setupExempt(r *http.Request) bool {
 	p := r.URL.Path
 	switch {
-	case p == setupPath:
-		return r.Method == http.MethodPost
 	case p == healthPath:
 		return r.Method == http.MethodGet
 	case p == rootPath, p == loginPagePath:

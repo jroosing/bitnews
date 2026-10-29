@@ -304,7 +304,6 @@ templ ShareCard(p detailPage) {
 				{ Hx{Post: "/downloads/" + p.ID + "/share-limit", Target: "#share-card", Swap: "outerHTML"}.MustAttrs()... }
 				class="card-body space-y-4"
 			>
-				@CSRFField(p.CSRF)
 				if p.Torrent.Form.Error != "" {
 					<div class="alert alert-danger" role="alert">
 						@Icon(IconError, "mt-0.5 size-5 shrink-0")
@@ -400,7 +399,6 @@ templ detailRemove(p detailPage) {
 				data-confirm-label="Remove"
 				data-confirm-tone="danger"
 			>
-				@CSRFField(p.CSRF)
 				<input type="hidden" name="delete_data" value="0"/>
 				<input type="hidden" name="from" value="detail"/>
 				<button type="submit" class="btn btn-secondary">
@@ -420,7 +418,6 @@ templ detailRemove(p detailPage) {
 				data-confirm-label="Delete files"
 				data-confirm-tone="danger"
 			>
-				@CSRFField(p.CSRF)
 				<input type="hidden" name="delete_data" value="1"/>
 				<input type="hidden" name="from" value="detail"/>
 				<button type="submit" class="btn btn-danger">

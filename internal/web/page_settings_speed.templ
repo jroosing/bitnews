@@ -20,7 +20,7 @@ templ SpeedLimitsCard(v cardView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "speed", Action: "/settings/speed", Title: "Speed limits",
 		Subtitle: "Keep bitnews from using your whole connection. Changes apply right away.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save limits",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save limits",
 	}) {
 		<p class="text-sm text-fg-muted">Limits are in KB/s (1000 KB/s is about 1 MB/s, or 8 Mbit/s). Leave a field empty for no limit.</p>
 		<fieldset class="min-w-0 rounded-xl border border-line px-4 pt-2 pb-4">
@@ -54,7 +54,7 @@ templ SpeedQueueCard(v cardView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "queue", Action: "/settings/speed/queue", Title: "Downloads at the same time",
 		Subtitle: "How many downloads each queue works on at once. The rest wait their turn.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save queue sizes",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save queue sizes",
 	}) {
 		if v.Restart {
 			@Alert(AlertProps{Variant: AlertInfo, ID: "queue-restart", Title: "Saved, waiting for a restart", Body: "The post-processing change is saved. Restart bitnews to start using it."})
@@ -74,7 +74,7 @@ templ SpeedSpaceCard(v cardView) {
 	@SettingsForm(SettingsFormProps{
 		ID: "space", Action: "/settings/speed/space", Title: "Free space",
 		Subtitle: "How much room bitnews leaves on the disk. Changes apply right away.",
-		CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save free space",
+		Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save free space",
 	}) {
 		<div class="grid gap-4 sm:grid-cols-2">
 			@Field(FieldProps{

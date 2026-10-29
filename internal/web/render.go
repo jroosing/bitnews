@@ -17,7 +17,6 @@ import (
 type View struct {
 	Title    string
 	Path     string
-	CSRF     string // the session's CSRF token; empty for anonymous pages
 	AuthMode string // "session", "bypass", "disabled" or "" (anonymous page)
 	Username string
 	Version  string
@@ -44,7 +43,6 @@ type NavItem struct {
 
 // UserMenu is what the "user_menu" partial renders.
 type UserMenu struct {
-	CSRF       string
 	Initial    string
 	UserLabel  string
 	ModeLabel  string
@@ -52,15 +50,13 @@ type UserMenu struct {
 }
 
 // newView builds the layout data for a request. The principal (if the
-// request went through UIAuth) decides the menu, banner and CSRF token.
+// request went through UIAuth) decides the menu and banner.
 func (s *Server) newView(r *http.Request, title string) *View {
 	v := &View{Title: title, Path: r.URL.Path, Version: s.Version, Head: &s.head}
 	menu := UserMenu{}
 	if p, ok := auth.FromContext(r.Context()); ok {
-		v.CSRF = p.CSRFToken()
 		v.AuthMode = p.AuthMode()
 		v.Username = p.Username
-		menu.CSRF = v.CSRF
 		switch p.Kind {
 		case auth.PrincipalSession:
 			menu.UserLabel, menu.ModeLabel, menu.CanSignOut = p.Username, "Signed in", true

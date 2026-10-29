@@ -164,10 +164,9 @@ func TestLogoutEndsTheSessionAndClearsTheCookie(t *testing.T) {
 	e := newEnv(t)
 	b := e.browser()
 	b.login()
-	csrf := b.csrf()
 	old := b.cookies[auth.SessionCookieName].Value
 
-	rec := b.post("/logout", url.Values{"_csrf": {csrf}})
+	rec := b.post("/logout", url.Values{})
 
 	assert.Equal(t, http.StatusSeeOther, rec.Code)
 	assert.Equal(t, "/login", location(rec))
@@ -177,26 +176,25 @@ func TestLogoutEndsTheSessionAndClearsTheCookie(t *testing.T) {
 	assert.Equal(t, http.StatusSeeOther, stale.get("/queue").Code, "the old session is dead server-side")
 }
 
-func TestLogoutWithoutACSRFTokenIsRefused(t *testing.T) {
+func TestLogoutFromAnotherSiteIsRefused(t *testing.T) {
 	e := newEnv(t)
 	b := e.browser()
 	b.login()
 
-	for _, form := range []url.Values{{}, {"_csrf": {"wrong"}}} {
-		rec := b.post("/logout", form)
+	for _, h := range []reqOpt{header("Origin", "https://evil.test"), header("Sec-Fetch-Site", "cross-site")} {
+		rec := b.post("/logout", url.Values{}, h)
 
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 		assert.NotNil(t, b.cookies[auth.SessionCookieName], "still signed in")
 	}
 }
 
-func TestLogoutAcceptsTheTokenInTheHeaderForHTMX(t *testing.T) {
+func TestLogoutWithHTMXRedirectsTheBrowser(t *testing.T) {
 	e := newEnv(t)
 	b := e.browser()
 	b.login()
-	csrf := b.csrf()
 
-	rec := b.post("/logout", url.Values{}, htmx(), header(auth.CSRFHeader, csrf))
+	rec := b.post("/logout", url.Values{}, htmx(), header("Sec-Fetch-Site", "same-origin"))
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, "/login", rec.Header().Get("HX-Redirect"))
@@ -207,7 +205,7 @@ func TestCSRFFailureForHTMXIsAToastNotAPage(t *testing.T) {
 	b := e.browser()
 	b.login()
 
-	rec := b.post("/logout", url.Values{}, htmx())
+	rec := b.post("/logout", url.Values{}, htmx(), header("Origin", "https://evil.test"))
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Header().Get("HX-Trigger"), `"toast"`)

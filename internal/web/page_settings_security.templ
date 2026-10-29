@@ -136,7 +136,6 @@ templ SecurityConfirm(c *confirmView) {
 				action={ templ.URL(c.Action) }
 				{ Hx{Post: c.Action, Target: "#" + c.ID + "-card", Swap: "outerHTML", DisabledElt: "find button[type='submit']"}.MustAttrs()... }
 			>
-				@CSRFField(c.CSRF)
 				for _, f := range c.Fields {
 					<input type="hidden" name={ f.Name } value={ f.Value }/>
 				}
@@ -170,7 +169,7 @@ templ SecurityAccessCard(v accessView) {
 	if v.Confirm != nil {
 		@SecurityConfirm(v.Confirm)
 	} else {
-		@SettingsForm(SettingsFormProps{ID: "access", Action: "/settings/security/access", Title: "Sign-in", Subtitle: "Normally everyone has to sign in. These two options let some people skip that. Both are risky, so think twice.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save sign-in options"}) {
+		@SettingsForm(SettingsFormProps{ID: "access", Action: "/settings/security/access", Title: "Sign-in", Subtitle: "Normally everyone has to sign in. These two options let some people skip that. Both are risky, so think twice.", Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save sign-in options"}) {
 			if v.NoHosts {
 				@Alert(AlertProps{Variant: AlertInfo, Title: "Add an allowed host first", Body: "Both options need at least one allowed host (see “Allowed hosts and trusted proxies” below). Without one they cannot be turned on."})
 			}
@@ -199,7 +198,7 @@ templ SecurityHostsCard(v hostsView) {
 	if v.Confirm != nil {
 		@SecurityConfirm(v.Confirm)
 	} else {
-		@SettingsForm(SettingsFormProps{ID: "hosts", Action: "/settings/security/hosts", Title: "Allowed hosts and trusted proxies", Subtitle: "Which addresses bitnews answers to, and which proxies it believes.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save hosts and proxies"}) {
+		@SettingsForm(SettingsFormProps{ID: "hosts", Action: "/settings/security/hosts", Title: "Allowed hosts and trusted proxies", Subtitle: "Which addresses bitnews answers to, and which proxies it believes.", Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save hosts and proxies"}) {
 			<div class="space-y-3">
 				<h3 class="text-sm font-semibold text-fg">Allowed hosts</h3>
 				<div class="alert alert-warn">
@@ -247,7 +246,7 @@ templ SecurityPasswordCard(v passwordView) {
 			</div>
 		</section>
 	} else {
-		@SettingsForm(SettingsFormProps{ID: "password", Action: "/settings/security/password", Title: "Password", Subtitle: "Change the password you sign in with. Your other browsers are signed out when you do.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Change password"}) {
+		@SettingsForm(SettingsFormProps{ID: "password", Action: "/settings/security/password", Title: "Password", Subtitle: "Change the password you sign in with. Your other browsers are signed out when you do.", Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Change password"}) {
 			@Field(FieldProps{ID: "password-current", Name: "current_password", Label: "Current password", Type: FieldPassword, Autocomplete: "current-password", Required: true, Error: v.Errors["current_password"]})
 			<div class="grid gap-4 sm:grid-cols-2">
 				@Field(FieldProps{ID: "password-new", Name: "new_password", Label: "New password", Type: FieldPassword, Autocomplete: "new-password", Required: true, Help: "At least 12 characters.", Error: v.Errors["new_password"]})
@@ -315,7 +314,6 @@ templ SecurityAppKeyCard(v appKeyView) {
 				<footer class="card-footer justify-between">
 					<p class="text-sm text-fg-muted">Rotating makes a new key. Every client stops working until you update it.</p>
 					<form method="post" action="/settings/security/app-key" hx-post="/settings/security/app-key" hx-target="#appkey-card" hx-swap="outerHTML" hx-disabled-elt="find button[type='submit']">
-						@CSRFField(v.CSRF)
 						<button type="submit" class="btn btn-secondary">
 							<span class="btn-spinner" aria-hidden="true"></span>
 							@Icon(IconRefresh, "size-4 shrink-0")

@@ -192,7 +192,6 @@ type confirmView struct {
 	Bullets []string
 	Fields  []confirmField
 	Label   string
-	CSRF    string
 	// Cancel is where the Cancel link leads without JavaScript.
 	Cancel string
 }

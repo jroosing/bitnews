@@ -38,7 +38,6 @@ func TestSpeedPageShowsTheSavedLimitsInLabelledGroups(t *testing.T) {
 	assert.Equal(t, "post", attr(form, "method"))
 	assert.Equal(t, "/settings/speed", attr(form, "action"))
 	assert.Equal(t, "/settings/speed", attr(form, "hx-post"))
-	assert.NotNil(t, find(form, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "_csrf" }), "works without JavaScript")
 	legends := findAll(form, func(n *html.Node) bool { return n.Data == "legend" })
 	require.Len(t, legends, 3)
 	assert.Equal(t, "Overall", text(legends[0]))
@@ -152,7 +151,6 @@ func TestUsenetHasNoUploadLimitField(t *testing.T) {
 func TestSpeedPlainFormPostRendersThePageAgain(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	form := speedLimitsForm("usenet_down_kbps", "300")
-	form.Set("_csrf", b.csrf())
 
 	rec := b.post("/settings/speed", form)
 

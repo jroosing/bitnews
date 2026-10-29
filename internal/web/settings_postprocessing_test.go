@@ -33,7 +33,6 @@ func TestPostProcessingPageShowsBothSwitchesOffByDefault(t *testing.T) {
 	assert.Equal(t, "post", attr(form, "method"))
 	assert.Equal(t, "/settings/postprocessing", attr(form, "action"))
 	assert.Equal(t, "/settings/postprocessing", attr(form, "hx-post"))
-	assert.NotNil(t, find(form, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "_csrf" }), "works without JavaScript")
 	for _, id := range []string{"clean-names", "underscores-to-dots"} {
 		in := byID(doc, id)
 		require.NotNil(t, in, id)
@@ -139,7 +138,6 @@ func TestSavingOneSwitchOffKeepsTheOtherOn(t *testing.T) {
 func TestPostProcessingPlainFormPostRendersThePageAgain(t *testing.T) {
 	e, b := settingsSignedIn(t)
 	form := postprocessingForm("clean_names")
-	form.Set("_csrf", b.csrf())
 
 	rec := b.post("/settings/postprocessing", form)
 
@@ -150,10 +148,10 @@ func TestPostProcessingPlainFormPostRendersThePageAgain(t *testing.T) {
 	assert.True(t, e.settings.Current().PostProcess.CleanNames)
 }
 
-func TestPostProcessingPostNeedsTheCSRFToken(t *testing.T) {
+func TestPostProcessingPostFromAnotherSiteIsRefused(t *testing.T) {
 	e, b := settingsSignedIn(t)
 
-	rec := b.post("/settings/postprocessing", postprocessingForm("clean_names"))
+	rec := b.post("/settings/postprocessing", postprocessingForm("clean_names"), header("Origin", "https://evil.test"))
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.False(t, e.settings.Current().PostProcess.CleanNames)
@@ -178,7 +176,6 @@ func addPostProcessingResponses(t *testing.T, out map[string]*httptest.ResponseR
 	_, b := settingsSignedIn(t)
 	out["POST /settings/postprocessing (saved)"] = b.settingsPost("/settings/postprocessing", postprocessingForm("clean_names"))
 	plain := postprocessingForm("underscores_to_dots")
-	plain.Set("_csrf", b.csrf())
 	out["POST /settings/postprocessing (plain form)"] = b.post("/settings/postprocessing", plain)
 	out["GET /settings/postprocessing (saved)"] = b.get("/settings/postprocessing")
 }

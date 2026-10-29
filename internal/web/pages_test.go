@@ -83,9 +83,6 @@ func TestLayoutHasLandmarksSkipLinkNavAndTheMetaTags(t *testing.T) {
 	assert.Len(t, findAll(doc, func(n *html.Node) bool { return n.Data == "h1" }), 1, "one h1")
 	assert.Equal(t, "History", text(find(doc, func(n *html.Node) bool { return n.Data == "h1" })))
 
-	csrf := find(doc, func(n *html.Node) bool { return n.Data == "meta" && attr(n, "name") == "csrf-token" })
-	require.NotNil(t, csrf)
-	assert.Len(t, attr(csrf, "content"), 64)
 	cfg := find(doc, func(n *html.Node) bool { return n.Data == "meta" && attr(n, "name") == "htmx-config" })
 	require.NotNil(t, cfg)
 	for _, want := range []string{`"allowEval":false`, `"allowScriptTags":false`, `"selfRequestsOnly":true`, `"includeIndicatorStyles":false`} {
@@ -124,9 +121,6 @@ func TestUserMenuShowsTheUserAndASignOutForm(t *testing.T) {
 	form := find(doc, func(n *html.Node) bool { return n.Data == "form" && attr(n, "action") == "/logout" })
 	require.NotNil(t, form)
 	assert.Equal(t, "post", attr(form, "method"))
-	hidden := find(form, func(n *html.Node) bool { return n.Data == "input" && attr(n, "name") == "_csrf" })
-	require.NotNil(t, hidden)
-	assert.Equal(t, b.csrf(), attr(hidden, "value"))
 	assert.Contains(t, text(doc), "admin")
 }
 
@@ -188,8 +182,6 @@ func TestBypassPrincipalsGetPagesButNoSignOut(t *testing.T) {
 	doc := parseHTML(t, b.get("/queue").Body.String())
 
 	assert.Nil(t, find(doc, func(n *html.Node) bool { return n.Data == "form" && attr(n, "action") == "/logout" }))
-	csrf := find(doc, func(n *html.Node) bool { return n.Data == "meta" && attr(n, "name") == "csrf-token" })
-	require.NotNil(t, csrf, "CSRF still applies")
 	assert.Equal(t, "/queue", location(b.get("/login")), "no login page when nobody needs to log in")
 }
 

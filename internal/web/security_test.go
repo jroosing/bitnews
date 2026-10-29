@@ -57,7 +57,7 @@ func renderEverything(t *testing.T) map[string]*httptest.ResponseRecorder {
 	for _, page := range appPages {
 		out["GET "+page] = b.get(page)
 	}
-	out["403 csrf (signed in)"] = b.post("/logout", url.Values{})
+	out["403 cross-site (signed in)"] = b.post("/logout", url.Values{}, header("Origin", "https://evil.test"))
 	addSettingsResponses(t, out)
 	addQueueResponses(t, out)
 

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"testing"
 )
@@ -30,8 +31,9 @@ func FuzzClientIP(f *testing.F) {
 }
 
 // FuzzCSRFOrigin feeds hostile Origin, Host and allowed_hosts values to the
-// Origin check. It must not panic, and an absent Origin is always fine while
-// "null" never is.
+// cross-origin check. It must not panic, a request without Origin and
+// Sec-Fetch-Site is always fine, and a cross-site one never is unless its
+// origin is trusted.
 func FuzzCSRFOrigin(f *testing.F) {
 	f.Add("https://bitnews.lan", "bitnews.lan", "bitnews.lan")
 	f.Add("null", "example.test", "")
@@ -39,13 +41,19 @@ func FuzzCSRFOrigin(f *testing.F) {
 	f.Add("https://user@x", "x", "x")
 	f.Add("%zz://", "", "\x00")
 	f.Fuzz(func(t *testing.T, origin, host, allowed string) {
-		if originAllowed(nil, host, []string{allowed}) != true {
-			t.Fatal("absent Origin must be allowed")
+		list := []string{allowed}
+		r := httptest.NewRequest("POST", "http://example.test/", nil)
+		r.Host = host
+		if err := CheckOrigin(r, list); err != nil {
+			t.Fatalf("a request without Origin or Sec-Fetch-Site must pass: %v", err)
 		}
-		if originAllowed([]string{"null"}, host, []string{allowed, "null"}) {
-			t.Fatal("null Origin must be refused")
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+		r.Header.Set("Origin", "https://evil.invalid")
+		if CheckOrigin(r, list) == nil && !hostInList("evil.invalid", list) {
+			t.Fatal("a cross-site request must be refused")
 		}
-		_ = originAllowed([]string{origin}, host, []string{allowed})
+		r.Header.Set("Origin", origin)
+		_ = CheckOrigin(r, list)
 		_ = hostInList(host, []string{allowed})
 	})
 }

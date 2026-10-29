@@ -58,7 +58,6 @@ type BindingStatus struct {
 // cardView is what every card template sees, alone or embedded in a larger
 // view.
 type cardView struct {
-	CSRF string
 	// Error is a problem that belongs to no single field.
 	Error string
 	// Dirty starts the form unsaved (after a failed save); Saved is the
@@ -114,7 +113,7 @@ type cardViews map[string]any
 
 // cardViewFor builds the view of a card from the Settings.
 func (s *Server) cardViewFor(r *http.Request, c *settingsCard, cur core.Settings) any {
-	v := cardView{CSRF: settingsCSRF(r), V: c.values(cur), E: map[string]string{}}
+	v := cardView{V: c.values(cur), E: map[string]string{}}
 	return s.finishCard(c, v, cur)
 }
 
@@ -175,7 +174,7 @@ func (s *Server) postCard(cards []*settingsCard, c *settingsCard) http.HandlerFu
 		})
 		if err != nil {
 			cur := s.Settings.Current()
-			v := cardView{CSRF: settingsCSRF(r), V: form, E: map[string]string{}, Dirty: true}
+			v := cardView{V: form, E: map[string]string{}, Dirty: true}
 			switch ae, ok := settingsAppError(err); {
 			case errors.Is(err, errFieldsInvalid):
 				v.E, v.Error = errs, cmp.Or(c.invalid, "Some values need fixing. Nothing was saved.")
@@ -191,7 +190,7 @@ func (s *Server) postCard(cards []*settingsCard, c *settingsCard) http.HandlerFu
 		if c.afterSave != nil {
 			c.afterSave(s)
 		}
-		v := cardView{CSRF: settingsCSRF(r), V: c.values(next), E: map[string]string{}}
+		v := cardView{V: c.values(next), E: map[string]string{}}
 		view := s.finishCard(c, v, next)
 		if isHTMX(r) {
 			level, msg := "success", c.saved

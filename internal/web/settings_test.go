@@ -31,7 +31,7 @@ func settingsSignedIn(t *testing.T, opts ...envOption) (*env, *browser) {
 // settingsPost sends an htmx form post carrying the CSRF header, like app.js does.
 func (b *browser) settingsPost(target string, form url.Values, extra ...reqOpt) *httptest.ResponseRecorder {
 	b.e.t.Helper()
-	opts := append([]reqOpt{htmx(), header("X-CSRF-Token", b.csrf())}, extra...)
+	opts := append([]reqOpt{htmx()}, extra...)
 	return b.post(target, form, opts...)
 }
 
@@ -42,7 +42,6 @@ func (b *browser) settingsDo(method, target string, form url.Values) *httptest.R
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Origin", "http://example.com")
 	r.Header.Set("HX-Request", "true")
-	r.Header.Set("X-CSRF-Token", b.csrf())
 	return b.send(r)
 }
 
@@ -160,7 +159,6 @@ func addSettingsResponses(t *testing.T, out map[string]*httptest.ResponseRecorde
 	bad.Set("usenet_complete", "relative")
 	out["POST /settings/paths (invalid)"] = b.settingsPost("/settings/paths", bad)
 	good := pathsForm(t)
-	good.Set("_csrf", b.csrf())
 	out["POST /settings/paths (plain form)"] = b.post("/settings/paths", good)
 	out["POST /settings/categories (invalid)"] = b.settingsPost("/settings/categories", url.Values{"name": {"BAD"}})
 	out["GET category edit row"] = b.settingsDo("GET", "/settings/categories/"+string(cat.ID)+"/edit", nil)

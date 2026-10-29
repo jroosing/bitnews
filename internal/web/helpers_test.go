@@ -219,8 +219,6 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 		Servers:    serverSvc,
 		Settings:   e.settings,
 		Setup:      e.setup,
-		Sessions:   e.sessions,
-		UIAuth:     uiAuth,
 		AppKey:     appKey,
 		Bus:        bus,
 		SABnzbd: sabnzbd.New(sabnzbd.Deps{
@@ -306,17 +304,6 @@ func (b *browser) login() {
 	rec := b.post("/login", url.Values{"username": {"admin"}, "password": {adminPassword}})
 	require.Equal(b.e.t, http.StatusSeeOther, rec.Code, rec.Body.String())
 	require.NotNil(b.e.t, b.cookies[auth.SessionCookieName])
-}
-
-// csrf reads the CSRF token from the meta tag of a signed-in page.
-func (b *browser) csrf() string {
-	b.e.t.Helper()
-	rec := b.get("/queue")
-	require.Equal(b.e.t, http.StatusOK, rec.Code)
-	doc := parseHTML(b.e.t, rec.Body.String())
-	meta := find(doc, func(n *html.Node) bool { return n.Data == "meta" && attr(n, "name") == "csrf-token" })
-	require.NotNil(b.e.t, meta, "no csrf-token meta tag")
-	return attr(meta, "content")
 }
 
 func location(rec *httptest.ResponseRecorder) string { return rec.Header().Get("Location") }

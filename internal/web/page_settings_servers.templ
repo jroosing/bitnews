@@ -151,7 +151,6 @@ templ ServerForm(v serverFormView) {
 		class="p-6"
 		novalidate
 	>
-		@CSRFField(v.CSRF)
 		if v.ID != "" {
 			<input type="hidden" name="server_id" value={ v.ID }/>
 		}

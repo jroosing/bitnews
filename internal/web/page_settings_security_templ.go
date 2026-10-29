@@ -715,10 +715,6 @@ func SecurityConfirm(c *confirmView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = CSRFField(c.CSRF).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
 		for _, f := range c.Fields {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<input type=\"hidden\" name=\"")
 			if templ_7745c5c3_Err != nil {
@@ -727,7 +723,7 @@ func SecurityConfirm(c *confirmView) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Name).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 141, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 140, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 			if templ_7745c5c3_Err != nil {
@@ -740,7 +736,7 @@ func SecurityConfirm(c *confirmView) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.Value).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 141, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 140, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 			if templ_7745c5c3_Err != nil {
@@ -766,7 +762,7 @@ func SecurityConfirm(c *confirmView) templ.Component {
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(c.Heading)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 147, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 146, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
@@ -784,7 +780,7 @@ func SecurityConfirm(c *confirmView) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(b)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 150, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 149, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -810,7 +806,7 @@ func SecurityConfirm(c *confirmView) templ.Component {
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.URL(c.Cancel)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 157, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 156, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 			if templ_7745c5c3_Err != nil {
@@ -841,7 +837,7 @@ func SecurityConfirm(c *confirmView) templ.Component {
 		var templ_7745c5c3_Var42 string
 		templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 160, Col: 15}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 159, Col: 15}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 		if templ_7745c5c3_Err != nil {
@@ -935,7 +931,7 @@ func SecurityAccessCard(v accessView) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = SettingsForm(SettingsFormProps{ID: "access", Action: "/settings/security/access", Title: "Sign-in", Subtitle: "Normally everyone has to sign in. These two options let some people skip that. Both are risky, so think twice.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save sign-in options"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var44), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = SettingsForm(SettingsFormProps{ID: "access", Action: "/settings/security/access", Title: "Sign-in", Subtitle: "Normally everyone has to sign in. These two options let some people skip that. Both are risky, so think twice.", Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save sign-in options"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var44), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -995,7 +991,7 @@ func SecurityHostsCard(v hostsView) templ.Component {
 				var templ_7745c5c3_Var47 string
 				templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs("The addresses people type to open bitnews, such as ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 208, Col: 61}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 207, Col: 61}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 				if templ_7745c5c3_Err != nil {
@@ -1008,7 +1004,7 @@ func SecurityHostsCard(v hostsView) templ.Component {
 				var templ_7745c5c3_Var48 string
 				templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(" or ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 210, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 209, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 				if templ_7745c5c3_Err != nil {
@@ -1021,7 +1017,7 @@ func SecurityHostsCard(v hostsView) templ.Component {
 				var templ_7745c5c3_Var49 string
 				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(". While sign-in is skipped for anyone, bitnews refuses requests for any other name, which stops websites from tricking your browser into talking to it. ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 212, Col: 162}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 211, Col: 162}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 				if templ_7745c5c3_Err != nil {
@@ -1072,7 +1068,7 @@ func SecurityHostsCard(v hostsView) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = SettingsForm(SettingsFormProps{ID: "hosts", Action: "/settings/security/hosts", Title: "Allowed hosts and trusted proxies", Subtitle: "Which addresses bitnews answers to, and which proxies it believes.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save hosts and proxies"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var46), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = SettingsForm(SettingsFormProps{ID: "hosts", Action: "/settings/security/hosts", Title: "Allowed hosts and trusted proxies", Subtitle: "Which addresses bitnews answers to, and which proxies it believes.", Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save hosts and proxies"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var46), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1148,7 +1144,7 @@ func SecurityPasswordCard(v passwordView) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = SettingsForm(SettingsFormProps{ID: "password", Action: "/settings/security/password", Title: "Password", Subtitle: "Change the password you sign in with. Your other browsers are signed out when you do.", CSRF: v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Change password"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var51), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = SettingsForm(SettingsFormProps{ID: "password", Action: "/settings/security/password", Title: "Password", Subtitle: "Change the password you sign in with. Your other browsers are signed out when you do.", Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Change password"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var51), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1189,7 +1185,7 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 			var templ_7745c5c3_Var53 string
 			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs("One key for everything that talks to bitnews: Sonarr and Radarr (as a SABnzbd or qBittorrent download client) and your own scripts (")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 271, Col: 142}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 270, Col: 142}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 			if templ_7745c5c3_Err != nil {
@@ -1202,7 +1198,7 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 			var templ_7745c5c3_Var54 string
 			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs("). Anyone who has it can control bitnews, so treat it like a password.")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 273, Col: 80}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 272, Col: 80}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 			if templ_7745c5c3_Err != nil {
@@ -1233,7 +1229,7 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 				var templ_7745c5c3_Var55 string
 				templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(v.Key)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 286, Col: 190}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 285, Col: 190}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 				if templ_7745c5c3_Err != nil {
@@ -1274,7 +1270,7 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 				var templ_7745c5c3_Var56 string
 				templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs("SABnzbd needs the URL base ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 301, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 300, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 				if templ_7745c5c3_Err != nil {
@@ -1287,7 +1283,7 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 				var templ_7745c5c3_Var57 string
 				templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs("; leave the URL base empty for qBittorrent. ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 303, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 302, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 				if templ_7745c5c3_Err != nil {
@@ -1320,7 +1316,7 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 					var templ_7745c5c3_Var58 string
 					templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs("You opened bitnews as “" + v.Host + "”. If your media manager runs on another machine or in a container, use this machine's network address or name instead.")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 311, Col: 209}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 310, Col: 209}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 					if templ_7745c5c3_Err != nil {
@@ -1331,15 +1327,7 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</div></div><footer class=\"card-footer justify-between\"><p class=\"text-sm text-fg-muted\">Rotating makes a new key. Every client stops working until you update it.</p><form method=\"post\" action=\"/settings/security/app-key\" hx-post=\"/settings/security/app-key\" hx-target=\"#appkey-card\" hx-swap=\"outerHTML\" hx-disabled-elt=\"find button[type='submit']\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = CSRFField(v.CSRF).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<button type=\"submit\" class=\"btn btn-secondary\"><span class=\"btn-spinner\" aria-hidden=\"true\"></span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</div></div><footer class=\"card-footer justify-between\"><p class=\"text-sm text-fg-muted\">Rotating makes a new key. Every client stops working until you update it.</p><form method=\"post\" action=\"/settings/security/app-key\" hx-post=\"/settings/security/app-key\" hx-target=\"#appkey-card\" hx-swap=\"outerHTML\" hx-disabled-elt=\"find button[type='submit']\"><button type=\"submit\" class=\"btn btn-secondary\"><span class=\"btn-spinner\" aria-hidden=\"true\"></span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1347,12 +1335,12 @@ func SecurityAppKeyCard(v appKeyView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, " Rotate key</button></form></footer>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, " Rotate key</button></form></footer>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "</section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "</section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1378,33 +1366,33 @@ func appKeyValue(label, value string) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "<div><dt class=\"text-xs font-medium text-fg-muted\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<div><dt class=\"text-xs font-medium text-fg-muted\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var60 string
 		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 333, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 331, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "</dt><dd class=\"mt-1 flex flex-wrap items-center gap-2\"><code class=\"min-w-0 flex-1 select-all break-all rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "</dt><dd class=\"mt-1 flex flex-wrap items-center gap-2\"><code class=\"min-w-0 flex-1 select-all break-all rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var61 string
 		templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 335, Col: 127}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `page_settings_security.templ`, Line: 333, Col: 127}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "</code>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "</code>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1412,7 +1400,7 @@ func appKeyValue(label, value string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "</dd></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "</dd></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

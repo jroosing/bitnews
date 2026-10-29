@@ -44,7 +44,8 @@ func TestGateBlocksEverythingWith503SetupRequiredWhileSetupIsOpen(t *testing.T) 
 		{"PUT", "/setup"},
 		{"GET", "/api/v1/downloads"},
 		{"POST", "/api/v1/auth/login"},
-		{"GET", "/api/v1/setup"},   // only POST is exempt
+		{"GET", "/api/v1/setup"}, // the JSON setup route is gone
+		{"POST", "/api/v1/setup"},
 		{"POST", "/api/v1/health"}, // only GET is exempt
 		{"GET", "/api/v1/setup/extra"},
 		{"POST", "/api/v1/setup/"},
@@ -75,7 +76,6 @@ func TestGateLetsSetupHealthAndStaticAssetsThroughWhileSetupIsOpen(t *testing.T)
 	h := auth.Gate(okHandler, s)
 
 	for _, tc := range []struct{ method, target string }{
-		{"POST", "/api/v1/setup"},
 		{"GET", "/api/v1/health"},
 		{"GET", "/static/app.js"},
 		{"GET", "/static/assets/css/app.css"},

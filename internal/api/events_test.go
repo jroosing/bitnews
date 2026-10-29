@@ -165,15 +165,13 @@ func TestEventStreamStartsWithHelloCarryingTheInstanceID(t *testing.T) {
 	assert.Equal(t, "instance-1", hello.json(t)["instance_id"])
 }
 
-func TestEventStreamAcceptsASessionCookie(t *testing.T) {
+func TestEventStreamRefusesASessionCookie(t *testing.T) {
 	e := newEnv(t)
-	base, _ := start(t, e)
 	sess := e.login()
 
-	c := connectSSE(t, base, withCookie(sess.cookie))
+	rec := e.do("GET", "/api/v1/events", "", withCookie(sess.cookie))
 
-	hello, _ := c.next(t)
-	assert.Equal(t, "hello", hello.Name)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code, "the UI has its own stream; the API takes the key only")
 }
 
 func TestEventStreamDeliversEventsPublishedAfterConnecting(t *testing.T) {

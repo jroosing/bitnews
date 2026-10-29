@@ -39,7 +39,7 @@ func newUIEnv(t *testing.T) *uiEnv {
 		}
 		w.WriteHeader(http.StatusTeapot)
 	})
-	e.handler = e.ui.Middleware(auth.CSRF(getSettings)(inner))
+	e.handler = e.ui.Middleware(nil)(auth.CSRF(getSettings, nil)(inner))
 	return e
 }
 
@@ -51,7 +51,7 @@ func (e *uiEnv) login(t *testing.T) string {
 }
 
 type uiReq struct {
-	method, host, remote, xff, cookie, csrf, origin string
+	method, host, remote, xff, cookie, origin string
 }
 
 func (e *uiEnv) do(q uiReq) *httptest.ResponseRecorder {
@@ -73,9 +73,6 @@ func (e *uiEnv) do(q uiReq) *httptest.ResponseRecorder {
 	}
 	if q.cookie != "" {
 		r.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: q.cookie})
-	}
-	if q.csrf != "" {
-		r.Header.Set("X-CSRF-Token", q.csrf)
 	}
 	if q.origin != "" {
 		r.Header.Set("Origin", q.origin)
@@ -105,16 +102,6 @@ func TestUIAuthAcceptsAValidSessionCookie(t *testing.T) {
 	assert.Equal(t, auth.PrincipalSession, e.seen.Kind)
 	assert.Equal(t, e.user.ID, e.seen.UserID)
 	assert.Equal(t, "admin", e.seen.Username)
-}
-
-func TestPrincipalCSRFTokenIsTheSessionsSynchronizerToken(t *testing.T) {
-	e := newUIEnv(t)
-	token := e.login(t)
-
-	e.do(uiReq{cookie: token})
-
-	require.NotNil(t, e.seen)
-	assert.Equal(t, auth.CSRFToken(token), e.seen.CSRFToken())
 }
 
 func TestUIAuthRejectsMissingOrInvalidCookieWith401(t *testing.T) {
@@ -261,11 +248,9 @@ func TestUIAuthRunsCSRFChecksForSessionRequests(t *testing.T) {
 	e := newUIEnv(t)
 	token := e.login(t)
 
-	missing := e.do(uiReq{method: "POST", cookie: token})
-	ok := e.do(uiReq{method: "POST", cookie: token, csrf: auth.CSRFToken(token)})
-	foreign := e.do(uiReq{method: "POST", cookie: token, csrf: auth.CSRFToken(token), origin: "https://evil.test"})
+	ok := e.do(uiReq{method: "POST", cookie: token})
+	foreign := e.do(uiReq{method: "POST", cookie: token, origin: "https://evil.test"})
 
-	assert.Equal(t, http.StatusForbidden, missing.Code)
 	assert.Equal(t, http.StatusTeapot, ok.Code)
 	assert.Equal(t, http.StatusForbidden, foreign.Code)
 }
@@ -273,83 +258,11 @@ func TestUIAuthRunsCSRFChecksForSessionRequests(t *testing.T) {
 func TestUIAuthKeepsCSRFEnforcedUnderDisableAuth(t *testing.T) {
 	e := newUIEnv(t)
 	e.settings.Auth = core.Auth{DisableAuth: true, AllowedHosts: []string{"bitnews.lan"}}
-	info := e.sessionInfo(t, uiReq{host: "bitnews.lan"})
+	ok := e.do(uiReq{method: "POST", host: "bitnews.lan"})
+	foreign := e.do(uiReq{method: "POST", host: "bitnews.lan", origin: "https://evil.test"})
 
-	missing := e.do(uiReq{method: "POST", host: "bitnews.lan"})
-	ok := e.do(uiReq{method: "POST", host: "bitnews.lan", csrf: info.CSRFToken})
-	foreign := e.do(uiReq{method: "POST", host: "bitnews.lan", csrf: info.CSRFToken, origin: "https://evil.test"})
-
-	assert.Equal(t, http.StatusForbidden, missing.Code)
 	assert.Equal(t, http.StatusTeapot, ok.Code)
 	assert.Equal(t, http.StatusForbidden, foreign.Code)
-}
-
-type sessionInfoBody struct {
-	AuthMode  string `json:"auth_mode"`
-	CSRFToken string `json:"csrf_token"`
-	User      *struct {
-		ID       string `json:"id"`
-		Username string `json:"username"`
-	} `json:"user"`
-}
-
-// sessionInfo calls the session info handler behind the same middleware.
-func (e *uiEnv) sessionInfo(t *testing.T, q uiReq) sessionInfoBody {
-	t.Helper()
-	h := e.ui.Middleware(e.ui.SessionInfo())
-	r := httptest.NewRequest("GET", "http://bitnews.lan/api/v1/auth/session", nil)
-	r.Host = q.host
-	r.RemoteAddr = "203.0.113.50:5555"
-	if q.cookie != "" {
-		r.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: q.cookie})
-	}
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, r)
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-	var body sessionInfoBody
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	return body
-}
-
-func TestSessionInfoReportsUserCSRFTokenAndSessionMode(t *testing.T) {
-	e := newUIEnv(t)
-	token := e.login(t)
-
-	body := e.sessionInfo(t, uiReq{cookie: token})
-
-	assert.Equal(t, "session", body.AuthMode)
-	assert.Equal(t, auth.CSRFToken(token), body.CSRFToken)
-	require.NotNil(t, body.User)
-	assert.Equal(t, "admin", body.User.Username)
-	assert.Equal(t, string(e.user.ID), body.User.ID)
-}
-
-func TestSessionInfoReportsDisabledAndBypassModesWithoutAUser(t *testing.T) {
-	e := newUIEnv(t)
-	e.settings.Auth = core.Auth{DisableAuth: true, AllowedHosts: []string{"bitnews.lan"}}
-	disabled := e.sessionInfo(t, uiReq{host: "bitnews.lan"})
-
-	e.settings.Auth = core.Auth{LANBypassCIDRs: []string{"203.0.113.0/24"}, AllowedHosts: []string{"bitnews.lan"}}
-	bypass := e.sessionInfo(t, uiReq{host: "bitnews.lan"})
-
-	assert.Equal(t, "disabled", disabled.AuthMode)
-	assert.Equal(t, "bypass", bypass.AuthMode)
-	assert.Nil(t, disabled.User)
-	assert.Len(t, disabled.CSRFToken, 64)
-	assert.Equal(t, disabled.CSRFToken, bypass.CSRFToken, "one anonymous token per process")
-}
-
-func TestSessionInfoRejectsAPIKeyPrincipals(t *testing.T) {
-	e := newUIEnv(t)
-	h := e.ui.SessionInfo()
-	r := httptest.NewRequest("GET", "/api/v1/auth/session", nil)
-	r = r.WithContext(auth.ContextWithPrincipal(r.Context(), auth.Principal{Kind: auth.PrincipalAPIKey}))
-	rec := httptest.NewRecorder()
-
-	h.ServeHTTP(rec, r)
-
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 func cookieOf(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {

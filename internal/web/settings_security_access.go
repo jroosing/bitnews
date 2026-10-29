@@ -13,7 +13,6 @@ import (
 
 // accessView is the "Sign-in" card: disable auth and LAN bypass.
 type accessView struct {
-	CSRF        string
 	DisableAuth bool
 	// LAN is the textarea: one network per line.
 	LAN string
@@ -30,7 +29,6 @@ type accessView struct {
 
 // hostsView is the "Allowed hosts and trusted proxies" card.
 type hostsView struct {
-	CSRF                         string
 	AllowedHosts, TrustedProxies string
 	Errors                       map[string]string
 	Error                        string
@@ -49,7 +47,7 @@ func bypassOn(a core.Auth) bool { return a.DisableAuth || len(a.LANBypassCIDRs) 
 func (s *Server) accessViewFor(r *http.Request) accessView {
 	a := s.Settings.Current().Auth
 	return accessView{
-		CSRF: settingsCSRF(r), DisableAuth: a.DisableAuth, LAN: lines(a.LANBypassCIDRs),
+		DisableAuth: a.DisableAuth, LAN: lines(a.LANBypassCIDRs),
 		NoHosts: len(a.AllowedHosts) == 0,
 	}
 }
@@ -57,7 +55,7 @@ func (s *Server) accessViewFor(r *http.Request) accessView {
 func (s *Server) hostsViewFor(r *http.Request) hostsView {
 	a := s.Settings.Current().Auth
 	return hostsView{
-		CSRF: settingsCSRF(r), AllowedHosts: lines(a.AllowedHosts), TrustedProxies: lines(a.TrustedProxies),
+		AllowedHosts: lines(a.AllowedHosts), TrustedProxies: lines(a.TrustedProxies),
 		BypassOn: bypassOn(a), YourHost: r.Host,
 	}
 }
@@ -203,7 +201,7 @@ func (s *Server) accessConfirm(r *http.Request, disable, newlyOff bool, nets, ne
 	c := &confirmView{
 		ID: "access", Action: "/settings/security/access", Title: "Sign-in",
 		Heading: "Check this before you turn it on", Label: "Yes, apply this change",
-		CSRF: settingsCSRF(r), Cancel: "/settings/security",
+		Cancel: "/settings/security",
 	}
 	if newlyOff {
 		c.Bullets = append(c.Bullets,
@@ -377,7 +375,7 @@ func (s *Server) hostsConfirm(r *http.Request, hosts, proxies, newProxies []stri
 	c := &confirmView{
 		ID: "hosts", Action: "/settings/security/hosts", Title: "Allowed hosts and trusted proxies",
 		Heading: "Check this before you trust a proxy", Label: "Yes, trust these proxies",
-		CSRF: settingsCSRF(r), Cancel: "/settings/security",
+		Cancel: "/settings/security",
 	}
 	c.Bullets = append(c.Bullets, "bitnews will believe the X-Forwarded-For header of requests that come from "+strings.Join(newProxies, ", ")+" and treat the address in it as the visitor's address.")
 	if bypass {

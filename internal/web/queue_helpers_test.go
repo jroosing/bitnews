@@ -174,7 +174,6 @@ type qenv struct {
 	ticks      *fakeTicks
 	server     *web.Server
 	b          *browser
-	tok        string // CSRF token of b
 	n          int
 }
 
@@ -263,8 +262,6 @@ func newQueueEnv(t *testing.T, opts ...qopt) *qenv {
 		Servers:    serverSvc,
 		Settings:   e.settings,
 		Setup:      e.setup,
-		Sessions:   e.sessions,
-		UIAuth:     uiAuth,
 		AppKey:     appKey,
 		Bus:        q.bus,
 		Web:        q.server,
@@ -274,7 +271,6 @@ func newQueueEnv(t *testing.T, opts ...qopt) *qenv {
 	q.env = e
 	q.b = e.browser()
 	q.b.login()
-	q.tok = q.b.csrf()
 	return q
 }
 
@@ -322,7 +318,7 @@ func (q *qenv) act(path string, form url.Values) *httptest.ResponseRecorder {
 	if form == nil {
 		form = url.Values{}
 	}
-	return q.b.post(path, form, htmx(), header("X-CSRF-Token", q.tok))
+	return q.b.post(path, form, htmx())
 }
 
 // ---- server-sent events -------------------------------------------------

@@ -154,7 +154,7 @@ func SpeedLimitsCard(v cardView) templ.Component {
 		templ_7745c5c3_Err = SettingsForm(SettingsFormProps{
 			ID: "speed", Action: "/settings/speed", Title: "Speed limits",
 			Subtitle: "Keep bitnews from using your whole connection. Changes apply right away.",
-			CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save limits",
+			Error:    v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save limits",
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var5), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -228,7 +228,7 @@ func SpeedQueueCard(v cardView) templ.Component {
 		templ_7745c5c3_Err = SettingsForm(SettingsFormProps{
 			ID: "queue", Action: "/settings/speed/queue", Title: "Downloads at the same time",
 			Subtitle: "How many downloads each queue works on at once. The rest wait their turn.",
-			CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save queue sizes",
+			Error:    v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save queue sizes",
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var7), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -288,7 +288,7 @@ func SpeedSpaceCard(v cardView) templ.Component {
 		templ_7745c5c3_Err = SettingsForm(SettingsFormProps{
 			ID: "space", Action: "/settings/speed/space", Title: "Free space",
 			Subtitle: "How much room bitnews leaves on the disk. Changes apply right away.",
-			CSRF:     v.CSRF, Error: v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save free space",
+			Error:    v.Error, Saved: v.Saved, Dirty: v.Dirty, Label: "Save free space",
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var9), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

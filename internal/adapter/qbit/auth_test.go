@@ -298,7 +298,7 @@ func TestLoginRefusesAHugeBody(t *testing.T) {
 	assert.Contains(t, []int{http.StatusOK, http.StatusRequestEntityTooLarge, http.StatusBadRequest}, rec.Code)
 }
 
-func TestCSRFAMismatchingOriginOrRefererIsRefusedAndAbsentOnesAreFine(t *testing.T) {
+func TestCSRFACrossSiteRequestIsRefusedAndOneWithoutHeadersIsFine(t *testing.T) {
 	t.Parallel()
 	s := newStack(t)
 	sid := s.login()
@@ -311,17 +311,11 @@ func TestCSRFAMismatchingOriginOrRefererIsRefusedAndAbsentOnesAreFine(t *testing
 
 	assert.Equal(t, http.StatusOK, post(func(*http.Request) {}).Code, "Sonarr sends neither header")
 	assert.Equal(t, http.StatusOK, post(func(r *http.Request) { r.Header.Set("Origin", "http://"+r.Host) }).Code)
-	assert.Equal(t, http.StatusOK, post(func(r *http.Request) { r.Header.Set("Referer", "http://"+r.Host+"/index.html") }).Code)
+	assert.Equal(t, http.StatusOK, post(func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "same-origin") }).Code)
 	for name, mod := range map[string]func(*http.Request){
-		"origin":      func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") },
-		"null origin": func(r *http.Request) { r.Header.Set("Origin", "null") },
-		"referer":     func(r *http.Request) { r.Header.Set("Referer", "https://evil.example/x") },
-		"bad referer": func(r *http.Request) { r.Header.Set("Referer", "::not a url") },
-		"two origins": func(r *http.Request) { r.Header["Origin"] = []string{"http://" + r.Host, "http://" + r.Host} },
-		"ok origin bad referer": func(r *http.Request) {
-			r.Header.Set("Origin", "http://"+r.Host)
-			r.Header.Set("Referer", "https://evil.example/")
-		},
+		"origin":         func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") },
+		"null origin":    func(r *http.Request) { r.Header.Set("Origin", "null") },
+		"sec-fetch-site": func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") },
 	} {
 		rec := post(mod)
 

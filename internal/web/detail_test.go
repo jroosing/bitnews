@@ -301,7 +301,7 @@ func TestRemoveWorksAsAPlainFormPost(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{})
 
-	rec := d.b.post("/downloads/"+string(dl.ID)+"/delete", url.Values{"_csrf": {d.tok}, "delete_data": {"0"}})
+	rec := d.b.post("/downloads/"+string(dl.ID)+"/delete", url.Values{"delete_data": {"0"}})
 
 	assert.Equal(t, http.StatusSeeOther, rec.Code)
 	assert.Equal(t, "/history", location(rec))
@@ -337,16 +337,16 @@ func TestRemoveUnknownAndMalformedIDs(t *testing.T) {
 	}
 }
 
-func TestRemoveNeedsTheCSRFToken(t *testing.T) {
+func TestRemoveFromAnotherSiteIsRefused(t *testing.T) {
 	d := newDetailEnv(t)
 	dl := d.add(core.Download{})
 
-	rec := d.b.post("/downloads/"+string(dl.ID)+"/delete", url.Values{}, htmx())
+	rec := d.b.post("/downloads/"+string(dl.ID)+"/delete", url.Values{}, htmx(), header("Sec-Fetch-Site", "cross-site"))
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	_, err := d.get(dl.ID)
 	assert.NoError(t, err)
-	rec = d.b.post("/downloads/"+string(dl.ID)+"/delete", url.Values{}, htmx(), header("X-CSRF-Token", d.tok), header("Origin", "https://evil.test"))
+	rec = d.b.post("/downloads/"+string(dl.ID)+"/delete", url.Values{}, htmx(), header("Origin", "https://evil.test"))
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
@@ -429,7 +429,7 @@ func TestShareLimitPlainPostRedirectsBackToTheDetailPage(t *testing.T) {
 	dl := d.add(core.Download{SourceKind: core.SourceTorrent})
 	d.live.set(dl.ID, view.Live{Torrent: &view.TorrentLive{}})
 
-	rec := d.b.post("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"_csrf": {d.tok}, "mode": {"default"}})
+	rec := d.b.post("/downloads/"+string(dl.ID)+"/share-limit", url.Values{"mode": {"default"}})
 
 	assert.Equal(t, http.StatusSeeOther, rec.Code)
 	assert.Equal(t, "/downloads/"+string(dl.ID), location(rec))

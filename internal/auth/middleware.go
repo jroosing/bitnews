@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -13,8 +12,7 @@ import (
 // SessionCookieName is the cookie that carries the session token.
 const SessionCookieName = "bitnews_session"
 
-// UIAuth authenticates requests to the UI routes: the HTML pages and the
-// own-API calls the UI makes with its session cookie.
+// UIAuth authenticates requests to the UI routes (internal/web).
 //
 // A request resolves to a Principal in this order:
 //
@@ -37,56 +35,78 @@ const SessionCookieName = "bitnews_session"
 type UIAuth struct {
 	sessions *SessionService
 	settings func() core.Settings
-	// anonCSRF is the CSRF token for requests without a session. With no
-	// cookie there is nothing to bind it to, so it is one random value per
-	// process, readable only from same-origin session info responses.
-	anonCSRF string
 }
 
 // NewUIAuth returns the UI authentication middleware.
 func NewUIAuth(sessions *SessionService, settings func() core.Settings) (*UIAuth, error) {
-	secret, _, err := NewToken()
-	if err != nil {
-		return nil, err
-	}
-	return &UIAuth{sessions: sessions, settings: settings, anonCSRF: CSRFToken(secret)}, nil
+	return &UIAuth{sessions: sessions, settings: settings}, nil
 }
 
-// Middleware wraps next with the resolution described on UIAuth. Put CSRF
-// inside it.
-func (a *UIAuth) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s := a.settings()
-		bypassOn := s.Auth.DisableAuth || len(s.Auth.LANBypassCIDRs) > 0
-		if bypassOn && !hostInList(r.Host, s.Auth.AllowedHosts) {
-			writeError(w, http.StatusMisdirectedRequest, "misdirected_request",
-				"this Host is not in the allowed hosts list")
-			return
-		}
+// Failure answers a request that authentication or the CSRF check refused:
+// status, a machine-readable code and a message. The default (nil) writes
+// the API's JSON error; the web UI renders a page, a redirect or a toast.
+type Failure func(w http.ResponseWriter, r *http.Request, status int, code, message string)
 
-		if c, err := r.Cookie(SessionCookieName); err == nil {
-			_, user, err := a.sessions.Authenticate(r.Context(), c.Value)
-			switch {
-			case err == nil:
-				p := Principal{Kind: PrincipalSession, UserID: user.ID, Username: user.Username, csrf: CSRFToken(c.Value)}
-				next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), p)))
-				return
-			case !errors.Is(err, ErrInvalidSession):
-				a.sessions.log.Error("session lookup failed", "err", err)
-				writeError(w, http.StatusInternalServerError, "internal", "internal error")
+func orJSON(f Failure) Failure {
+	if f != nil {
+		return f
+	}
+	return func(w http.ResponseWriter, _ *http.Request, status int, code, message string) {
+		writeError(w, status, code, message)
+	}
+}
+
+// refusal is why a request gets no Principal.
+type refusal struct {
+	status        int
+	code, message string
+}
+
+// Middleware wraps next with the resolution described on UIAuth; fail
+// answers a refused request (nil: JSON). Put CSRF inside it.
+func (a *UIAuth) Middleware(fail Failure) func(http.Handler) http.Handler {
+	fail = orJSON(fail)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, ref := a.resolve(r)
+			if ref != nil {
+				fail(w, r, ref.status, ref.code, ref.message)
 				return
 			}
-			// A stale cookie falls through: the bypass settings may still apply.
-		}
+			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), p)))
+		})
+	}
+}
 
-		kind, ok := bypassKind(s.Auth, r)
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
-			return
+// Principal resolves the Principal of a request the way Middleware does,
+// without answering it; false means the request would be refused.
+func (a *UIAuth) Principal(r *http.Request) (Principal, bool) {
+	p, ref := a.resolve(r)
+	return p, ref == nil
+}
+
+func (a *UIAuth) resolve(r *http.Request) (Principal, *refusal) {
+	s := a.settings()
+	bypassOn := s.Auth.DisableAuth || len(s.Auth.LANBypassCIDRs) > 0
+	if bypassOn && !hostInList(r.Host, s.Auth.AllowedHosts) {
+		return Principal{}, &refusal{http.StatusMisdirectedRequest, "misdirected_request", "this Host is not in the allowed hosts list"}
+	}
+	if c, err := r.Cookie(SessionCookieName); err == nil {
+		_, user, err := a.sessions.Authenticate(r.Context(), c.Value)
+		switch {
+		case err == nil:
+			return Principal{Kind: PrincipalSession, UserID: user.ID, Username: user.Username}, nil
+		case !errors.Is(err, ErrInvalidSession):
+			a.sessions.log.Error("session lookup failed", "err", err)
+			return Principal{}, &refusal{http.StatusInternalServerError, "internal", "internal error"}
 		}
-		p := Principal{Kind: kind, csrf: a.anonCSRF}
-		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), p)))
-	})
+		// A stale cookie falls through: the bypass settings may still apply.
+	}
+	kind, ok := bypassKind(s.Auth, r)
+	if !ok {
+		return Principal{}, &refusal{http.StatusUnauthorized, "unauthorized", "authentication required"}
+	}
+	return Principal{Kind: kind}, nil
 }
 
 // bypassKind decides whether the settings let an unauthenticated request in.
@@ -102,40 +122,6 @@ func bypassKind(s core.Auth, r *http.Request) (PrincipalKind, bool) {
 		return PrincipalLANBypass, true
 	}
 	return "", false
-}
-
-// SessionInfo serves GET /api/v1/auth/session behind Middleware. The body is
-//
-//	{"auth_mode": "session"|"bypass"|"disabled",
-//	 "csrf_token": "...",
-//	 "user": {"id": "...", "username": "..."} | null}
-//
-// The UI sends csrf_token as X-CSRF-Token on state-changing requests and
-// shows a permanent warning banner when auth_mode is "bypass". Other
-// principals (API keys) get 401: this is a UI route.
-func (a *UIAuth) SessionInfo() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p, ok := FromContext(r.Context())
-		if !ok || !p.ambient() {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
-			return
-		}
-		type userInfo struct {
-			ID       core.ID `json:"id"`
-			Username string  `json:"username"`
-		}
-		body := struct {
-			AuthMode  string    `json:"auth_mode"`
-			CSRFToken string    `json:"csrf_token"`
-			User      *userInfo `json:"user"`
-		}{AuthMode: p.AuthMode(), CSRFToken: p.csrf}
-		if p.Kind == PrincipalSession {
-			body.User = &userInfo{ID: p.UserID, Username: p.Username}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(body)
-	})
 }
 
 // SetSessionCookie sends the session cookie: HttpOnly, SameSite=Strict,

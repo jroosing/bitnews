@@ -253,7 +253,7 @@ func TestKeyOrFallsBackToTheUIChainOnlyWhenNoKeyIsSent(t *testing.T) {
 		kinds = append(kinds, p.Kind)
 		w.WriteHeader(http.StatusTeapot)
 	})
-	h := k.svc.KeyOr(u.ui.Middleware)(inner)
+	h := k.svc.KeyOr(u.ui.Middleware(nil))(inner)
 	do := func(hdr map[string]string) int {
 		r := httptest.NewRequest("GET", "http://bitnews.lan/api/v1/downloads", nil)
 		r.RemoteAddr = "203.0.113.50:1"
