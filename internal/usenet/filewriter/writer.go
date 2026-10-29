@@ -49,7 +49,10 @@ func WithMaxOpenFiles(n int) Option {
 // keys is held during file I/O except while a new file is being named and
 // created.
 type Writer struct {
-	dir  string
+	dir string
+	// root is dir held open: every file is opened through it, so nothing
+	// lands outside dir even if dir is swapped for a symlink meanwhile.
+	root *os.Root
 	pool *pool
 
 	closed   atomic.Bool
@@ -90,8 +93,13 @@ func New(dir string, opts ...Option) (*Writer, error) {
 	if err := fsutil.MkdirAll(dir, 0o777); err != nil {
 		return nil, fmt.Errorf("filewriter: create dir: %w", err)
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("filewriter: open dir: %w", err)
+	}
 	return &Writer{
 		dir:     dir,
+		root:    root,
 		pool:    newPool(cfg.maxOpen),
 		entries: make(map[FileKey]*entry),
 		names:   make(map[string]bool),
@@ -221,9 +229,7 @@ func (w *Writer) create(e *entry, part yenc.Part) error {
 
 // discard removes a file this Writer just created, and frees its name.
 func (w *Writer) discard(name string) {
-	if p, err := fsutil.SafeJoin(w.dir, name); err == nil {
-		_ = os.Remove(p)
-	}
+	_ = w.root.Remove(name)
 	w.nameMu.Lock()
 	delete(w.names, name)
 	w.nameMu.Unlock()
@@ -245,15 +251,14 @@ func (w *Writer) createFile(key FileKey, raw string) (string, *os.File, error) {
 			base = fmt.Sprintf("file-%d-%d.bin", key, try)
 			continue
 		}
-		p, err := fsutil.SafeJoin(w.dir, name)
-		if err != nil {
-			return "", nil, fmt.Errorf("filewriter: %w", err)
-		}
-		f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_EXCL|oNoFollow, 0o666)
+		f, err := w.root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
 		if errors.Is(err, fs.ErrExist) {
 			continue
 		}
 		if err != nil {
+			if pe, ok := errors.AsType[*fs.PathError](err); ok {
+				pe.Path = filepath.Join(w.dir, pe.Path) // the root reports paths relative to dir
+			}
 			return "", nil, fmt.Errorf("filewriter: create %s: %w", name, fsutil.WriteError(err))
 		}
 		w.names[name] = true
@@ -277,17 +282,15 @@ func (w *Writer) handle(e *entry) (*os.File, error) {
 }
 
 // openExisting opens an existing regular file inside the directory for
-// reading and writing, refusing symlinks and special files.
+// reading and writing, refusing symlinks and special files. The root keeps
+// a symlink from leading outside; the check after opening refuses one that
+// points inside too.
 func (w *Writer) openExisting(name string) (*os.File, error) {
-	p, err := fsutil.SafeJoin(w.dir, name)
-	if err != nil {
-		return nil, fmt.Errorf("filewriter: %w", err)
-	}
-	f, err := os.OpenFile(p, os.O_RDWR|oNoFollow, 0)
+	f, err := w.root.OpenFile(name, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("filewriter: open %s: %w", name, err)
 	}
-	lst, lerr := os.Lstat(p)
+	lst, lerr := w.root.Lstat(name)
 	st, serr := f.Stat()
 	if lerr != nil || serr != nil || !lst.Mode().IsRegular() || !os.SameFile(lst, st) {
 		_ = f.Close()
@@ -356,7 +359,7 @@ func (w *Writer) syncDir() error {
 	if runtime.GOOS == "windows" || !w.dirDirty.Load() {
 		return nil
 	}
-	d, err := os.Open(w.dir)
+	d, err := w.root.Open(".")
 	if err != nil {
 		return fmt.Errorf("filewriter: open dir for fsync: %w", err)
 	}
@@ -408,6 +411,6 @@ func (w *Writer) Close() error {
 		errs = append(errs, w.closeEntry(e))
 		e.mu.Unlock()
 	}
-	errs = append(errs, w.syncDir())
+	errs = append(errs, w.syncDir(), w.root.Close())
 	return errors.Join(errs...)
 }

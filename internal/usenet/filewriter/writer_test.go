@@ -563,6 +563,24 @@ func TestReopenRefusesSymlinkSwappedIn(t *testing.T) {
 	require.Equal(t, []filewriter.Range{{Start: 0, End: 100}}, st.Done)
 }
 
+// The Writer holds the directory open, so swapping the directory for a
+// symlink afterwards cannot redirect its writes.
+func TestWritesStayInTheDirectoryEvenWhenItIsSwappedForASymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on windows")
+	}
+	w, dir := newWriter(t)
+	outside := t.TempDir()
+	require.NoError(t, os.Rename(dir, dir+".moved"))
+	require.NoError(t, os.Symlink(outside, dir))
+
+	require.NoError(t, w.WritePart(0, splitParts("x.bin", pattern(10), 10)[0]))
+	require.NoError(t, w.Close())
+
+	assert.NoFileExists(t, filepath.Join(outside, "x.bin"))
+	assert.FileExists(t, filepath.Join(dir+".moved", "x.bin"))
+}
+
 func TestFailedWriteLeavesBookkeepingUnchanged(t *testing.T) {
 	w, dir := newWriter(t)
 	parts := splitParts("x.bin", pattern(200), 100)

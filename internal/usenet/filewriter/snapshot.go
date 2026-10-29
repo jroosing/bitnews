@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"math"
-	"os"
 	"slices"
 
 	"github.com/jroosing/bitnews/internal/fsutil"
@@ -281,11 +280,7 @@ const (
 )
 
 func (w *Writer) checkOnDisk(rec fileRecord) (*entry, onDiskStatus) {
-	p, err := fsutil.SafeJoin(w.dir, rec.name)
-	if err != nil {
-		return nil, onDiskGone
-	}
-	fi, err := os.Lstat(p)
+	fi, err := w.root.Lstat(rec.name)
 	if err != nil || !fi.Mode().IsRegular() {
 		return nil, onDiskGone
 	}

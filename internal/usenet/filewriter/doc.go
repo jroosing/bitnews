@@ -5,8 +5,10 @@
 // caller-supplied FileKey (the index of the file within the NZB), because
 // yEnc names are hostile and may differ between the parts of one file. The
 // final on-disk name is chosen from the first part's name through
-// fsutil.SafeName and fsutil.Unique, and every path is built with
-// fsutil.SafeJoin, so nothing is ever written outside the directory.
+// fsutil.SafeName and fsutil.Unique, and every file is opened through an
+// os.Root of the directory, held open for the Writer's lifetime, so nothing
+// is ever written outside it, not even when the directory or a file in it is
+// swapped for a symlink meanwhile.
 //
 // Byte ranges are half-open and zero-based: Range{Start, End} covers offsets
 // Start <= i < End. Per file the Writer tracks which ranges were written
