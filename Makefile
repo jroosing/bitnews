@@ -114,9 +114,12 @@ generate-check:
 
 # ---- the Zig rewrite (branch zig, M15, ADR-0014) --------------------------------------
 
-# What the Zig daemon does not do yet, by milestone: the data routes and events
-# (Z2), the admin account and the web pages (Z6). Shrinks as they land.
-ZIG_BLACKBOX_SKIP := TestARequestBodyAboveTheRouteLimit|TestAdminPasswordFile|TestData|TestShutdownEndsAnOpenEventStream|TestWeb|TestWhileSetupIsOpenTheSetupToken
+# What the Zig daemon does not do yet, by milestone, and shrinks as they land:
+#   Z3  adding downloads (TestAPIAdd), the server connection test routes
+#       (TestAPIServerTest, ...PasswordThatCannotBeOpened) and the three
+#       generic request tests, which fail today only on POST /servers/test;
+#   Z6  the admin account, the setup token and the web pages.
+ZIG_BLACKBOX_SKIP := TestAPIAdd|TestAPIServerTest|TestAPIServerWithAPasswordThatCannotBeOpened|TestAPIJSONRoutes|TestAPIRoutesStopReading|TestAdminPasswordFile|TestWeb|TestWhileSetupIsOpenTheSetupToken
 
 zig:
 	@cd zig && $$(../scripts/get-zig.sh) build

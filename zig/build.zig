@@ -3,7 +3,7 @@ const std = @import("std");
 /// A group of modules tested together. Each group has one root file in src/
 /// that imports the files of the group, so a developer works in their files
 /// and runs `zig build test-<name>` without building the rest.
-const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events" };
+const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events", "remover" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -71,7 +71,9 @@ pub fn build(b: *std.Build) void {
             .imports = imports,
         });
         mod.linkLibrary(sqlite_lib);
-        const t = b.addTest(.{ .root_module = mod });
+        // LLVM, not the self-hosted aarch64 backend: that one skips fuzz tests, so
+        // their corpora would never run in a plain `zig build test`.
+        const t = b.addTest(.{ .root_module = mod, .use_llvm = true });
         const run = b.addRunArtifact(t);
         b.step("test-" ++ name, "Run the " ++ name ++ " tests").dependOn(&run.step);
         test_all.dependOn(&run.step);

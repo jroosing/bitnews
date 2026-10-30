@@ -25,7 +25,7 @@ const categories_api = @import("categories_api.zig");
 const downloads_repo = @import("downloads_repo.zig");
 const downloads_service = @import("downloads_service.zig");
 const downloads_api = @import("downloads_api.zig");
-const settings_repo = @import("settings_repo.zig");
+const remover_mod = @import("remover.zig");
 const settings_service = @import("settings_service.zig");
 const settings_api = @import("settings_api.zig");
 const servers_service = @import("servers_service.zig");
@@ -43,6 +43,7 @@ pub const Services = struct {
     downloads: downloads_service.Service,
     servers: servers_service.ServerService,
     settings: settings_service.Service,
+    remover: remover_mod.Remover,
     instance_id: [id_mod.length]u8,
     events: events_api.Events,
 
@@ -63,19 +64,27 @@ pub const Services = struct {
             .list_in_category = listInCategory,
             .get = findDownload,
         }, publisher, io, logger);
-        self.downloads = downloads_service.Service.init(gpa, io, self.download_repo, .{
-            .categories = .{ .ctx = &self.category_repo, .exists_fn = categoryExists },
-            .publisher = publisher,
-        });
         self.servers = servers_service.ServerService.init(io, store, key, .{ .ctx = bus, .notify_fn = serversChanged }, servers_service.realClock);
         self.settings = try settings_service.Service.init(gpa, io, .{ .store = store }, publisher, null);
         errdefer self.settings.deinit();
+        self.remover = remover_mod.Remover.init(gpa, io, .{
+            .paths = remover_mod.fromSettings(&self.settings),
+            .categories = remover_mod.fromRepo(&self.category_repo),
+            .log = logger,
+        });
+        errdefer self.remover.deinit();
+        self.downloads = downloads_service.Service.init(gpa, io, self.download_repo, .{
+            .categories = .{ .ctx = &self.category_repo, .exists_fn = categoryExists },
+            .remover = self.remover.asDataRemover(),
+            .publisher = publisher,
+        });
         self.instance_id = id_mod.new(io);
         self.events = .{ .bus = bus, .instance_id = &self.instance_id };
     }
 
     pub fn deinit(self: *Services) void {
         self.downloads.deinit();
+        self.remover.deinit();
         self.settings.deinit();
         self.bus.close();
         self.bus.deinit();

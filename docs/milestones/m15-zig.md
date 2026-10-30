@@ -76,8 +76,24 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 **Deliberately not in Z1:** `BITNEWS_ADMIN_PASSWORD_FILE` (logs a warning), the setup token, the web pages, the events stream, and `go_version` in `/api/v1/version` (Zig returns `zig_version`).
 
 ### M15-03: Z2 — Core domain and own API
-**Goal:** Downloads, Categories, Settings, the Queue, the event bus and `/api/v1`.
-- [ ] The API part of the black-box suite passes.
+**Goal:** Downloads, Categories, Servers, Settings, the event bus and `/api/v1`.
+- [x] The API part of the black-box suite passes against the Zig binary on macOS and on Debian trixie (125 `TestAPI*` scenarios, green against Go first). What still fails is listed in `ZIG_BLACKBOX_SKIP` by milestone: adding downloads and the server connection tests (Z3), the admin account and the web pages (Z6).
+- [x] Databases written by Go load and what Zig writes loads in Go: categories, servers with sealed passwords, settings, downloads.
+
+#### Z2 findings
+
+**How it was built.** A shared foundation first (ids, Go-compatible timestamps, the Download lifecycle, events and a `Publisher`, the `Failure` convention, request decoding), then six slices in parallel (settings, servers, categories, downloads, events, and the Go scenarios) and a seventh for the data remover, joined in `services.zig`. Each slice defines the seams it needs as small interface structs (`DownloadsLookup`, `CategoryLookup`, `DataRemover`, `FetchHolder`, ...), and `services.zig` is the only place that knows all of them.
+
+**Where Zig differs from Go, and what it cost:**
+- **Request bodies.** `std.json` reads an array of small integers into a string, accepts `"563"`, `563.0` and `5e2` for integers and matches keys case-sensitively. `strict_json.zig` replaces it for requests: keys match case-insensitively, `null` into a plain field is a no-op (and a top-level `null` an empty request), strings, integers and bools are strict, the last duplicate key wins, nothing may follow the value. Every request field needs a default.
+- **Response bodies.** Go escapes `<`, `>`, `&` and U+2028/9 in JSON; `Response.json` and the SSE frames do too (a byte-level replacement, which is safe because those bytes only occur inside strings).
+- **Events.** Go also has `servers_changed` (added), `postprocess_stage` and `listen_port_changed` (Z4 and Z7 add them; the SSE mapping is an exhaustive switch, so the compiler will ask). The queue events are named `usenet_queue_paused`, `torrent_queue_resumed` and so on on the wire.
+- **Settings row.** Go stores the Settings under the key `settings`; the `main` row in the golden database is never read.
+- **Streaming.** The HTTP server gained a streaming response mode (chunked, a per-write timeout, a probe for a client that left, cancellation on shutdown) for the SSE stream. Blocking writes ignore the deadline in the threaded `Io`, so stream writes go out in 2 KiB pieces.
+- **Data remover.** Go's `os.RemoveAll` does not chmod, so a directory without write permission is an error and the Download stays; the delete is bound to the parent's handle after the symlink checks, so a link swapped in afterwards cannot redirect it. Stricter than Go only on odd input (a NUL byte, a `/` parent, an id that is not a plain name).
+- **Tests run on the LLVM backend.** On aarch64 the default Debug backend (self-hosted) makes `testing.fuzz` return at once, so no fuzz corpus ever ran in `zig build test`; `build.zig` sets `use_llvm` for tests. `zig build ... --fuzz=N` still fuzzes only the first fuzz test it finds, so fuzz targets one at a time.
+
+**Not in Z2:** adding downloads (Z3 for NZB, Z7 for torrents), the server connection tests (Z3), the Queue and the runners (Z3, Z7), the torrent port routes (Z7), the history page's query (Z6; the repo has it).
 
 ### M15-04: Z3 — Usenet fetch
 **Goal:** NZB, NNTP client and pool, yEnc, file writer, scheduler and runner, with fuzz targets for NZB, NNTP and yEnc.
