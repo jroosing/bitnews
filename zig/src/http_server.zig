@@ -60,6 +60,9 @@ pub const Limits = struct {
     read_timeout_ms: u32 = 60_000,
     /// To write one response (WriteTimeout).
     write_timeout_ms: u32 = 60_000,
+    /// To write one piece of a streaming response (an event stream); replaces
+    /// `write_timeout_ms` for streams, as streamWriteTimeout does in Go.
+    stream_write_timeout_ms: u32 = 30_000,
     /// How long a kept-alive connection may wait for its next request.
     idle_timeout_ms: u32 = 120_000,
     /// Connections served at once. More are answered with a 503 and closed.
@@ -506,6 +509,8 @@ fn serveRequest(c: *Conn, arena: Allocator) RequestError!bool {
         .body_limit = respond.small_body_limit,
         .request = &request,
     };
+    var stream: StreamCtx = .{ .c = c, .chunked = std_head.version == .@"HTTP/1.1", .version = std_head.version };
+    e.streamer = stream.streamer();
     e.request_id = try requestId(&e);
     try applyBaseHeaders(&e.res, arena, e.request_id);
 
@@ -515,6 +520,13 @@ fn serveRequest(c: *Conn, arena: Allocator) RequestError!bool {
     if (declares_body and !std_head.method.requestHasBody()) force_close = true;
 
     try dispatch(s, &e);
+
+    // A stream wrote its own head and body; the connection is spent.
+    if (e.streaming) {
+        try stream.finish();
+        logRequest(c, &e, started.durationTo(Io.Clock.Timestamp.now(io, .awake)));
+        return false;
+    }
 
     // The body is owed to the framing: whatever the handler did not read must
     // be discarded (bounded by the route's limit) or the connection closed.
@@ -581,27 +593,36 @@ fn dispatch(s: *Server, e: *Exchange) RequestError!void {
             f.value.handler(f.value.state, e) catch |err| switch (err) {
                 error.Canceled => return error.Canceled,
                 error.OutOfMemory => return error.OutOfMemory,
-                error.PayloadTooLarge => {
-                    e.res = .{};
-                    try applyBaseHeaders(&e.res, arena, e.request_id);
-                    try e.res.fail(arena, .payload_too_large, "request_too_large", "request body is too large");
-                },
-                error.ReadFailed => {
-                    // The client stalled, hung up or sent a broken chunked body.
-                    e.res = .{};
-                    try applyBaseHeaders(&e.res, arena, e.request_id);
-                    try e.res.fail(arena, .bad_request, "bad_request", "the request body could not be read");
-                },
-                else => {
-                    s.options.logger.write(.err, "request failed", &.{
-                        Attr.str("request_id", e.request_id),
-                        Attr.str("err", @errorName(err)),
-                    });
-                    e.res = .{};
-                    try applyBaseHeaders(&e.res, arena, e.request_id);
-                    try e.res.fail(arena, .internal_server_error, "internal", "internal error");
-                },
+                else => return handlerFailed(s, e, err),
             };
+        },
+    }
+}
+
+/// Turns an error of a handler into its response (generic, no detail).
+fn handlerFailed(s: *Server, e: *Exchange, err: anyerror) RequestError!void {
+    const arena = e.arena;
+    // The head of a stream is out: there is no response left to replace. A
+    // stream that ends badly just ends.
+    if (e.streaming) {
+        if (err != error.StreamClosed) s.options.logger.write(.warn, "stream failed", &.{
+            Attr.str("request_id", e.request_id),
+            Attr.str("err", @errorName(err)),
+        });
+        return;
+    }
+    e.res = .{};
+    try applyBaseHeaders(&e.res, arena, e.request_id);
+    switch (err) {
+        error.PayloadTooLarge => try e.res.fail(arena, .payload_too_large, "request_too_large", "request body is too large"),
+        // The client stalled, hung up or sent a broken chunked body.
+        error.ReadFailed => try e.res.fail(arena, .bad_request, "bad_request", "the request body could not be read"),
+        else => {
+            s.options.logger.write(.err, "request failed", &.{
+                Attr.str("request_id", e.request_id),
+                Attr.str("err", @errorName(err)),
+            });
+            try e.res.fail(arena, .internal_server_error, "internal", "internal error");
         },
     }
 }
@@ -642,6 +663,117 @@ fn applyBaseHeaders(res: *respond.Response, arena: Allocator, request_id: []cons
     try res.setHeader(arena, "X-Content-Type-Options", "nosniff");
     try res.setHeader(arena, "Referrer-Policy", "same-origin");
 }
+
+/// The streaming half of a connection (Exchange.startStream). It lives on the
+/// stack of `serveRequest`, next to the Exchange that points to it.
+const StreamCtx = struct {
+    c: *Conn,
+    version: std.http.Version,
+    /// HTTP/1.1 frames the body in chunks; 1.0 has no chunking and ends the
+    /// body by closing the connection.
+    chunked: bool,
+    failed: bool = false,
+
+    fn streamer(sc: *StreamCtx) ex.Streamer {
+        return .{ .ctx = sc, .begin = begin, .write = write, .state = state };
+    }
+
+    fn begin(ctx: *anyopaque, res: *const respond.Response) ex.StreamError!void {
+        const sc: *StreamCtx = @ptrCast(@alignCast(ctx));
+        const io = sc.c.server.io;
+        var date_buf: [29]u8 = undefined;
+        const date = respond.httpDate(&date_buf, Io.Clock.real.now(io).toSeconds());
+        sc.arm();
+        const out = &sc.c.writer.interface;
+        sc.writeHead(out, res, date) catch return sc.fail();
+    }
+
+    fn writeHead(sc: *StreamCtx, out: *Io.Writer, res: *const respond.Response, date: []const u8) Io.Writer.Error!void {
+        try out.print("{s} {d} {s}\r\n", .{ @tagName(sc.version), @backingInt(res.status), res.status.phrase() orelse "" });
+        for (res.headers.items) |h| try out.print("{s}: {s}\r\n", .{ h.name, h.value });
+        try out.print("Date: {s}\r\nConnection: close\r\n", .{date});
+        if (sc.chunked) try out.writeAll("Transfer-Encoding: chunked\r\n");
+        try out.writeAll("\r\n");
+        try out.flush();
+    }
+
+    fn write(ctx: *anyopaque, bytes: []const u8) ex.StreamError!void {
+        const sc: *StreamCtx = @ptrCast(@alignCast(ctx));
+        if (sc.failed) return error.StreamClosed;
+        if (bytes.len == 0) return;
+        sc.arm();
+        const out = &sc.c.writer.interface;
+        sc.writeChunk(out, bytes) catch return sc.fail();
+    }
+
+    /// A write on a blocking socket that was reported writable still blocks
+    /// until all of it is taken, and the write deadline is only looked at
+    /// between writes. So a payload goes out in pieces the socket can take
+    /// at once, and a client that stopped reading is cut at the deadline
+    /// instead of holding the handler until it reads.
+    const piece_len = 2048;
+
+    fn writeChunk(sc: *StreamCtx, out: *Io.Writer, bytes: []const u8) Io.Writer.Error!void {
+        if (sc.chunked) try out.print("{x}\r\n", .{bytes.len});
+        var rest = bytes;
+        while (rest.len > 0) {
+            const n = @min(rest.len, piece_len);
+            try out.writeAll(rest[0..n]);
+            try out.flush();
+            rest = rest[n..];
+        }
+        if (sc.chunked) try out.writeAll("\r\n");
+        try out.flush();
+    }
+
+    /// The stream is over for good once a write failed or timed out.
+    fn fail(sc: *StreamCtx) ex.StreamError {
+        sc.failed = true;
+        if (sc.c.writer.err) |cause| if (cause == error.Canceled) return error.Canceled;
+        return error.StreamClosed;
+    }
+
+    fn arm(sc: *StreamCtx) void {
+        sc.c.writer.deadline = deadlineIn(sc.c.server.io, sc.c.server.options.limits.stream_write_timeout_ms);
+        sc.c.writer.err = null;
+    }
+
+    /// Looks at the shutdown flag, then at the socket: nothing is expected
+    /// from the client, so anything that arrives is thrown away, and the end
+    /// of the stream or a reset means it left.
+    fn state(ctx: *anyopaque) ex.StreamError!ex.StreamState {
+        const sc: *StreamCtx = @ptrCast(@alignCast(ctx));
+        const c = sc.c;
+        if (c.server.stopping.load(.acquire)) return .stopping;
+        if (sc.failed) return .peer_gone;
+        c.reader.interface.tossBuffered();
+        c.reader.deadline = deadlineIn(c.server.io, 1);
+        c.reader.err = null;
+        c.reader.interface.fill(1) catch |err| switch (err) {
+            error.EndOfStream => return .peer_gone,
+            error.ReadFailed => {
+                const cause = c.reader.err orelse return .peer_gone;
+                if (cause == error.Canceled) return error.Canceled;
+                return if (cause == error.Timeout) .open else .peer_gone;
+            },
+        };
+        c.reader.interface.tossBuffered();
+        return .open;
+    }
+
+    /// Ends the body (the last chunk) if the stream is still healthy.
+    fn finish(sc: *StreamCtx) error{Canceled}!void {
+        if (sc.failed or !sc.chunked) return;
+        sc.arm();
+        const out = &sc.c.writer.interface;
+        out.writeAll("0\r\n\r\n") catch {
+            return if (sc.fail() == error.Canceled) error.Canceled else {};
+        };
+        out.flush() catch {
+            return if (sc.fail() == error.Canceled) error.Canceled else {};
+        };
+    }
+};
 
 fn writeResponse(c: *Conn, arena: Allocator, request: *std.http.Server.Request, res: *const respond.Response, keep: bool) RequestError!void {
     const io = c.server.io;
@@ -708,7 +840,7 @@ fn logRequest(c: *Conn, e: *const Exchange, took: Io.Clock.Duration) void {
         Attr.str("method", @tagName(e.method)),
         Attr.str("url", target),
         Attr.int("status", status),
-        Attr.int("bytes", @intCast(e.res.body.len)),
+        Attr.int("bytes", @intCast(e.res.body.len + e.stream_bytes)),
         Attr.duration("duration", @intCast(@max(took.raw.nanoseconds, 0))),
         Attr.str("remote", e.remote),
     });

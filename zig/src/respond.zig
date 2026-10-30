@@ -36,9 +36,12 @@ pub const Response = struct {
     pub fn json(r: *Response, arena: Allocator, status: std.http.Status, v: anytype) Allocator.Error!void {
         var aw: std.Io.Writer.Allocating = .init(arena);
         std.json.Stringify.value(v, .{}, &aw.writer) catch return error.OutOfMemory;
-        aw.writer.writeByte('\n') catch return error.OutOfMemory;
+        const text = try escapeLikeGo(arena, aw.written());
+        const body = try arena.alloc(u8, text.len + 1);
+        @memcpy(body[0..text.len], text);
+        body[text.len] = '\n';
         r.status = status;
-        r.body = aw.written();
+        r.body = body;
         try r.setHeader(arena, "Content-Type", "application/json");
         try r.setHeader(arena, "Cache-Control", "no-store");
     }
@@ -48,6 +51,58 @@ pub const Response = struct {
         return r.json(arena, status, .{ .@"error" = .{ .code = code, .message = message } });
     }
 };
+
+/// Escapes JSON text the way Go's encoding/json does by default: `<`, `>` and
+/// `&` become \u003c, \u003e and \u0026, and U+2028 and U+2029 become \u2028
+/// and \u2029. These bytes cannot occur outside a string in JSON, so a plain
+/// replacement over the whole text is safe; text that has none is returned
+/// as it is, and escaping twice changes nothing.
+pub fn escapeLikeGo(arena: Allocator, json_text: []const u8) Allocator.Error![]const u8 {
+    var extra: usize = 0;
+    var i: usize = 0;
+    while (i < json_text.len) : (i += 1) {
+        switch (json_text[i]) {
+            '<', '>', '&' => extra += 5,
+            0xE2 => if (i + 2 < json_text.len and json_text[i + 1] == 0x80 and (json_text[i + 2] == 0xA8 or json_text[i + 2] == 0xA9)) {
+                extra += 3; // 3 bytes become 6
+                i += 2;
+            },
+            else => {},
+        }
+    }
+    if (extra == 0) return json_text;
+    const out = try arena.alloc(u8, json_text.len + extra);
+    var n: usize = 0;
+    i = 0;
+    while (i < json_text.len) : (i += 1) {
+        const c = json_text[i];
+        switch (c) {
+            '<', '>', '&' => {
+                const code = switch (c) {
+                    '<' => "\\u003c",
+                    '>' => "\\u003e",
+                    else => "\\u0026",
+                };
+                @memcpy(out[n..][0..6], code);
+                n += 6;
+            },
+            0xE2 => if (i + 2 < json_text.len and json_text[i + 1] == 0x80 and (json_text[i + 2] == 0xA8 or json_text[i + 2] == 0xA9)) {
+                @memcpy(out[n..][0..6], if (json_text[i + 2] == 0xA8) "\\u2028" else "\\u2029");
+                n += 6;
+                i += 2;
+            } else {
+                out[n] = c;
+                n += 1;
+            },
+            else => {
+                out[n] = c;
+                n += 1;
+            },
+        }
+    }
+    std.debug.assert(n == out.len);
+    return out;
+}
 
 /// Body size limits, as in respond.go. A route that needs more or less than
 /// the default says so when it is registered.
@@ -105,6 +160,28 @@ test "json escapes what must be escaped" {
     var r: Response = .{};
     try r.fail(arena.allocator(), .bad_request, "x", "quote \" back \\ nl \n");
     try testing.expectEqualStrings("{\"error\":{\"code\":\"x\",\"message\":\"quote \\\" back \\\\ nl \\n\"}}\n", r.body);
+}
+
+// Go's encoding/json escapes <, > and & (HTML safe) and the line separators
+// U+2028/2029 by default; std.json does not, so response bytes would differ
+// from the Go daemon's for names and paths that contain them.
+test "json escapes <, > and & and the line separators like Go" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var r: Response = .{};
+    try r.json(arena.allocator(), .ok, .{ .name = "a<b>&c \u{2028}\u{2029} d é" });
+    try testing.expectEqualStrings("{\"name\":\"a\\u003cb\\u003e\\u0026c \\u2028\\u2029 d é\"}\n", r.body);
+}
+
+test "escapeLikeGo leaves clean text alone and is idempotent" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const clean = "{\"a\":\"plain é\"}";
+    try testing.expectEqual(clean.ptr, (try escapeLikeGo(a, clean)).ptr); // no copy
+    const once = try escapeLikeGo(a, "{\"a\":\"<&>\"}");
+    try testing.expectEqualStrings("{\"a\":\"\\u003c\\u0026\\u003e\"}", once);
+    try testing.expectEqualStrings(once, try escapeLikeGo(a, once));
 }
 
 test "setHeader replaces case-insensitively" {

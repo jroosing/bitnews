@@ -46,6 +46,32 @@ pub const BodyError = error{
     OutOfMemory,
 };
 
+pub const StreamError = error{
+    /// The server is shutting down hard (the task was cancelled); propagate it.
+    Canceled,
+    /// The client went away, or did not take a write within the stream write
+    /// timeout. The stream is over; the connection closes.
+    StreamClosed,
+};
+
+/// What a long-lived response should do next.
+pub const StreamState = enum {
+    open,
+    /// The client closed its side of the connection.
+    peer_gone,
+    /// The server is shutting down: finish the stream.
+    stopping,
+};
+
+/// The server's side of a streaming response. The server fills it in when it
+/// builds an Exchange; tests of handlers may leave it null.
+pub const Streamer = struct {
+    ctx: *anyopaque,
+    begin: *const fn (ctx: *anyopaque, res: *const respond.Response) StreamError!void,
+    write: *const fn (ctx: *anyopaque, bytes: []const u8) StreamError!void,
+    state: *const fn (ctx: *anyopaque) StreamError!StreamState,
+};
+
 pub const Exchange = struct {
     /// One arena per request, reset by the server when the request is done.
     arena: Allocator,
@@ -68,6 +94,12 @@ pub const Exchange = struct {
 
     request: *std.http.Server.Request,
     body_taken: bool = false,
+
+    streamer: ?Streamer = null,
+    /// Set by `startStream`: the head is out, `res` is not written again and
+    /// the connection closes when the handler returns.
+    streaming: bool = false,
+    stream_bytes: u64 = 0,
 
     /// The first value of header `name`, or null.
     pub fn header(ex: *const Exchange, name: []const u8) ?[]const u8 {
@@ -104,5 +136,33 @@ pub const Exchange = struct {
         if (ex.content_length) |n| if (n > ex.body_limit) return error.PayloadTooLarge;
         ex.body_taken = true;
         return ex.request.readerExpectContinue(buffer) catch error.ReadFailed;
+    }
+
+    /// Switches to a streaming response: sends the status and headers of
+    /// `res` now (chunked on HTTP/1.1, close-delimited on 1.0) and leaves the
+    /// body to `streamWrite`. Instead of the server's whole-response write
+    /// timeout, every write gets its own (Limits.stream_write_timeout_ms), so
+    /// a client that stops reading ends the stream rather than holding it. The
+    /// connection closes afterwards. Do not read the request body after this.
+    pub fn startStream(ex: *Exchange) StreamError!void {
+        const st = ex.streamer orelse return error.StreamClosed;
+        std.debug.assert(!ex.streaming);
+        ex.streaming = true;
+        try st.begin(st.ctx, &ex.res);
+    }
+
+    /// Writes `bytes` to the stream and flushes them to the client.
+    pub fn streamWrite(ex: *Exchange, bytes: []const u8) StreamError!void {
+        const st = ex.streamer orelse return error.StreamClosed;
+        std.debug.assert(ex.streaming);
+        try st.write(st.ctx, bytes);
+        ex.stream_bytes += bytes.len;
+    }
+
+    /// Whether the stream may go on. Cheap enough to call every few hundred
+    /// milliseconds; a handler that waits calls it between waits.
+    pub fn streamState(ex: *Exchange) StreamError!StreamState {
+        const st = ex.streamer orelse return error.StreamClosed;
+        return st.state(st.ctx);
     }
 };

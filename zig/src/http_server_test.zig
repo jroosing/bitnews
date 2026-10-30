@@ -76,6 +76,37 @@ fn boom(_: ?*anyopaque, _: *ex.Exchange) anyerror!void {
     return error.SecretDetail;
 }
 
+/// How the stream handlers below ended: 1 the client left, 2 the server is
+/// stopping, 3 a write failed.
+var stream_outcome: std.atomic.Value(u8) = .init(0);
+
+fn streamShort(_: ?*anyopaque, e: *ex.Exchange) anyerror!void {
+    try e.res.setHeader(e.arena, "Content-Type", "text/plain");
+    try e.startStream();
+    try e.streamWrite("one");
+    try e.streamWrite("two");
+}
+
+fn streamWatch(_: ?*anyopaque, e: *ex.Exchange) anyerror!void {
+    try e.startStream();
+    try e.streamWrite("hi");
+    while (true) {
+        try e.io.sleep(.fromMilliseconds(20), .awake);
+        switch (try e.streamState()) {
+            .open => {},
+            .peer_gone => return stream_outcome.store(1, .release),
+            .stopping => return stream_outcome.store(2, .release),
+        }
+    }
+}
+
+fn streamFlood(_: ?*anyopaque, e: *ex.Exchange) anyerror!void {
+    try e.startStream();
+    const block = try e.arena.alloc(u8, 64 << 10);
+    @memset(block, 'x');
+    while (true) e.streamWrite(block) catch return stream_outcome.store(3, .release);
+}
+
 const Harness = struct {
     log: TestLog = .{},
     server: *srv.Server,
@@ -101,6 +132,9 @@ const Harness = struct {
         try h.server.routes.add("GET /slow", .{ .handler = slow, .auth = .none });
         try h.server.routes.add("POST /nobody", .{ .handler = nobody, .auth = .none, .body_limit = 16 });
         try h.server.routes.add("GET /boom", .{ .handler = boom, .auth = .none });
+        try h.server.routes.add("GET /stream", .{ .handler = streamShort, .auth = .none });
+        try h.server.routes.add("GET /stream-watch", .{ .handler = streamWatch, .auth = .none });
+        try h.server.routes.add("GET /stream-flood", .{ .handler = streamFlood, .auth = .none });
         h.port = try h.server.listen("127.0.0.1:0");
         h.fut = try testing.io.concurrent(srv.Server.serve, .{h.server});
         h.stopped = false;
@@ -887,6 +921,108 @@ test "shutdown closes idle and half-sent connections promptly" {
     try testing.expect(took < 1500);
     try testing.expect(try idle.closedByServer(1000));
     try testing.expect(try half.closedByServer(1000));
+}
+
+// ---- streaming responses ---------------------------------------------------
+
+fn waitForOutcome(want: u8, within_ms: u32) !void {
+    var waited: u32 = 0;
+    while (stream_outcome.load(.acquire) != want and waited < within_ms) : (waited += 10) {
+        try testing.io.sleep(.fromMilliseconds(10), .awake);
+    }
+    try testing.expectEqual(want, stream_outcome.load(.acquire));
+}
+
+test "a stream is chunked on HTTP/1.1 and the connection closes after it" {
+    var h: Harness = undefined;
+    try h.start(.{});
+    defer h.deinit();
+    var arena = newArena();
+    defer arena.deinit();
+    const c = try h.open();
+    defer c.close();
+    try c.send("GET /stream HTTP/1.1\r\nHost: t\r\n\r\n");
+
+    c.reader.deadline = srv.deadlineIn(testing.io, 5000);
+    const raw = try c.reader.interface.allocRemaining(arena.allocator(), .limited(65536));
+
+    try testing.expect(std.mem.startsWith(u8, raw, "HTTP/1.1 200 OK\r\n"));
+    try testing.expect(std.mem.find(u8, raw, "Transfer-Encoding: chunked\r\n") != null);
+    try testing.expect(std.mem.find(u8, raw, "Connection: close\r\n") != null);
+    try testing.expect(std.mem.find(u8, raw, "Content-Type: text/plain\r\n") != null);
+    try testing.expect(std.mem.find(u8, raw, "X-Content-Type-Options: nosniff\r\n") != null);
+    try testing.expect(std.mem.find(u8, raw, "Date: ") != null);
+    try testing.expect(std.mem.endsWith(u8, raw, "\r\n\r\n3\r\none\r\n3\r\ntwo\r\n0\r\n\r\n"));
+}
+
+test "a stream is close-delimited on HTTP/1.0" {
+    var h: Harness = undefined;
+    try h.start(.{});
+    defer h.deinit();
+    var arena = newArena();
+    defer arena.deinit();
+    const c = try h.open();
+    defer c.close();
+    try c.send("GET /stream HTTP/1.0\r\n\r\n");
+
+    c.reader.deadline = srv.deadlineIn(testing.io, 5000);
+    const raw = try c.reader.interface.allocRemaining(arena.allocator(), .limited(65536));
+
+    try testing.expect(std.mem.startsWith(u8, raw, "HTTP/1.0 200 OK\r\n"));
+    try testing.expect(std.mem.find(u8, raw, "Transfer-Encoding") == null);
+    try testing.expect(std.mem.endsWith(u8, raw, "\r\n\r\nonetwo"));
+}
+
+test "a stream notices a client that went away" {
+    stream_outcome.store(0, .release);
+    var h: Harness = undefined;
+    try h.start(.{});
+    defer h.deinit();
+    const c = try h.open();
+    errdefer c.close();
+    try c.send("GET /stream-watch HTTP/1.1\r\nHost: t\r\n\r\n");
+    c.reader.deadline = srv.deadlineIn(testing.io, 5000);
+    while (true) {
+        const line = try c.reader.interface.takeDelimiterInclusive('\n');
+        if (line.len == 2) break;
+    }
+    c.close();
+
+    try waitForOutcome(1, 3000);
+}
+
+test "a client that stops reading is cut by the stream write timeout, and the server goes on" {
+    stream_outcome.store(0, .release);
+    var h: Harness = undefined;
+    try h.start(.{ .stream_write_timeout_ms = 200 });
+    defer h.deinit();
+    var arena = newArena();
+    defer arena.deinit();
+    const c = try h.open();
+    defer c.close();
+    try c.send("GET /stream-flood HTTP/1.1\r\nHost: t\r\n\r\n");
+
+    // The server is not held up while the stream is stuck ...
+    try testing.io.sleep(.fromMilliseconds(100), .awake);
+    try testing.expectEqual(200, (try get(&h, arena.allocator(), "/api/v1/health", "")).status);
+    // ... and gives up on the stream.
+    try waitForOutcome(3, 5000);
+}
+
+test "shutdown ends an open stream" {
+    stream_outcome.store(0, .release);
+    var h: Harness = undefined;
+    try h.start(.{ .shutdown_grace_ms = 5000 });
+    defer h.deinit();
+    const c = try h.open();
+    defer c.close();
+    try c.send("GET /stream-watch HTTP/1.1\r\nHost: t\r\n\r\n");
+    try testing.io.sleep(.fromMilliseconds(150), .awake);
+
+    const took = try h.stop();
+
+    try testing.expect(took < 1500);
+    try testing.expectEqual(2, stream_outcome.load(.acquire));
 }
 
 // ---- interop ---------------------------------------------------------------

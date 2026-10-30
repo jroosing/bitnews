@@ -3,32 +3,19 @@
 //! the services' failures.
 //!
 //! Request types are plain structs and EVERY field needs a default: Go leaves
-//! absent fields at their zero value, std.json refuses a missing field. Use
-//! `Nullable(T)` for a field that distinguishes absent from null (PATCH).
+//! absent fields at their zero value. Use `Nullable(T)` for a field that
+//! distinguishes absent from null (PATCH). Decoding is strict_json.zig's.
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Exchange = @import("http_exchange.zig").Exchange;
 const app_error = @import("app_error.zig");
+const strict_json = @import("strict_json.zig");
 
-/// A request field that tells "not given" from "given as null": the PATCH
-/// semantics of internal/api's nullableString. `set` is true when the key was
-/// present; `value` is null when it was null.
-pub fn Nullable(comptime T: type) type {
-    return struct {
-        set: bool = false,
-        value: ?T = null,
+pub const Nullable = strict_json.Nullable;
 
-        const Self = @This();
-
-        pub fn jsonParse(allocator: Allocator, source: anytype, options: std.json.ParseOptions) !Self {
-            if (try source.peekNextTokenType() == .null) {
-                _ = try source.next();
-                return .{ .set = true, .value = null };
-            }
-            return .{ .set = true, .value = try std.json.innerParse(T, allocator, source, options) };
-        }
-    };
-}
+/// Every integer field of a request is strict (see strict_json.zig); `Int`
+/// is the same decoder as a type, for code that names it.
+pub const Int = strict_json.Int;
 
 /// Whether a Content-Type header names application/json (parameters allowed,
 /// the type is case-insensitive), like mime.ParseMediaType in Go.
@@ -46,21 +33,15 @@ pub fn ParseResult(comptime T: type) type {
     };
 }
 
-/// Parses a request body strictly: one JSON value of the expected shape, no
-/// unknown fields, nothing after it. Strings of the result live in `arena`.
+/// Parses a request body strictly (strict_json.zig): one JSON value of the
+/// expected shape, no unknown fields, nothing after it. Strings of the result
+/// live in `arena`.
 pub fn parseBody(comptime T: type, arena: Allocator, body: []const u8) Allocator.Error!ParseResult(T) {
     if (std.mem.trim(u8, body, " \t\r\n").len == 0) return .{ .invalid = "the request body is empty" };
-    const value = std.json.parseFromSliceLeaky(T, arena, body, .{ .ignore_unknown_fields = false }) catch |err| {
-        const why: []const u8 = switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.UnknownField => "unknown field",
-            error.MissingField => "missing field",
-            error.DuplicateField => "duplicate field",
-            error.UnexpectedToken, error.InvalidEnumTag, error.InvalidNumber, error.Overflow, error.LengthMismatch => "a field has the wrong type or value",
-            error.SyntaxError, error.UnexpectedEndOfInput, error.BufferUnderrun => "malformed JSON",
-            else => "malformed JSON",
-        };
-        return .{ .invalid = try std.fmt.allocPrint(arena, "invalid request body: {s}", .{why}) };
+    var diag: strict_json.Diag = .{};
+    const value = strict_json.parse(T, arena, body, &diag) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.Invalid => return .{ .invalid = try std.fmt.allocPrint(arena, "invalid request body: {s}", .{diag.message}) },
     };
     return .{ .ok = value };
 }
@@ -100,6 +81,7 @@ const testing = std.testing;
 
 const Req = struct {
     name: []const u8 = "",
+    n: ?Int = null,
     dir: Nullable([]const u8) = .{},
     paused: bool = false,
 };
@@ -130,7 +112,14 @@ test "a body is parsed strictly" {
         try testing.expect(r == .invalid);
     }
     try testing.expectEqualStrings("the request body is empty", (try parse("")).invalid);
-    try testing.expectEqualStrings("invalid request body: unknown field", (try parse("{\"id\":\"x\"}")).invalid);
+    try testing.expectEqualStrings("invalid request body: json: unknown field \"id\"", (try parse("{\"id\":\"x\"}")).invalid);
+}
+
+test "a repeated key takes the last value, as Go's decoder does" {
+    test_arena = .init(testing.allocator);
+    defer test_arena.deinit();
+    const r = (try parse("{\"name\":\"first\",\"name\":\"second\"}")).ok;
+    try testing.expectEqualStrings("second", r.name);
 }
 
 test "a Nullable field tells absent, null and a value apart" {
@@ -149,6 +138,18 @@ test "a Nullable field tells absent, null and a value apart" {
     try testing.expectEqualStrings("/data", value.dir.value.?);
 
     try testing.expect((try parse("{\"dir\":5}")) == .invalid);
+}
+
+test "an Int takes only plain integers" {
+    test_arena = .init(testing.allocator);
+    defer test_arena.deinit();
+
+    try testing.expectEqual(@as(i64, 563), (try parse("{\"n\":563}")).ok.n.?.value);
+    try testing.expectEqual(@as(i64, -1), (try parse("{\"n\":-1}")).ok.n.?.value);
+    try testing.expect((try parse("{\"n\":null}")).ok.n == null);
+    for ([_][]const u8{ "{\"n\":\"563\"}", "{\"n\":563.0}", "{\"n\":5e2}", "{\"n\":true}", "{\"n\":99999999999999999999}", "{\"n\":[1]}" }) |bad| {
+        try testing.expect((try parse(bad)) == .invalid);
+    }
 }
 
 test "only application/json is accepted, parameters and case aside" {

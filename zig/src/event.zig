@@ -15,6 +15,7 @@ pub const Kind = enum {
     failed,
     removed,
     settings_changed,
+    servers_changed,
     queue_paused,
     queue_resumed,
 
@@ -71,6 +72,10 @@ pub const Event = union(Kind) {
     /// The Settings were written. No payload: receivers read the current
     /// Settings, which may include secrets.
     settings_changed: void,
+    /// A Server was created, changed or deleted. No payload either: receivers
+    /// (the Usenet runner rebuilding its pools) read the Servers themselves,
+    /// which include passwords.
+    servers_changed: void,
     queue_paused: QueuePaused,
     /// A Queue runs again; its source.
     queue_resumed: dl.SourceKind,
@@ -112,4 +117,5 @@ test "event names are the stable SSE names" {
 test "the discard publisher accepts anything" {
     Publisher.discard.publish(.{ .removed = "d1" });
     Publisher.discard.publish(.settings_changed);
+    Publisher.discard.publish(.servers_changed);
 }

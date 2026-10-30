@@ -21,6 +21,7 @@ const migrate = @import("migrate.zig");
 const AppKeyRepo = @import("appkey_repo.zig").AppKeyRepo;
 const appkey = @import("appkey.zig");
 const setup_gate = @import("setup_gate.zig");
+const services_mod = @import("services.zig");
 const http = @import("http_server.zig");
 const common = @import("http_common.zig");
 
@@ -184,6 +185,11 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
     });
     defer server.deinit();
 
+    var services: services_mod.Services = undefined;
+    try services.init(gpa, io, store, &loaded.key, logger);
+    defer services.deinit();
+    try services.register(&server.routes);
+
     const port = server.listen(cfg.listen) catch |err| {
         try fail(stderr, "listen {s}: {s}", .{ cfg.listen, @errorName(err) });
         unreachable;
@@ -195,6 +201,7 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
     var serving = try io.concurrent(http.Server.serve, .{server});
     while (!stop_requested.load(.acquire)) io.sleep(.fromMilliseconds(50), .awake) catch break;
     serving.cancel(io) catch {};
+    services.closeStreams();
 
     logger.info("shutdown complete", &.{});
     return 0;

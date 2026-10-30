@@ -5,6 +5,7 @@ test {
     _ = @import("download.zig");
     _ = @import("event.zig");
     _ = @import("app_error.zig");
+    _ = @import("strict_json.zig");
     _ = @import("api_json.zig");
     _ = @import("download_json.zig");
 }
