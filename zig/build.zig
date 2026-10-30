@@ -3,7 +3,7 @@ const std = @import("std");
 /// A group of modules tested together. Each group has one root file in src/
 /// that imports the files of the group, so a developer works in their files
 /// and runs `zig build test-<name>` without building the rest.
-const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events", "remover" };
+const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events", "remover", "nzb", "yenc", "tls", "nntp", "scheduler", "filewriter", "queue" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -39,8 +39,19 @@ pub fn build(b: *std.Build) void {
     build_options.addOption([]const u8, "version", b.option([]const u8, "version", "version shown by the daemon") orelse "dev");
     build_options.addOption([]const u8, "commit", b.option([]const u8, "commit", "commit shown by the daemon") orelse "unknown");
 
+    // OpenSSL (NNTPS) and libcurl (NZB URLs): the C headers as modules, found
+    // through pkg-config like the libraries are. On macOS the Homebrew
+    // OpenSSL is keg-only: put its lib/pkgconfig in PKG_CONFIG_PATH (the
+    // Makefile does).
+    const openssl_c = b.addTranslateC(.{ .root_source_file = b.path("c/openssl.h"), .target = target, .optimize = optimize });
+    const curl_c = b.addTranslateC(.{ .root_source_file = b.path("c/curl.h"), .target = target, .optimize = optimize });
+    addPkgIncludes(b, openssl_c, "openssl");
+    addPkgIncludes(b, curl_c, "libcurl");
+
     const imports: []const std.Build.Module.Import = &.{
         .{ .name = "build_options", .module = build_options.createModule() },
+        .{ .name = "openssl_c", .module = openssl_c.createModule() },
+        .{ .name = "curl_c", .module = curl_c.createModule() },
         .{ .name = "sqlite_c", .module = sqlite_c.createModule() },
         .{ .name = "migrations", .module = migrations },
     };
@@ -54,6 +65,7 @@ pub fn build(b: *std.Build) void {
         .imports = imports,
     });
     exe_mod.linkLibrary(sqlite_lib);
+    linkNative(exe_mod);
     const exe = b.addExecutable(.{ .name = "bitnews", .root_module = exe_mod });
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
@@ -71,6 +83,7 @@ pub fn build(b: *std.Build) void {
             .imports = imports,
         });
         mod.linkLibrary(sqlite_lib);
+        linkNative(mod);
         // LLVM, not the self-hosted aarch64 backend: that one skips fuzz tests, so
         // their corpora would never run in a plain `zig build test`.
         const t = b.addTest(.{ .root_module = mod, .use_llvm = true });
@@ -119,4 +132,23 @@ pub fn build(b: *std.Build) void {
     const spike_step = b.step("spike", "Build the Z0 libtorrent spike");
     spike_step.dependOn(&b.addInstallArtifact(spike, .{}).step);
     spike_step.dependOn(&b.addInstallLibFile(lt_lib, lt_name).step);
+}
+
+/// The system libraries the daemon links: OpenSSL for NNTPS and libcurl for
+/// NZB URLs (ADR-0014).
+fn linkNative(mod: *std.Build.Module) void {
+    mod.linkSystemLibrary("ssl", .{});
+    mod.linkSystemLibrary("crypto", .{});
+    mod.linkSystemLibrary("curl", .{});
+}
+
+/// Adds the include directories pkg-config reports for `name` to a
+/// translate-c step. Without pkg-config the compiler's defaults are used.
+fn addPkgIncludes(b: *std.Build, tc: *std.Build.Step.TranslateC, name: []const u8) void {
+    var code: u8 = 0;
+    const out = b.runAllowFail(&.{ "pkg-config", "--cflags-only-I", name }, &code, .ignore) catch return;
+    var it = std.mem.tokenizeAny(u8, out, " \t\r\n");
+    while (it.next()) |flag| {
+        if (std.mem.startsWith(u8, flag, "-I")) tc.addIncludePath(.{ .cwd_relative = flag[2..] });
+    }
 }

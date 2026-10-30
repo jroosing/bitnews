@@ -8,4 +8,6 @@ test {
     _ = @import("strict_json.zig");
     _ = @import("api_json.zig");
     _ = @import("download_json.zig");
+    _ = @import("nzb_types.zig");
+    _ = @import("yenc_types.zig");
 }

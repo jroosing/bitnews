@@ -121,8 +121,11 @@ generate-check:
 #   Z6  the admin account, the setup token and the web pages.
 ZIG_BLACKBOX_SKIP := TestAPIAdd|TestAPIServerTest|TestAPIServerWithAPasswordThatCannotBeOpened|TestAPIJSONRoutes|TestAPIRoutesStopReading|TestAdminPasswordFile|TestWeb|TestWhileSetupIsOpenTheSetupToken
 
+# On macOS the Homebrew OpenSSL is keg-only; pkg-config must find it.
+ZIG_ENV := PKG_CONFIG_PATH=$$(brew --prefix openssl@3 2>/dev/null)/lib/pkgconfig:$$(brew --prefix 2>/dev/null)/lib/pkgconfig:$$PKG_CONFIG_PATH
+
 zig:
-	@cd zig && $$(../scripts/get-zig.sh) build
+	@cd zig && $(ZIG_ENV) $$(../scripts/get-zig.sh) build
 
 # The Go black-box suite (internal/blackbox) against the Zig binary.
 blackbox-zig: zig
@@ -130,5 +133,5 @@ blackbox-zig: zig
 
 # The Zig gate: format, tests and shared files, then the parity suite.
 zig-check:
-	@cd zig && $$(../scripts/get-zig.sh) build check
+	@cd zig && $(ZIG_ENV) $$(../scripts/get-zig.sh) build check
 	@$(MAKE) --no-print-directory blackbox-zig

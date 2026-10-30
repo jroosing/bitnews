@@ -3,4 +3,5 @@ test {
     _ = @import("appkey.zig");
     _ = @import("setup_gate.zig");
     _ = @import("services.zig");
+    _ = @import("native_libs_test.zig");
 }
