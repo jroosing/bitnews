@@ -4,4 +4,6 @@ test {
     _ = @import("servers_repo.zig");
     _ = @import("servers_service.zig");
     _ = @import("servers_api.zig");
+    _ = @import("servers_prober.zig");
+    _ = @import("servers_prober_test.zig");
 }

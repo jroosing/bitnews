@@ -398,8 +398,28 @@ fn runConnection(s: *Server, stream: net.Stream) error{ OutOfMemory, Canceled }!
             // The peer went away or stalled; nothing more to say to it.
             error.ConnectionLost => false,
         };
-        if (!again) return;
+        if (!again) {
+            lingerClose(&conn, stream);
+            return;
+        }
     }
+}
+
+/// How long and how much a closing connection still reads (Go does the same:
+/// closeWriteAndWait).
+const linger_ms = 500;
+const linger_max_bytes = 256 << 10;
+
+/// Closing a socket that still has unread request bytes makes the kernel
+/// reset the connection, which can destroy a response the client has not read
+/// yet (a 413 for a body we stopped reading). So: send FIN, then discard what
+/// arrives until the client closes, a short deadline or a size cap.
+fn lingerClose(conn: *Conn, stream: net.Stream) void {
+    const io = conn.server.io;
+    if (conn.server.stopping.load(.acquire)) return;
+    stream.shutdown(io, .send) catch return;
+    conn.reader.deadline = Io.Clock.Timestamp.now(io, .awake).addDuration(.{ .raw = .fromMilliseconds(linger_ms), .clock = .awake });
+    _ = conn.reader.interface.discard(.limited(linger_max_bytes)) catch {};
 }
 
 /// Waits for the first byte of the next request. A new connection gets the

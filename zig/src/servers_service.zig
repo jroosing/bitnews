@@ -1,7 +1,8 @@
-//! The Usenet Server service (internal/app/server.go) without the connection
-//! prober: create, get, list, update (patch) and delete, with validation,
-//! defaults and the codes of the API. The connection tests come with the NNTP
-//! client (Z3).
+//! The Usenet Server service (internal/app/server.go): create, get, list,
+//! update (patch), delete and the connection tests, with validation, defaults
+//! and the codes of the API. The tests run through the `Prober` the lead sets
+//! after `init` (`servers_prober.zig`); without one they are refused with 503
+//! `server_test_unavailable`.
 //!
 //! Memory: `arena` is the request's arena. Results, failure messages and the
 //! temporary copies live there; a result's `deinit(arena)` wipes the password
@@ -21,6 +22,7 @@ const types = @import("servers_types.zig");
 const Server = types.Server;
 const repo_mod = @import("servers_repo.zig");
 const ServerRepo = repo_mod.ServerRepo;
+const prober_mod = @import("servers_prober.zig");
 
 pub const Error = repo_mod.Error;
 
@@ -91,6 +93,9 @@ pub const ServerService = struct {
     clock: Clock,
     /// Serializes the read-modify-write cycle of `update`.
     mutex: Io.Mutex = .init,
+    /// Runs the connection tests; set it after `init`, before the routes are
+    /// served. The Prober must outlive the service.
+    prober: ?prober_mod.Prober = null,
 
     /// `key` is the master key; it must outlive the service. The service must
     /// not move once its address is given to the routes.
@@ -147,6 +152,38 @@ pub const ServerService = struct {
         self.repo.update(arena, srv) catch |err| return writeError(err, f);
         self.notifier.notify();
         return srv;
+    }
+
+    /// Connects to the stored Server, authenticates and asks for its clock
+    /// (Go: Test). A failed test is not an error: the result says which step
+    /// failed. A Server whose password cannot be opened cannot be tested
+    /// (conflict, code "password_unavailable").
+    pub fn testServer(self: *ServerService, arena: Allocator, id: []const u8, f: *Failure) (Error || error{Rejected})!prober_mod.Result {
+        var srv = try self.repo.get(arena, id);
+        defer srv.deinit(arena);
+        if (srv.password_unavailable) return f.setLiteral(.conflict, "password_unavailable", "the stored password cannot be decrypted: enter the password again");
+        return self.probe(srv, f);
+    }
+
+    /// The same test for a Server that is not saved. Name, priority and the
+    /// limits do not matter for the test but are validated like any other
+    /// Server (Go: TestSpec).
+    pub fn testSpec(self: *ServerService, arena: Allocator, spec: Spec, f: *Failure) (Error || error{Rejected})!prober_mod.Result {
+        var srv = try fromSpec(arena, spec);
+        defer srv.deinit(arena);
+        if (srv.name.len == 0) try replace(arena, &srv.name, "test");
+        try validate(arena, srv, f);
+        return self.probe(srv, f);
+    }
+
+    fn probe(self: *ServerService, srv: Server, f: *Failure) (Error || error{Rejected})!prober_mod.Result {
+        const p = self.prober orelse return f.setLiteral(.unavailable, "server_test_unavailable", "testing a server connection is not available");
+        return p.probe(self.io, .{
+            .host = srv.host,
+            .port = @intCast(std.math.clamp(srv.port, 1, 65535)),
+            .user = srv.username,
+            .pass = srv.passwordBytes(),
+        });
     }
 
     /// `error.NotFound` for an unknown ID.

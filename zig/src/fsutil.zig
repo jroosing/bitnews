@@ -11,7 +11,8 @@
 //! Strings returned by functions that take an allocator live in it: pass an
 //! arena (one per request or step), nothing is freed one by one.
 //!
-//! SafeName, Unique, MoveDir and the rest of Go's fsutil come with the
+//! `safeName` and `unique` (fsutil_name.zig) and the write-error helpers are
+//! re-exported here; MoveDir and the rest of Go's fsutil come with the
 //! milestones that need them.
 const std = @import("std");
 const Io = std.Io;
@@ -25,6 +26,71 @@ pub const Error = error{
     /// (Go: ErrUnsafePath).
     UnsafePath,
 };
+
+// ---- names (fsutil_name.zig) ----
+
+const names = @import("fsutil_name.zig");
+pub const NameError = names.NameError;
+pub const safeName = names.safeName;
+pub const unique = names.unique;
+pub const max_name_bytes = names.max_name_bytes;
+
+// ---- write errors ----
+
+/// Whether `err` is a refused permission (Go: errors.Is(err, fs.ErrPermission)).
+pub fn isPermissionError(err: anyerror) bool {
+    return err == error.AccessDenied or err == error.PermissionDenied;
+}
+
+/// The effective user id the daemon runs as.
+pub fn effectiveUid() u32 {
+    return @intCast(std.posix.system.geteuid());
+}
+
+/// The text to show as the reason of a failed Download when `folder` refused a
+/// write (Go: fsutil.WriteError): it names the folder and the user id, so the
+/// user knows what to fix. The result lives in `a`.
+pub fn writeErrorDetail(a: Allocator, folder: []const u8, uid: u32) Allocator.Error![]u8 {
+    return std.fmt.allocPrint(a, "cannot write to folder {f}: permission denied for uid {d}, give that user write access to the folder", .{ goQuoted(folder), uid });
+}
+
+const log_text = @import("log_text.zig");
+
+/// Go's %q for `{f}`.
+fn goQuoted(s: []const u8) std.fmt.Alt([]const u8, formatGoQuoted) {
+    return .{ .data = s };
+}
+
+fn formatGoQuoted(s: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    try log_text.writeQuoted(w, s);
+}
+
+/// The deepest ancestor of `path` that exists: the folder that refused when
+/// creating `path` (and so its parents) failed with a permission error. A
+/// relative path that has nothing above it yields ".".
+pub fn deepestExistingParent(io: Io, path: []const u8) []const u8 {
+    var cur = path;
+    while (true) {
+        const parent = dirOf(cur);
+        if (parent.len == 0) return ".";
+        const st = Io.Dir.cwd().statFile(io, parent, .{}) catch {
+            cur = parent;
+            continue;
+        };
+        _ = st;
+        return parent;
+    }
+}
+
+/// Go's filepath.Dir without cleaning, as a slice of `path`: "" when there is
+/// no separator.
+fn dirOf(path: []const u8) []const u8 {
+    var end = path.len;
+    while (end > 1 and path[end - 1] == sep) end -= 1;
+    const i = std.mem.lastIndexOfScalar(u8, path[0..end], sep) orelse return "";
+    if (i == 0) return "/";
+    return path[0..i];
+}
 
 /// Whether `path` is absolute.
 pub fn isAbs(path: []const u8) bool {

@@ -298,7 +298,8 @@ pub const Service = struct {
     }
 
     /// The Downloads of the Queue of one source kind: those not yet fetched.
-    fn queueOf(self: *Service, arena: Allocator, kind: dl.SourceKind) ![]dl.Download {
+    /// (Public for the add service, which numbers a new Download after them.)
+    pub fn queueOf(self: *Service, arena: Allocator, kind: dl.SourceKind) ![]dl.Download {
         var queue: std.ArrayList(dl.Download) = .empty;
         for (std.enums.values(dl.State)) |st| {
             if (!st.inQueue()) continue;

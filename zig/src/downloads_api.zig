@@ -2,7 +2,7 @@
 //!
 //!   GET    /api/v1/downloads            list, with filters and a cursor
 //!   GET    /api/v1/downloads/{id}
-//!   POST   /api/v1/downloads            adding (NZB or torrent): not in this build yet
+//!   POST   /api/v1/downloads            adding an NZB (add_api.zig; torrents: Z7)
 //!   POST   /api/v1/downloads/{id}/pause
 //!   POST   /api/v1/downloads/{id}/resume
 //!   PATCH  /api/v1/downloads/{id}       priority, category, queue position
@@ -21,18 +21,30 @@ const download_json = @import("download_json.zig");
 const repo_mod = @import("downloads_repo.zig");
 const svc_mod = @import("downloads_service.zig");
 const Service = svc_mod.Service;
+const add_api = @import("add_api.zig");
+const add_service = @import("add_service.zig");
 
 /// Room for an NZB of up to 64 MiB plus the multipart framing and form fields
 /// (addBodyLimit in routes.go).
 const add_body_limit: u64 = (64 << 20) + (1 << 20);
 
-/// Registers the routes. `svc` must outlive the router.
+/// Registers the routes, with adding answering `add_unavailable`. `svc` must
+/// outlive the router.
 pub fn register(routes: *ex.Routes, svc: *Service) !void {
+    try registerRoutes(routes, svc, .{ .handler = addUnavailable, .state = svc, .body_limit = add_body_limit });
+}
+
+/// Registers the routes with adding served by the add service (add_api.zig).
+/// Both must outlive the router.
+pub fn registerWithAdd(routes: *ex.Routes, svc: *Service, add: *add_service.AddService) !void {
+    try registerRoutes(routes, svc, .{ .handler = add_api.addDownload, .state = add, .body_limit = add_body_limit });
+}
+
+fn registerRoutes(routes: *ex.Routes, svc: *Service, add_route: ex.Route) !void {
     const small = respond.small_body_limit;
     try routes.add("GET /api/v1/downloads", .{ .handler = listDownloads, .state = svc, .body_limit = small });
     try routes.add("GET /api/v1/downloads/{id}", .{ .handler = getDownload, .state = svc, .body_limit = small });
-    // The lead replaces this handler when adding exists (milestones Z3 and Z7).
-    try routes.add("POST /api/v1/downloads", .{ .handler = addUnavailable, .state = svc, .body_limit = add_body_limit });
+    try routes.add("POST /api/v1/downloads", add_route);
     try routes.add("POST /api/v1/downloads/{id}/pause", .{ .handler = pauseDownload, .state = svc, .body_limit = small });
     try routes.add("POST /api/v1/downloads/{id}/resume", .{ .handler = resumeDownload, .state = svc, .body_limit = small });
     try routes.add("PATCH /api/v1/downloads/{id}", .{ .handler = patchDownload, .state = svc, .body_limit = small });

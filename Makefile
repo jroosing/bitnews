@@ -115,11 +115,8 @@ generate-check:
 # ---- the Zig rewrite (branch zig, M15, ADR-0014) --------------------------------------
 
 # What the Zig daemon does not do yet, by milestone, and shrinks as they land:
-#   Z3  adding downloads (TestAPIAdd), the server connection test routes
-#       (TestAPIServerTest, ...PasswordThatCannotBeOpened) and the three
-#       generic request tests, which fail today only on POST /servers/test;
 #   Z6  the admin account, the setup token and the web pages.
-ZIG_BLACKBOX_SKIP := TestAPIAdd|TestAPIServerTest|TestAPIServerWithAPasswordThatCannotBeOpened|TestAPIJSONRoutes|TestAPIRoutesStopReading|TestAdminPasswordFile|TestWeb|TestWhileSetupIsOpenTheSetupToken
+ZIG_BLACKBOX_SKIP := TestAdminPasswordFile|TestWeb|TestWhileSetupIsOpenTheSetupToken
 
 # On macOS the Homebrew OpenSSL is keg-only; pkg-config must find it.
 ZIG_ENV := PKG_CONFIG_PATH=$$(brew --prefix openssl@3 2>/dev/null)/lib/pkgconfig:$$(brew --prefix 2>/dev/null)/lib/pkgconfig:$$PKG_CONFIG_PATH

@@ -189,6 +189,7 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
     try services.init(gpa, io, store, &loaded.key, logger);
     defer services.deinit();
     try services.register(&server.routes);
+    try services.start();
 
     const port = server.listen(cfg.listen) catch |err| {
         try fail(stderr, "listen {s}: {s}", .{ cfg.listen, @errorName(err) });
@@ -201,6 +202,7 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
     var serving = try io.concurrent(http.Server.serve, .{server});
     while (!stop_requested.load(.acquire)) io.sleep(.fromMilliseconds(50), .awake) catch break;
     serving.cancel(io) catch {};
+    services.stop();
     services.closeStreams();
 
     logger.info("shutdown complete", &.{});

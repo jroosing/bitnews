@@ -97,7 +97,23 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 
 ### M15-04: Z3 — Usenet fetch
 **Goal:** NZB, NNTP client and pool, yEnc, file writer, scheduler and runner, with fuzz targets for NZB, NNTP and yEnc.
-- [ ] An NZB reaches Fetched against the fake NNTP server, black-box.
+- [x] An NZB reaches Fetched against the fake NNTP server, black-box: 52 `TestUsenet*` scenarios (fetch, damage and failover, queue behaviour, the connection test, adding), green against Go on Linux first and then against the Zig binary on macOS and Debian trixie.
+- [x] Nothing that `par2` or libtorrent does is reimplemented: the only PAR2 knowledge in the Usenet code is reading the block count from recovery volume file names.
+
+#### Z3 findings
+
+**How it was built.** A shared foundation first (NZB, yEnc and Usenet seam types, OpenSSL and libcurl through pkg-config translate-c modules), then seven slices in parallel (NZB parser, yEnc decoder, TLS, NNTP client and fake server, file writer, queue, Go scenarios), the scheduler once yEnc landed, and then the runner, the add service and the server connection test. `services.zig` joins them; the daemon fetches to `fetched` and stops there until Z4.
+
+**Where Zig differs from Go, and what it cost:**
+- **XML.** Zig has no XML parser; `nzb_xml.zig` is a small bounded tokenizer for the NZB subset. A 150,000-case differential run against Go's `encoding/xml` found no difference in error kind or parsed fields. DOCTYPE is tolerated as Go does (an entity it defines is refused). Segment numbers are `u32`.
+- **TLS.** OpenSSL over memory BIOs, fed through `std.Io` streams, so every blocking operation is a cancellable `Io` operation. Verification cannot be switched off: the options only add trust roots. `std.Io.net.Stream.read` does not compile in 0.17.0 (`readWithControl` is used) and `Io.Threaded` has no connect timeout, so the NNTP dialer races the handshake against a timer and a watchdog task enforces idle timeouts.
+- **Cancellation.** A `Future.cancel` right after `io.concurrent` can be lost in 0.17 (about 3% in an experiment). The runner therefore also sets a per-job stop flag that makes the fetchers answer `ServerDisabled`, so the scheduler drains by itself.
+- **File names.** `SafeName` needed Go's `unicode.In(C, Zl, Zp)` table, generated from Go 1.27.3 into `fsutil_unicode.zig` (7127 golden cases match). The file writer opens files relative to the Download directory's handle, never following symlinks.
+- **Compatibility.** The file writer snapshot and the runner's resume blob are byte-identical with Go's in both directions (golden files and throwaway Go programs).
+- **Client disconnect.** The connection test is not cancelled when the client leaves, because `Exchange` only exposes that for streaming responses. The 20 s deadline and shutdown still apply.
+- **Torrent adds.** The add service has one seam (`Torrents`) that answers `add_unavailable` until Z7.
+
+**Not in Z3:** PAR2 verify and repair, unpacking and the `missing_articles` failure (Go fails a Download with missing articles in post-processing, Z4), name cleaning (Z4), the torrent branch of adding (Z7). Not yet verified on linux/amd64 (M15-09).
 
 ### M15-05: Z4 — Post-processing
 **Goal:** The tool runner, par2, 7zz unpack, finalize and tidy.

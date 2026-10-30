@@ -1,2 +1,6 @@
-//! Tests of the yenc group: import the files of the group here.
-test {}
+//! Tests of the yenc group: the yEnc decoder.
+test {
+    _ = @import("yenc_types.zig");
+    _ = @import("yenc.zig");
+    _ = @import("yenc_test.zig");
+}

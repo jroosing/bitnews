@@ -2,8 +2,9 @@
 //! server DTO in dto.go). The password only ever travels inwards: responses
 //! say `has_password` and `password_unavailable` instead.
 //!
-//! The two connection-test routes need the NNTP client (Z3); until then they
-//! answer 503 `server_test_unavailable`.
+//! The two connection-test routes answer 200 whatever the outcome: the body
+//! says what happened (dto.go probeJSON). A saved Server is tested with its
+//! stored password; an unsaved spec is validated first and saved nowhere.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -14,6 +15,7 @@ const app_error = @import("app_error.zig");
 const time_fmt = @import("time_fmt.zig");
 const types = @import("servers_types.zig");
 const svc_mod = @import("servers_service.zig");
+const prober_mod = @import("servers_prober.zig");
 const ServerService = svc_mod.ServerService;
 
 /// A Server as a response shows it (dto.go serverJSON), in the Go field order.
@@ -109,11 +111,11 @@ pub fn register(routes: *ex.Routes, svc: *ServerService) !void {
     const small = respond.small_body_limit;
     try routes.add("GET /api/v1/servers", .{ .handler = list, .state = svc, .body_limit = small });
     try routes.add("POST /api/v1/servers", .{ .handler = create, .state = svc, .body_limit = small });
-    try routes.add("POST /api/v1/servers/test", .{ .handler = testUnavailable, .state = svc, .body_limit = small });
+    try routes.add("POST /api/v1/servers/test", .{ .handler = testUnsaved, .state = svc, .body_limit = small });
     try routes.add("GET /api/v1/servers/{id}", .{ .handler = get, .state = svc, .body_limit = small });
     try routes.add("PATCH /api/v1/servers/{id}", .{ .handler = patch, .state = svc, .body_limit = small });
     try routes.add("DELETE /api/v1/servers/{id}", .{ .handler = delete, .state = svc, .body_limit = small });
-    try routes.add("POST /api/v1/servers/{id}/test", .{ .handler = testUnavailable, .state = svc, .body_limit = small });
+    try routes.add("POST /api/v1/servers/{id}/test", .{ .handler = testSaved, .state = svc, .body_limit = small });
 }
 
 fn service(state: ?*anyopaque) *ServerService {
@@ -172,11 +174,44 @@ fn delete(state: ?*anyopaque, e: *ex.Exchange) anyerror!void {
     e.res.status = .no_content;
 }
 
-/// Both test routes, until the NNTP client exists (Z3).
-fn testUnavailable(_: ?*anyopaque, e: *ex.Exchange) anyerror!void {
+/// The result of a connection test (dto.go probeJSON). The times are whole
+/// milliseconds, 0 unless the connection worked.
+const ProbeJson = struct {
+    ok: bool,
+    class: []const u8,
+    detail: []const u8,
+    message: []const u8,
+    connect_ms: i64,
+    latency_ms: i64,
+
+    fn of(r: *const prober_mod.Result) ProbeJson {
+        return .{
+            .ok = r.ok,
+            .class = r.class.name(),
+            .detail = r.detail,
+            .message = r.message(),
+            .connect_ms = @divTrunc(r.connect_ns, std.time.ns_per_ms),
+            .latency_ms = @divTrunc(r.latency_ns, std.time.ns_per_ms),
+        };
+    }
+};
+
+fn testUnsaved(state: ?*anyopaque, e: *ex.Exchange) anyerror!void {
+    const body = (try api_json.decode(Body, e)) orelse return;
+    return testUnsavedWith(service(state), e, body);
+}
+
+fn testUnsavedWith(svc: *ServerService, e: *ex.Exchange, body: Body) anyerror!void {
+    defer wipe(body.password);
     var f: app_error.Failure = .{};
-    const err = f.setLiteral(.unavailable, "server_test_unavailable", "testing a server connection is not available in this build yet");
-    return api_json.fail(e, err, &f);
+    const r = svc.testSpec(e.arena, body.spec(), &f) catch |err| return api_json.fail(e, err, &f);
+    try e.res.json(e.arena, .ok, ProbeJson.of(&r));
+}
+
+fn testSaved(state: ?*anyopaque, e: *ex.Exchange) anyerror!void {
+    var f: app_error.Failure = .{};
+    const r = service(state).testServer(e.arena, e.param("id").?, &f) catch |err| return api_json.fail(e, err, &f);
+    try e.res.json(e.arena, .ok, ProbeJson.of(&r));
 }
 
 // ---- tests ----
@@ -192,7 +227,7 @@ fn testClock(_: Io) i64 {
     return test_now;
 }
 
-const Rig = struct {
+pub const Rig = struct {
     tmp: testing.TmpDir,
     store: *sqlite.Store,
     key: Key,
@@ -205,7 +240,7 @@ const Rig = struct {
         r.changes += 1;
     }
 
-    fn open(rig: *Rig) !void {
+    pub fn open(rig: *Rig) !void {
         rig.tmp = testing.tmpDir(.{});
         errdefer rig.tmp.cleanup();
         var buf: [std.fs.max_path_bytes]u8 = undefined;
@@ -226,7 +261,7 @@ const Rig = struct {
         rig.arena_state = .init(testing.allocator);
     }
 
-    fn close(rig: *Rig) void {
+    pub fn close(rig: *Rig) void {
         rig.arena_state.deinit();
         rig.key.deinit();
         rig.store.close();
@@ -235,7 +270,7 @@ const Rig = struct {
 
     /// An Exchange with no connection behind it: enough for handlers that
     /// work on a parsed body.
-    fn exchange(rig: *Rig, params: []const @import("router.zig").Param) ex.Exchange {
+    pub fn exchange(rig: *Rig, params: []const @import("router.zig").Param) ex.Exchange {
         return .{
             .arena = rig.arena_state.allocator(),
             .io = testing.io,
@@ -252,14 +287,14 @@ const Rig = struct {
         };
     }
 
-    fn create(rig: *Rig, body: []const u8) !ex.Exchange {
+    pub fn create(rig: *Rig, body: []const u8) !ex.Exchange {
         var e = rig.exchange(&.{});
         const parsed = try api_json.parseBody(Body, e.arena, try e.arena.dupe(u8, body));
         try createWith(&rig.svc, &e, parsed.ok);
         return e;
     }
 
-    fn patchServer(rig: *Rig, id: []const u8, body: []const u8) !ex.Exchange {
+    pub fn patchServer(rig: *Rig, id: []const u8, body: []const u8) !ex.Exchange {
         const params = try rig.arena_state.allocator().dupe(@import("router.zig").Param, &.{.{ .name = "id", .value = id }});
         var e = rig.exchange(params);
         switch (try api_json.parseBody(Body, e.arena, try e.arena.dupe(u8, body))) {
@@ -270,19 +305,35 @@ const Rig = struct {
     }
 
     /// The id of the Server in a create response.
-    fn idOf(rig: *Rig, e: ex.Exchange) ![]const u8 {
+    pub fn idOf(rig: *Rig, e: ex.Exchange) ![]const u8 {
         const parsed = try std.json.parseFromSliceLeaky(struct { id: []const u8 }, rig.arena_state.allocator(), e.res.body, .{ .ignore_unknown_fields = true });
         return parsed.id;
     }
 
-    fn call(rig: *Rig, handler: ex.Handler, params: []const @import("router.zig").Param) !ex.Exchange {
+    /// POST /servers/test with `body`.
+    pub fn testSpec(rig: *Rig, body: []const u8) !ex.Exchange {
+        var e = rig.exchange(&.{});
+        switch (try api_json.parseBody(Body, e.arena, try e.arena.dupe(u8, body))) {
+            .ok => |b| try testUnsavedWith(&rig.svc, &e, b),
+            .invalid => |msg| try e.res.fail(e.arena, .bad_request, "invalid_json", msg),
+        }
+        return e;
+    }
+
+    /// POST /servers/{id}/test.
+    pub fn testById(rig: *Rig, id: []const u8) !ex.Exchange {
+        const params = try rig.arena_state.allocator().dupe(@import("router.zig").Param, &.{.{ .name = "id", .value = id }});
+        return rig.call(testSaved, params);
+    }
+
+    pub fn call(rig: *Rig, handler: ex.Handler, params: []const @import("router.zig").Param) !ex.Exchange {
         var e = rig.exchange(params);
         try handler(&rig.svc, &e);
         return e;
     }
 };
 
-fn expectError(e: ex.Exchange, status: std.http.Status, code: []const u8) !void {
+pub fn expectError(e: ex.Exchange, status: std.http.Status, code: []const u8) !void {
     try testing.expectEqual(status, e.res.status);
     var buf: [128]u8 = undefined;
     const want = try std.fmt.bufPrint(&buf, "{{\"error\":{{\"code\":\"{s}\",\"message\":\"", .{code});
@@ -428,12 +479,15 @@ test "no response or error holds the password" {
     for (bodies) |b| try testing.expect(std.mem.indexOf(u8, b.res.body, "SECRET") == null);
 }
 
-test "the test routes answer 503 server_test_unavailable" {
+test "the test routes answer 503 server_test_unavailable without a prober" {
     var rig: Rig = undefined;
     try rig.open();
     defer rig.close();
-    const e = try rig.call(testUnavailable, &.{});
-    try expectError(e, .service_unavailable, "server_test_unavailable");
+    const created = try rig.create("{\"name\":\"main\",\"host\":\"h\"}");
+    const id = try rig.idOf(created);
+
+    try expectError(try rig.call(testSaved, &.{.{ .name = "id", .value = id }}), .service_unavailable, "server_test_unavailable");
+    try expectError(try rig.testSpec("{\"host\":\"h.example\"}"), .service_unavailable, "server_test_unavailable");
 }
 
 test "the routes are registered with the Go patterns" {
