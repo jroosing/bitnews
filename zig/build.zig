@@ -3,7 +3,7 @@ const std = @import("std");
 /// A group of modules tested together. Each group has one root file in src/
 /// that imports the files of the group, so a developer works in their files
 /// and runs `zig build test-<name>` without building the rest.
-const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events", "remover", "nzb", "yenc", "tls", "nntp", "scheduler", "filewriter", "queue", "add", "runner" };
+const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events", "remover", "nzb", "yenc", "tls", "nntp", "scheduler", "filewriter", "queue", "add", "runner", "tool", "par2", "unpack", "finalize", "tidy", "postprocess" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});

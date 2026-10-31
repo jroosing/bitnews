@@ -117,7 +117,22 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 
 ### M15-05: Z4 — Post-processing
 **Goal:** The tool runner, par2, 7zz unpack, finalize and tidy.
-- [ ] A Download reaches Ready with the same output tree as the Go version.
+- [x] A Download reaches Ready with the same output tree as the Go version: 108 `TestPostProc*` black-box scenarios, green against Go on Linux first and then against the Zig binary on macOS and Debian trixie (with the Linux `par2` and `7zz`).
+- [x] `par2` and `7zz` do the work: nothing of PAR2 repair, hash matching or archive extraction is reimplemented. The Zig side wraps, guards and parses their output as Go does.
+
+#### Z4 findings
+
+**How it was built.** A shared foundation first (the ports of the pipeline and the `Runner` seam to the tools), then five slices in parallel (tool runner, par2, unpack, finalize with tidy, the orchestrator) next to the Go scenarios, joined in `services.zig`. The daemon locates `7zz` and `par2` at start-up and stops with Go's message when one is missing.
+
+**Where Zig differs from Go, and what it cost:**
+- **Subprocesses.** `std.process.spawn` is used with a pipe per stream and its own process group; one poll loop reads both streams, feeds stdin and notices cancellation every 25 ms, because `io.concurrent` tasks can fail with `ConcurrencyUnavailable` and an early cancel can be lost. On Linux, 0.17's spawn leaks three descriptors and a zombie when `exec` fails; the runner checks the program and the directory first, so only a rare `exec` failure (bad ELF, noexec mount) can still leak.
+- **Error texts.** A port reports a class and the whole of Go's `err.Error()` in `Diag.message`; the orchestrator only prefixes the stage. Wrapped sentinels therefore read exactly as in Go ("unpacking: unpack: unsafe path in archive: path violation: ...").
+- **The PAR2 name guard.** `par2_names.zig` reads the File Description packets (magic, length, MD5, type, file name) of every `.par2` file before `par2` runs and refuses a set with an unsafe name, as Go does; `par2` versions differ in what they neutralise. It is the only place that reads PAR2 data and is isolated so it can be dropped (delete the file and its two uses in `par2.zig`).
+- **Unicode tables.** Go's `unicode.ToLower` for the archive name checks is a generated table (`unpack_lower.zig`), like the one for `SafeName` in Z3.
+- **Free space and CPU count.** `std` has no cgroup quota, so par2's thread count is the CPU count capped at 16 unless set; a bind mount of the same directory is not seen as the same directory by the finalizer.
+- **Linux tools in tests.** The tests that run the real tools use the pinned binaries; in the Debian container the host's `bin/tools` are macOS binaries, so those tests skip there unless the Linux ones are mounted over them (`scripts/get-postproc-tools.sh linux arm64 <dir>`).
+
+**Not in Z4:** the SABnzbd adapter (Z5), the web UI (Z6), torrents and their working directory (Z7; `WorkDirs.torrent` is the seam). Not yet verified on linux/amd64 (M15-09).
 
 ### M15-06: Z5 — SABnzbd adapter
 **Goal:** `/sabnzbd/api` as in M4.

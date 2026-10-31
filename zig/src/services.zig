@@ -39,6 +39,21 @@ const runner_store = @import("runner_store.zig");
 const add_service = @import("add_service.zig");
 const add_curl = @import("add_curl.zig");
 const add_source_repo = @import("add_source_repo.zig");
+const tool = @import("tool.zig");
+const par2 = @import("par2.zig");
+const unpack_ports = @import("unpack_ports.zig");
+const finalize = @import("finalize.zig");
+const tidy = @import("tidy.zig");
+const secretbox = @import("secretbox.zig");
+const postprocess = @import("postprocess.zig");
+const pp_adapters = @import("postprocess_adapters.zig");
+
+/// Where the post-processing programs are (`tool.locate`); the strings must
+/// outlive the Services.
+pub const Tools = struct {
+    seven_zip: []const u8,
+    par2: []const u8,
+};
 
 pub const Services = struct {
     gpa: Allocator,
@@ -62,11 +77,19 @@ pub const Services = struct {
     runner_store: runner_store.Sqlite,
     usenet: *runner_mod.Runner,
     add: add_service.AddService,
+    repairer: par2.Repairer,
+    unpacker: unpack_ports.Adapter,
+    finisher: finalize.Finisher,
+    postproc_poke: pp_adapters.FetchedPoke,
+    runner_ports: pp_adapters.RunnerPorts,
+    settings_roots: pp_adapters.SettingsRoots,
+    work_dirs: pp_adapters.WorkDirs,
+    pp: *postprocess.PostProcessor,
     instance_id: [id_mod.length]u8,
     events: events_api.Events,
 
     /// `self` must stay where it is until `deinit`. `key` must outlive it.
-    pub fn init(self: *Services, gpa: Allocator, io: Io, store: *sqlite.Store, key: *const keyfile.Key, logger: log.Logger) !void {
+    pub fn init(self: *Services, gpa: Allocator, io: Io, store: *sqlite.Store, key: *const keyfile.Key, tools: Tools, logger: log.Logger) !void {
         const bus = try events_bus.Bus.init(gpa, io, .{});
         errdefer bus.deinit();
         const publisher = bus.publisher();
@@ -85,6 +108,7 @@ pub const Services = struct {
         self.servers = servers_service.ServerService.init(io, store, key, .{ .ctx = bus, .notify_fn = serversChanged }, servers_service.realClock);
         self.settings = try settings_service.Service.init(gpa, io, .{ .store = store }, publisher, null);
         errdefer self.settings.deinit();
+        self.postproc_poke = .{};
         self.tls_dialer = try nntp.TlsDialer.init(.{});
         errdefer self.tls_dialer.deinit();
         self.prober = servers_prober.NntpProber.init(gpa, self.tls_dialer.dialer());
@@ -105,6 +129,7 @@ pub const Services = struct {
             .volumes = self.runner_store.volumes(),
             .reports = self.runner_store.reports(),
             .speed = .{ .ctx = &self.settings, .read_fn = usenetSpeed },
+            .on_fetched = self.postproc_poke.hook(),
             .log = logger,
         });
         errdefer self.usenet.destroy();
@@ -127,7 +152,45 @@ pub const Services = struct {
             .fetcher = add_curl.fetcher,
             .logger = logger,
             .on_added = .{ .ctx = self.usenet, .added_fn = wakeRunner },
+            .name_cleaner = tidy.nameCleaner(),
         });
+
+        // Post-processing: par2 and 7zz behind their ports, finalize, and the
+        // adapters to the runner. The poke hook handed to the runner above is
+        // pointed at the PostProcessor last.
+        const nzb_source: runner_seams.NzbSource = .{ .ctx = &self.source_repo, .path_fn = nzbPath };
+        self.repairer = .{ .runner = tool.system(), .path = tools.par2 };
+        self.unpacker = .{
+            .gpa = gpa,
+            .runner = tool.system(),
+            .seven_zip = tools.seven_zip,
+            .passwords = .{ .ctx = &self.source_repo, .get_fn = archivePassword },
+            .min_free_source = .{ .ctx = &self.settings, .get_fn = minFreeBytes },
+            .logger = logger,
+        };
+        self.finisher = finalize.Finisher.init(gpa, .{
+            .settings = finalize.settingsFromService(&self.settings),
+            .categories = finalize.categoriesFromService(&self.categories),
+            .log = logger,
+        });
+        self.runner_ports = .{ .runner = self.usenet, .log = logger };
+        self.settings_roots = .{ .service = &self.settings };
+        self.work_dirs = .{ .sources = nzb_source, .roots = self.settings_roots.roots() };
+        self.pp = try postprocess.PostProcessor.create(gpa, io, .{
+            .downloads = self.download_repo,
+            .bus = bus,
+            .repairer = self.repairer.port(),
+            .unpacker = self.unpacker.unpacker(),
+            .finisher = self.finisher.port(),
+            .fetch_reporter = self.runner_ports.fetchReporter(),
+            .deferred = self.runner_ports.deferredVolumes(),
+            .dir_for = self.work_dirs.dirFor(),
+            .fs = pp_adapters.os_fs,
+            .concurrency = postprocConcurrency(&self.settings),
+            .log = logger,
+        });
+        errdefer self.pp.destroy();
+        self.postproc_poke.set(self.pp);
         self.instance_id = id_mod.new(io);
         self.events = .{ .bus = bus, .instance_id = &self.instance_id };
     }
@@ -137,15 +200,18 @@ pub const Services = struct {
     pub fn start(self: *Services) !void {
         try self.usenet.recover();
         try self.usenet.start();
+        try self.pp.start();
     }
 
     /// Stops the fetches and saves their resume state. Call it after the HTTP
     /// server has returned and before `closeStreams`.
     pub fn stop(self: *Services) void {
+        self.pp.stop();
         self.usenet.stop();
     }
 
     pub fn deinit(self: *Services) void {
+        self.pp.destroy();
         self.usenet.destroy();
         self.runner_servers.deinit();
         self.tls_dialer.deinit();
@@ -220,4 +286,29 @@ fn usenetSpeed(ctx: *anyopaque) i64 {
 fn wakeRunner(ctx: ?*anyopaque, _: dl.Download) void {
     const r: *runner_mod.Runner = @ptrCast(@alignCast(ctx.?));
     r.poke();
+}
+
+/// The archive password of a Download, null when it has none or it cannot be
+/// opened (the unpack then fails with the password error, as in Go).
+fn archivePassword(ctx: ?*anyopaque, arena: Allocator, id: []const u8) anyerror!?[]const u8 {
+    const repo: *add_source_repo.SourceRepo = @ptrCast(@alignCast(ctx.?));
+    const src = repo.get(arena, id) catch |err| switch (err) {
+        error.NotFound => return null,
+        else => return err,
+    };
+    if (src.password.len == 0) return null;
+    return src.password;
+}
+
+fn minFreeBytes(ctx: ?*anyopaque) u64 {
+    const settings: *settings_service.Service = @ptrCast(@alignCast(ctx.?));
+    const snap = settings.current();
+    defer snap.release();
+    return snap.settings.queues.effectiveMinFree();
+}
+
+fn postprocConcurrency(settings: *settings_service.Service) usize {
+    const snap = settings.current();
+    defer snap.release();
+    return @intCast(@max(1, snap.settings.queues.effectivePostprocConcurrency()));
 }

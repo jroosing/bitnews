@@ -18,6 +18,7 @@ pub const Kind = enum {
     servers_changed,
     queue_paused,
     queue_resumed,
+    postprocess_stage,
 
     /// Progress events are high-frequency and superseded by the next one, so
     /// a bus may drop them for a slow subscriber. Every other kind is a
@@ -46,6 +47,20 @@ pub const Failed = struct {
     reason: dl.FailureReason,
     /// Already redacted.
     detail: []const u8 = "",
+};
+
+/// A step of the post-processing pipeline, in the order they run (verify and
+/// unpack are conditional). `repairing` is never entered as a stage of its own
+/// (the repair is part of the verifying pass); it names the failures of the
+/// repair. The names are the wire names of the SSE event.
+pub const Stage = enum { verifying, repairing, unpacking, finishing };
+
+/// A Download entered a post-processing stage. It is published after the
+/// `download_updated` that moved the Download to post_processing, because a
+/// Download has no stage field.
+pub const PostProcessStage = struct {
+    id: []const u8,
+    stage: Stage,
 };
 
 pub const QueuePaused = struct {
@@ -79,6 +94,7 @@ pub const Event = union(Kind) {
     queue_paused: QueuePaused,
     /// A Queue runs again; its source.
     queue_resumed: dl.SourceKind,
+    postprocess_stage: PostProcessStage,
 
     pub fn kind(e: Event) Kind {
         return e;
@@ -109,6 +125,7 @@ test "only download_progress is a progress event" {
 }
 
 test "event names are the stable SSE names" {
+    try testing.expectEqualStrings("postprocess_stage", @tagName(Kind.postprocess_stage));
     try testing.expectEqualStrings("download_added", @tagName(Kind.download_added));
     try testing.expectEqualStrings("settings_changed", @tagName(Kind.settings_changed));
     try testing.expectEqualStrings("queue_resumed", @tagName(Kind.queue_resumed));

@@ -1,0 +1,42 @@
+Fixtures of the unpack slice (zig/src/unpack_*.zig). Total size is well under 1 MB.
+
+7z/
+    t0.7z t1.7z t2.7z t3.7z t4.7z t5.7z multi.7z.001-006 lzma2.7z empty.7z:
+    copied unmodified from internal/postproc/unpack/testdata/7z, which has them
+    from github.com/bodgit/sevenzip v1.6.5 testdata (Copyright (c) 2020 Matt
+    Dainty, BSD 3-Clause License, https://github.com/bodgit/sevenzip/blob/master/LICENSE).
+    t2-t5 are encrypted with the password "password".
+
+rar/container.rar
+    Copied unmodified from internal/postproc/unpack/testdata/rar (from the
+    Homebrew test fixtures, BSD 2-Clause): a tiny RAR 4.x archive holding one
+    file named "container".
+
+rar/*.rar, rar/multi-*/, rar/nested-*
+    Written once by a throwaway Go test inside a copy of the Go package
+    (outside the repo), from the RAR builder of internal/postproc/unpack/
+    rar_builder_test.go (stored files only; there is no RAR tool). Names say
+    what they hold: rar4-/rar5- is the format generation, then built, enc
+    (password hunter2), hostile-N (the seven entry names of
+    rar_hostile_test.go, N in the order of that list), special-* (links,
+    devices, FIFO, socket), modes, locked, dup, solid, names, corrupt-whole (the
+    tests cut and flip bytes of it), nested-basic. multi-rar4-new, multi-rar4-old
+    and multi-rar5 hold big.bin (5000 bytes of payload(5000, 1) =
+    byte(i*7)^1) and small.txt over three volumes; multi-rar5-seed2 holds
+    payload(5000, 2). The nested-* files are outer archives with a RAR4 (or
+    RAR5 volumes, a 7z) inside; see unpack_rar_test.zig for each.
+
+golden/*.tsv
+    Written by the same throwaway program from the Go functions cleanName,
+    parseListing, kindFromAttributes, the four volume-name regular
+    expressions and strings.ToLower (+ unicode.ToLower for every code point
+    it changes), on fixed and pseudo-random inputs. Every field is hex
+    (names are bytes), errors are Go's err.Error() text. They are compared in
+    unpack_golden_test.zig.
+
+../../src/unpack_lower.zig is generated from unicode.ToLower by the same
+program (Go 1.27.3, Unicode 17.0.0).
+
+Not stored: zip files (built at test time by unpack_zip_testutil.zig, a stored
+zip writer, so names such as "../x" and Unix modes can be chosen), and 7z/zip
+archives made with the real 7zz (`7zz a`) inside the tests.

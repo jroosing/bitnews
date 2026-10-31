@@ -22,6 +22,7 @@ const AppKeyRepo = @import("appkey_repo.zig").AppKeyRepo;
 const appkey = @import("appkey.zig");
 const setup_gate = @import("setup_gate.zig");
 const services_mod = @import("services.zig");
+const tool = @import("tool.zig");
 const http = @import("http_server.zig");
 const common = @import("http_common.zig");
 
@@ -185,8 +186,12 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
     });
     defer server.deinit();
 
+    const tools = try locateTools(gpa, io, stderr);
+    defer gpa.free(tools.seven_zip);
+    defer gpa.free(tools.par2);
+
     var services: services_mod.Services = undefined;
-    try services.init(gpa, io, store, &loaded.key, logger);
+    try services.init(gpa, io, store, &loaded.key, tools, logger);
     defer services.deinit();
     try services.register(&server.routes);
     try services.start();
@@ -207,6 +212,37 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
 
     logger.info("shutdown complete", &.{});
     return 0;
+}
+
+/// Finds 7zz and par2 on PATH so a missing one stops the daemon with a clear
+/// message instead of failing the first Download (internal/daemon/tools.go).
+fn locateTools(gpa: std.mem.Allocator, io: Io, stderr: *Io.Writer) !services_mod.Tools {
+    const seven = tool.locate(gpa, io, "7zz") catch |err| switch (err) {
+        error.NotFound => null,
+        error.OutOfMemory => return err,
+    };
+    const par = tool.locate(gpa, io, "par2") catch |err| switch (err) {
+        error.NotFound => null,
+        error.OutOfMemory => return err,
+    };
+    if (seven != null and par != null) return .{ .seven_zip = seven.?, .par2 = par.? };
+    defer if (seven) |p| gpa.free(p);
+    defer if (par) |p| gpa.free(p);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(gpa);
+    if (seven == null) {
+        const msg = try tool.notFoundMessage(gpa, "7zz");
+        defer gpa.free(msg);
+        try buf.appendSlice(gpa, msg);
+    }
+    if (par == null) {
+        const msg = try tool.notFoundMessage(gpa, "par2");
+        defer gpa.free(msg);
+        if (buf.items.len > 0) try buf.append(gpa, '\n');
+        try buf.appendSlice(gpa, msg);
+    }
+    try fail(stderr, "daemon: post-processing tools are missing: {s}", .{buf.items});
+    unreachable;
 }
 
 /// "host:port" with the port that was actually bound (the setting may say 0).

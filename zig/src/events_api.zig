@@ -154,6 +154,7 @@ fn sendEvent(e: *ex.Exchange, scratch: *std.heap.ArenaAllocator, ev: event.Event
             .nzb => "usenet_queue_resumed",
             .torrent => "torrent_queue_resumed",
         }, QueuePayload{ .reason = "", .detail = "" }),
+        .postprocess_stage => |p| try sendFrame(e, scratch, "postprocess_stage", StagePayload{ .p = p }),
     }
 }
 
@@ -282,6 +283,18 @@ const FailedPayload = struct {
     }
 };
 
+const StagePayload = struct {
+    p: event.PostProcessStage,
+
+    fn write(x: StagePayload, w: *Io.Writer) Io.Writer.Error!void {
+        try w.writeByte('{');
+        try writeField(w, "id", x.p.id);
+        try w.writeByte(',');
+        try writeField(w, "stage", @tagName(x.p.stage));
+        try w.writeByte('}');
+    }
+};
+
 const QueuePayload = struct {
     reason: []const u8,
     detail: []const u8,
@@ -337,6 +350,15 @@ test "strings are escaped the way Go's encoder does" {
         defer testing.allocator.free(out);
         try testing.expectEqualStrings(c[1], out);
     }
+}
+
+test "the postprocess_stage payload is Go's {id, stage}" {
+    var aw: Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    try (StagePayload{ .p = .{ .id = "d1", .stage = .verifying } }).write(&aw.writer);
+    try testing.expectEqualStrings("{\"id\":\"d1\",\"stage\":\"verifying\"}", aw.written());
+    for ([_]event.Stage{ .verifying, .repairing, .unpacking, .finishing }, [_][]const u8{ "verifying", "repairing", "unpacking", "finishing" }) |s, name|
+        try testing.expectEqualStrings(name, @tagName(s));
 }
 
 fn fuzzString(_: void, smith: *testing.Smith) !void {
