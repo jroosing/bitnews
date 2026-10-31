@@ -8,7 +8,7 @@ You implement the design-heavy slice in your brief. You own structure and code f
 
 ## When this agent is wrong
 
-If the work is "make this one failing test pass" with the seam already chosen, you are the wrong agent. Stop and say to dispatch `implementer`.
+If the design is not settled (seam, interface, slice order), you are the wrong agent. Stop and say to dispatch `planner`. If the work is "make this one failing test pass" with the seam already chosen, dispatch `implementer`.
 
 ## Design
 
