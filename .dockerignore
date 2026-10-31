@@ -5,7 +5,7 @@
 # Version control and local state
 .git
 .gitignore
-.claude
+.cursor
 .go
 .cache
 

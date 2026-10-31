@@ -38,7 +38,7 @@ Smaller open items:
 - Linux check: `zig/Dockerfile.dev` (image `bitnews-zig-dev`) with `zig/dev-run.sh build check`. The host's `bin/tools/7zz` and `par2` are macOS binaries, so mount Linux ones over them (`scripts/get-postproc-tools.sh linux arm64 <dir>`) or the real-tool tests skip. For the black-box suite on Linux, cross-build the Go test binary (`CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -c ./internal/blackbox/`) and run it in the container with `BITNEWS_E2E_BINARY` pointing at the Zig build.
 - Go on macOS does not honour `SSL_CERT_FILE`, so the TLS black-box scenarios skip against the Go daemon there; against the Zig binary they run.
 - Commit straight onto `zig` and push it. GitHub does not close issues from a non-default branch: close them with `gh issue close`.
-- Method that worked: write a shared foundation first (types and seams), then give each agent its own files, tell them not to edit `build.zig`, `main.zig`, `services.zig`, the Makefile or docs, wire everything in `services.zig` yourself, then run the full gate. Use the `worker` agent (`.claude/agents/worker.md`, Haiku) and pass `model: "sonnet"` only for security-sensitive slices; subagents were 94% of usage before that. Never leave a `--fuzz` run going.
+- Method that worked: write a shared foundation first (types and seams), then give each agent its own files, tell them not to edit `build.zig`, `main.zig`, `services.zig`, the Makefile or docs, wire everything in `services.zig` yourself, then run the full gate. Use the `worker` agent (`.cursor/agents/worker.md`) and pass a stronger model only for security-sensitive slices; subagents were 94% of usage before that. Never leave a `--fuzz` run going.
 
 ## Things that surprised us (details in m15-zig.md)
 

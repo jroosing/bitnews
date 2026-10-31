@@ -32,5 +32,5 @@ Replace `html/template` with templ components so a wrong component parameter, en
 - [x] Layouts, head, nav, all components and all pages (including `/ui/styleguide`) are `.templ` files in package `web`; Tailwind scans the `.templ` sources and `app.css` is rebuilt.
 - [x] `render` takes a `templ.Component` and renders into a buffer first; `renderFragment`, `loadTemplates`, `templateFuncs`, `dict`, `attrs`, `hxVals` and `assets/templates` are removed.
 - [x] `a11y_test.go` is removed; the CSP hygiene tests and all handler tests pass unchanged in intent.
-- [x] ADR-0005 points to ADR-0011 where it names `html/template`; the web README and CLAUDE.md mention `make generate`.
+- [x] ADR-0005 points to ADR-0011 where it names `html/template`; the web README and AGENTS.md mention `make generate`.
 - [x] `make fmt fix` and `make check` are green.
