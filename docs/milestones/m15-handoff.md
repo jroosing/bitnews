@@ -11,13 +11,13 @@ Z0 to Z4 are done and their issues (#9 to #13) are closed. The Zig daemon in `zi
 - test a server connection;
 - post-process: `par2` repair, `7zz` unpack, finalize into the complete tree, ending `ready` or `failed` with the Go daemon's reasons and texts.
 
-The Go code stays as the reference and the parity harness. Nothing from `zig` is published; Docker images are built locally only.
+Go is the observable contract and the parity harness, not a source to transcribe. Prefer `zig/src` and the 0.17 stdlib; see [m15-zig.md](m15-zig.md) Design. Nothing from `zig` is published; Docker images are built locally only.
 
 ## What still needs to be done
 
 | Issue | Milestone | Work |
 |---|---|---|
-| #14 | Z5 | SABnzbd adapter (API for Sonarr/Radarr usenet). Go reference: `internal/adapter`. |
+| #14 | Z5 | SABnzbd adapter. Done: `/sabnzbd/api` on the Zig daemon, `TestSABnzbd*` green against that binary. Soak stays in Z8. |
 | #15 | Z6 | Web UI (history, queue, settings pages), the admin account, setup token, `BITNEWS_ADMIN_PASSWORD_FILE`. The black-box tests for these are the only ones still skipped (`ZIG_BLACKBOX_SKIP` in the Makefile). |
 | #16 | Z7 | Torrents: libtorrent in-process through a C wrapper (only a spike exists), qBittorrent adapter, the torrent runner, seeding, `listen_port_changed` event, torrent port routes. Hooks already left: `add_service.Torrents` (answers `add_unavailable`) and `postprocess_adapters.WorkDirs.torrent`. |
 | #17 | Z8 | Merge to `main`: verify linux/amd64 (never run), the parity gate below, two weeks of soak on the real instance. |
@@ -38,7 +38,7 @@ Smaller open items:
 - Linux check: `zig/Dockerfile.dev` (image `bitnews-zig-dev`) with `zig/dev-run.sh build check`. The host's `bin/tools/7zz` and `par2` are macOS binaries, so mount Linux ones over them (`scripts/get-postproc-tools.sh linux arm64 <dir>`) or the real-tool tests skip. For the black-box suite on Linux, cross-build the Go test binary (`CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -c ./internal/blackbox/`) and run it in the container with `BITNEWS_E2E_BINARY` pointing at the Zig build.
 - Go on macOS does not honour `SSL_CERT_FILE`, so the TLS black-box scenarios skip against the Go daemon there; against the Zig binary they run.
 - Commit straight onto `zig` and push it. GitHub does not close issues from a non-default branch: close them with `gh issue close`.
-- Method that worked: write a shared foundation first (types and seams), then give each agent its own files, tell them not to edit `build.zig`, `main.zig`, `services.zig`, the Makefile or docs, wire everything in `services.zig` yourself, then run the full gate. Use the `worker` agent (`.cursor/agents/worker.md`) and pass a stronger model only for security-sensitive slices; subagents were 94% of usage before that. Never leave a `--fuzz` run going.
+- Method that worked: write a shared foundation first (types and seams), then give each agent its own files, tell them not to edit `build.zig`, `main.zig`, `services.zig`, the Makefile or docs, wire everything in `services.zig` yourself, then run the full gate. Search `zig/src` before Go. Do not clone a Go helper when Zig already has it. Use the `worker` agent (`.cursor/agents/worker.md`) and pass a stronger model only for security-sensitive slices; subagents were 94% of usage before that. Never leave a `--fuzz` run going. Never thinking above high on `architect`. Never fast.
 
 ## Things that surprised us (details in m15-zig.md)
 

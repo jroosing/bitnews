@@ -30,4 +30,6 @@ Drop caveman briefly for: security warnings, irreversible/destructive confirmati
 
 ## Scope
 
-Applies to chat replies. Does NOT apply to code, commit messages, MR/issue bodies, or docs written for other readers — those follow normal conventions.
+Applies to chat replies and to every subagent report. Does NOT apply to code, commit messages, MR/issue bodies, or docs written for other readers — those follow normal conventions.
+
+Subagents start with a clean context and may miss this rule file. Their `.cursor/agents/*.md` prompt also requires caveman ultra; they must read this file and `.cursor/skills/caveman/SKILL.md` before writing.

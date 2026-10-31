@@ -2,7 +2,8 @@
 //! (patterns like "GET /api/v1/downloads/{id}"), as the Go server uses it:
 //!
 //! - a pattern is an optional method, a path of literal and "{name}" segments,
-//!   and a trailing "/" for a subtree ("/api/v2/" matches everything below);
+//!   a trailing "/" for a subtree ("/api/v2/" matches everything below), and
+//!   "GET /{$}" for the exact root (Go's end anchor; "GET /" stays a subtree);
 //! - a GET pattern also answers HEAD;
 //! - the path is cleaned like Go's cleanPath (no "//", "." or ".."), and a
 //!   request for an unclean path gets a 301 to the clean one;
@@ -87,7 +88,12 @@ pub fn Router(comptime T: type) type {
             if (rest.len == 0 or rest[0] != '/') return error.InvalidPattern;
             rest = rest[1..];
             var subtree = false;
-            if (rest.len == 0) {
+            // "{$}" is Go's end anchor. Only the exact root is used ("GET /{$}").
+            // Path "/" splits to one empty segment, so the pattern is that segment.
+            const exact_root = std.mem.eql(u8, rest, "{$}");
+            if (exact_root) {
+                rest = "";
+            } else if (rest.len == 0) {
                 subtree = true;
             } else if (rest[rest.len - 1] == '/') {
                 subtree = true;
@@ -101,7 +107,9 @@ pub fn Router(comptime T: type) type {
                 };
                 segs.deinit(self.gpa);
             }
-            if (rest.len > 0) {
+            if (exact_root) {
+                try segs.append(self.gpa, .{ .literal = try self.gpa.dupe(u8, "") });
+            } else if (rest.len > 0) {
                 var it = std.mem.splitScalar(u8, rest, '/');
                 while (it.next()) |piece| {
                     if (piece.len == 0) return error.InvalidPattern;
@@ -377,6 +385,21 @@ test "encoded literal segments match" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     try expectFound(1, try r.lookup(arena.allocator(), .GET, "/api/v1/%68ealth"));
+}
+
+test "GET /{$} matches only the exact root" {
+    const R = Router(u8);
+    var r = R.init(testing.allocator);
+    defer r.deinit();
+    try r.add("GET /{$}", 1);
+    try r.add("GET /api/v1/health", 2);
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const root = try r.lookup(a, .GET, "/");
+    try testing.expectEqual(@as(u8, 1), root.found.value);
+    try testing.expectEqual(.not_found, try r.lookup(a, .GET, "/queue"));
+    try testing.expectEqual(@as(u8, 2), (try r.lookup(a, .GET, "/api/v1/health")).found.value);
 }
 
 test "unknown paths are not found, trailing slashes included" {

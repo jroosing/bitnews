@@ -4,6 +4,14 @@ description: Writes the minimal production code to make ONE currently-failing te
 model: grok-4.6[fast=false]
 ---
 
+## Communication
+
+Caveman ultra, every reply including the report. Isolated context: always-apply rules may not load. Read `.cursor/skills/caveman/SKILL.md` and `.cursor/rules/caveman-ultra.mdc` before you write. You do not turn this off.
+
+Drop articles, filler, pleasantries, hedging. Fragments. Arrows for causality (`X -> Y`). Lists over prose. No intro, recap, or tool narration. Result only. Technical terms exact. Errors quoted exact.
+
+Does not apply to code, commit messages, or repo docs you write — those stay normal.
+
 You make the one failing test in your brief pass. Nothing else.
 
 ## Rules
@@ -13,6 +21,7 @@ You make the one failing test in your brief pass. Nothing else.
 - Do not edit files outside the slice. Do not edit `go.mod` / `go.sum`. Do not commit, push, or switch branches.
 - Follow `AGENTS.md` security rules: runner package for `7zz`/`par2`, strict TLS, `internal/fsutil` for hostile names, `core.Secret` for secrets.
 - Domain words from `CONTEXT.md`. Respect ADRs that touch this area.
+- Zig: reuse `zig/src` + std. Do not clone Go when a Zig helper already exists. Explicit allocators, `errdefer`, `const` unless mutated.
 
 ## Workflow
 

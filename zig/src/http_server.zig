@@ -573,10 +573,36 @@ fn serveRequest(c: *Conn, arena: Allocator) RequestError!bool {
 
 const setup_required_message = "first-run setup is required: create the admin account with the setup token from the server log";
 
-/// What the gate lets through while setup is open: GET health. The web UI's
-/// setup pages and static files join it with the web UI.
+/// Standalone page for a path the web UI does not have. Fixed text, so it
+/// needs no escaping. It must not contain the API error code `not_found`.
+const page_not_found_html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Page not found</title></head><body><h1>Page not found</h1></body></html>";
+
+/// What the gate lets through while setup is open: GET /api/v1/health, GET
+/// and HEAD / (the front door, which redirects to /setup), GET and HEAD
+/// /login (which redirects to /setup while setup is open), and GET, HEAD and
+/// POST /setup. Static files join it with the rest of the web UI.
+/// Exact paths only, so unclean forms stay gated. /api is not exempt.
 fn setupExempt(e: *const Exchange) bool {
-    return e.method == .GET and std.mem.eql(u8, e.path, "/api/v1/health");
+    if (e.method == .GET and std.mem.eql(u8, e.path, "/api/v1/health")) return true;
+    // Exact path only. Unclean forms ("//", "/./", "/login/", "/setup/") stay gated, as in Go.
+    if (std.mem.eql(u8, e.path, "/") or std.mem.eql(u8, e.path, "/login")) return e.method == .GET or e.method == .HEAD;
+    if (std.mem.eql(u8, e.path, "/setup")) return e.method == .GET or e.method == .HEAD or e.method == .POST;
+    return false;
+}
+
+/// `/api` and `/sabnzbd` keep the JSON error. Every other miss is an HTML page.
+fn notFound(e: *Exchange) Allocator.Error!void {
+    if (jsonNotFound(e.path)) return e.res.fail(e.arena, .not_found, "not_found", "no such route");
+    e.res.status = .not_found;
+    e.res.body = page_not_found_html;
+    try e.res.setHeader(e.arena, "Content-Type", "text/html; charset=utf-8");
+    try e.res.setHeader(e.arena, "Cache-Control", "no-store");
+}
+
+fn jsonNotFound(path: []const u8) bool {
+    if (std.mem.eql(u8, path, "/api") or std.mem.startsWith(u8, path, "/api/")) return true;
+    if (std.mem.eql(u8, path, "/sabnzbd") or std.mem.startsWith(u8, path, "/sabnzbd/")) return true;
+    return false;
 }
 
 /// Routes the request and runs the handler, leaving the response in `e.res`.
@@ -589,7 +615,7 @@ fn dispatch(s: *Server, e: *Exchange) RequestError!void {
     const m = try s.routes.lookup(arena, e.method, e.path);
     switch (m) {
         .bad_path => try e.res.fail(arena, .bad_request, "bad_request", "invalid request path"),
-        .not_found => try e.res.fail(arena, .not_found, "not_found", "no such route"),
+        .not_found => try notFound(e),
         .method_not_allowed => |allow| {
             try e.res.setHeader(arena, "Allow", allow);
             try e.res.fail(arena, .method_not_allowed, "method_not_allowed", "this method is not allowed for this path");

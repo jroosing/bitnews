@@ -24,6 +24,11 @@ pub const Gate = struct {
         return self.open.load(.acquire);
     }
 
+    /// Setup finished: an admin User exists. One store.
+    pub fn close(self: *Gate) void {
+        self.open.store(false, .release);
+    }
+
     /// The gate as the HTTP server takes it. `self` must outlive the server.
     pub fn asSetupGate(self: *Gate) common.SetupGate {
         return .{ .ctx = self, .required = requiredFn };

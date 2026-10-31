@@ -11,7 +11,8 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 ## Design
 
 - **Branch.** `zig` lives next to `main`. It is merged into `main` once the parity gate below is met; until then nothing from it is published. Images are built locally only.
-- **Layout.** `zig/` holds the Zig code with its own `build.zig` and `build.zig.zon`. The Go code stays as the reference and the parity harness. Files both need (SQL migrations, web assets, golden files, fuzz seeds) are copied into `zig/` by a sync step, and a check fails when the copies differ from the originals.
+- **Layout.** `zig/` holds the Zig code with its own `build.zig` and `build.zig.zon`. Files both sides need (SQL migrations, web assets, golden files, fuzz seeds) are copied into `zig/` by a sync step, and a check fails when the copies differ from the originals.
+- **Zig first, not a Go clone.** Write idiomatic Zig 0.17: explicit allocators (`errdefer`, arena per request / Article / post-processing step, one documented owner for long-lived state); `const` unless mutated; exhaustive `switch` on enums and tagged unions; error sets for control flow (`Diagnostic` only when a message is required); `std.Io` for sockets, timeouts and cancellation (not goroutine clones); hard caps on hostile input; no pointers into growable buffers; `zig fmt`. Prefer the 0.17 stdlib (`std.http`, `std.Uri`, `std.crypto`, `std.mem`, `std.fmt`, `std.json`) and modules already in `zig/src` (`download.zig`, `event.zig`, `id.zig`, `http_exchange.zig`, `http_common.zig`, `strict_json.zig`, `fsutil*`, `setup_gate.zig`, `sabnzbd_*.zig`, and so on). Search those before opening a Go file. Extend the Zig type, helper or protocol that already exists. Do not transcribe a Go package, `url.Values` merge, `view.Phase` table, or `net/url` helper when Zig already covers it. Go remains the **observable contract** (wire JSON, SAB/qBittorrent status words, HTTP status, database bytes, env/flags) and the **parity harness** (`internal/blackbox`). Port a Go internal only when there is no Zig equivalent and that contract requires the exact behavior.
 - **Toolchain.** Zig 0.17.0, pinned with a SHA-256 by `scripts/get-zig.sh`; upgrades are deliberate commits, never master. Dependencies in `build.zig.zon` are pinned by hash.
 - **Platform.** Debian trixie (glibc), linux/amd64 and linux/arm64; macOS for development (libtorrent from Homebrew). Dynamic linking against the distro's libtorrent-rasterbar 2.0.x, OpenSSL 3 and libcurl. `7zz` and par2cmdline-turbo stay pinned downloads (`scripts/get-postproc-tools.sh`).
 - **Torrent engine.** libtorrent-rasterbar in-process behind `libbitnews_lt`, a C wrapper compiled with the system g++ (about 15 functions: add, remove, pause, resume, stats, relocate, limits, port and interfaces, alerts as events). Zig never sees C++.
@@ -135,15 +136,17 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 **Not in Z4:** the SABnzbd adapter (Z5), the web UI (Z6), torrents and their working directory (Z7; `WorkDirs.torrent` is the seam). Not yet verified on linux/amd64 (M15-09).
 
 ### M15-06: Z5 — SABnzbd adapter
-**Goal:** `/sabnzbd/api` as in M4.
-- [ ] The SABnzbd part of the black-box suite passes; the Usenet soak can start.
+**Goal:** `/sabnzbd/api` as in M4, on the existing Zig HTTP, Download, event and `sabnzbd_*.zig` seams — not a transcription of `internal/adapter/sabnzbd`.
+- [x] The SABnzbd part of the black-box suite passes; the Usenet soak can start.
+
+`TestSABnzbd*` in `internal/blackbox` passes against the Go daemon and the Zig binary: version, app-key auth, empty queue and history, `get_cats`, `retry`, and addfile through to a queue or history slot that delete then removes. Live stage and speed come from the event bus. Soak on a real Sonarr/Radarr instance is the Z8 gate, not this checkbox.
 
 ### M15-07: Z6 — Web UI
-**Goal:** Sign-in, setup, queue, history, detail, settings and the live stream, on the `html` module.
+**Goal:** Sign-in, setup, queue, history, detail, settings and the live stream, on the `html` module and existing Zig auth/setup/HTTP — `.templ` files specify ids, classes and `hx-*`, not Go render internals to copy.
 - [ ] The web part of the black-box suite passes.
 
 ### M15-08: Z7 — Torrents
-**Goal:** The libtorrent engine, the torrent runner, the qBittorrent adapter, and piece completion converted to fast-resume data on the first start.
+**Goal:** The libtorrent engine, the torrent runner, the qBittorrent adapter, and piece completion converted to fast-resume data on the first start, through the Zig hooks already left (`add_service.Torrents`, `WorkDirs.torrent`).
 - [ ] The torrent part of the black-box suite passes; full parity.
 
 ### M15-09: Z8 — Merge

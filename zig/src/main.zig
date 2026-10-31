@@ -21,10 +21,23 @@ const migrate = @import("migrate.zig");
 const AppKeyRepo = @import("appkey_repo.zig").AppKeyRepo;
 const appkey = @import("appkey.zig");
 const setup_gate = @import("setup_gate.zig");
+const accounts_bootstrap = @import("accounts_bootstrap.zig");
+const accounts_setup = @import("accounts_setup.zig");
 const services_mod = @import("services.zig");
 const tool = @import("tool.zig");
 const http = @import("http_server.zig");
 const common = @import("http_common.zig");
+const sabnzbd = @import("sabnzbd.zig");
+const sabnzbd_live = @import("sabnzbd_live.zig");
+const events_bus = @import("events_bus.zig");
+const event = @import("event.zig");
+const web = @import("web.zig");
+const add_service = @import("add_service.zig");
+const app_error = @import("app_error.zig");
+const download = @import("download.zig");
+const downloads_service = @import("downloads_service.zig");
+const fsutil_space = @import("fsutil_space.zig");
+const secret_mod = @import("secret.zig");
 
 const version = build_options.version;
 const commit = build_options.commit;
@@ -33,6 +46,8 @@ const commit = build_options.commit;
 const healthcheck_timeout_ms = 3000;
 
 var stop_requested = std.atomic.Value(bool).init(false);
+var sab_live_stop = std.atomic.Value(bool).init(false);
+var sab_live_done = std.atomic.Value(bool).init(true);
 
 fn onSignal(_: std.posix.SIG) callconv(.c) void {
     stop_requested.store(true, .release);
@@ -171,10 +186,18 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
 
     var keys = try appkey.Service.init(gpa, io, .{ .store = store }, logger);
     defer keys.deinit();
-    var gate = try setup_gate.Gate.init(store);
-    if (cfg.admin_password_file != null) {
-        logger.warn("BITNEWS_ADMIN_PASSWORD_FILE is not supported by the Zig build yet; create the admin in the web UI", &.{});
+    if (cfg.admin_password_file) |path| {
+        _ = accounts_bootstrap.fromFile(gpa, io, store, path, logger) catch |err| {
+            try stderr.writeAll("bitnews: ");
+            try accounts_bootstrap.writeErrorMessage(stderr, err, path);
+            try stderr.writeAll("\n");
+            stderr.flush() catch {};
+            return error.Reported;
+        };
     }
+    var gate = try setup_gate.Gate.init(store);
+    var setup = try accounts_setup.openSetup(gpa, io, &gate, logger);
+    defer setup.deinit();
 
     var http_log: HttpLog = .{ .logger = logger };
     var key_check: KeyCheck = .{ .service = &keys };
@@ -194,6 +217,39 @@ fn serveAll(gpa: std.mem.Allocator, io: Io, cfg: config.Config, logger: log.Logg
     try services.init(gpa, io, store, &loaded.key, tools, logger);
     defer services.deinit();
     try services.register(&server.routes);
+    const snap = services.settings.current();
+    const sab_complete = try gpa.dupe(u8, snap.settings.paths.usenet.complete);
+    const sab_incomplete = try gpa.dupe(u8, snap.settings.paths.usenet.incomplete);
+    snap.release();
+    defer gpa.free(sab_complete);
+    defer gpa.free(sab_incomplete);
+    var sab_live = sabnzbd_live.Live.init(gpa);
+    defer sab_live.deinit();
+    var sab_feed: SabFeed = .{ .live = &sab_live, .queue = services.usenet.queueOf() };
+    sab_live_stop.store(false, .release);
+    sab_live_done.store(false, .release);
+    var sab_follow = try io.concurrent(followSab, .{ &sab_live, services.bus });
+    defer {
+        sab_live_stop.store(true, .release);
+        sab_follow.cancel(io);
+        var spins: u32 = 0;
+        while (!sab_live_done.load(.acquire) and spins < 40) : (spins += 1) {
+            io.sleep(.fromMilliseconds(25), .awake) catch break;
+        }
+    }
+    var sab_handler: sabnzbd.Handler = .{
+        .keys = key_check.adapter(),
+        .cat_names = .{ .ctx = &services.categories, .list_fn = listSabCats },
+        .paths = .{ .complete = sab_complete, .incomplete = sab_incomplete },
+        .disk = .{ .space_fn = sabDisk },
+        .adder = .{ .ctx = &services.add, .add_url_fn = sabAddUrl, .add_file_fn = sabAddFile },
+        .downloads = .{ .ctx = &services.downloads, .all_fn = sabAllDownloads, .pause_fn = sabPause, .resume_fn = sabResume, .delete_fn = sabDelete, .update_fn = sabUpdate },
+        .cat_name = .{ .ctx = &services.categories, .name_fn = sabCatName },
+        .speed = .{ .ctx = &sab_feed, .read_fn = sabSpeed },
+        .feed = .{ .ctx = &sab_feed, .stage_fn = sabStage, .rate_fn = sabRate },
+    };
+    try sabnzbd.register(&server.routes, &sab_handler);
+    try web.register(&server.routes);
     try services.start();
 
     const port = server.listen(cfg.listen) catch |err| {
@@ -310,6 +366,162 @@ const HttpLog = struct {
         self.logger.log(lvl, msg, buf[0..n]);
     }
 };
+
+fn sabAddFields(req_priority: []const u8, req_cat: []const u8) struct { prio: []const u8, paused: bool, cat: []const u8 } {
+    const parsed = @import("sabnzbd_add.zig").parsePriority(req_priority);
+    const cat = std.mem.trim(u8, req_cat, &std.ascii.whitespace);
+    return .{
+        .prio = @tagName(parsed.priority),
+        .paused = parsed.paused,
+        .cat = if (cat.len == 0 or std.mem.eql(u8, cat, "*")) "" else cat,
+    };
+}
+
+fn sabAddUrl(ctx: ?*anyopaque, req: sabnzbd.AddUrlReq, arena: std.mem.Allocator, rejected: *app_error.Failure) anyerror!download.Download {
+    const svc: *add_service.AddService = @ptrCast(@alignCast(ctx.?));
+    const fields = sabAddFields(req.priority, req.cat);
+    var password: ?secret_mod.Secret = null;
+    defer if (password) |*s| s.deinit();
+    if (req.password.len > 0) password = try secret_mod.Secret.init(arena, req.password);
+    return svc.add(arena, rejected, .{
+        .url = req.url,
+        .name = req.nzbname,
+        .category_name = fields.cat,
+        .priority = fields.prio,
+        .password = password,
+        .paused = fields.paused,
+        .only = .nzb,
+    });
+}
+
+fn sabAddFile(ctx: ?*anyopaque, req: sabnzbd.AddFileReq, arena: std.mem.Allocator, rejected: *app_error.Failure) anyerror!download.Download {
+    const svc: *add_service.AddService = @ptrCast(@alignCast(ctx.?));
+    const fields = sabAddFields(req.priority, req.cat);
+    var password: ?secret_mod.Secret = null;
+    defer if (password) |*s| s.deinit();
+    if (req.password.len > 0) password = try secret_mod.Secret.init(arena, req.password);
+    const upload = try svc.receive(arena, rejected, req.bytes, req.file_name, .nzb);
+    return svc.add(arena, rejected, .{
+        .upload = upload,
+        .name = req.nzbname,
+        .file_name = req.file_name,
+        .category_name = fields.cat,
+        .priority = fields.prio,
+        .password = password,
+        .paused = fields.paused,
+        .only = .nzb,
+    });
+}
+
+fn sabAllDownloads(ctx: ?*anyopaque, arena: std.mem.Allocator) anyerror![]download.Download {
+    const svc: *downloads_service.Service = @ptrCast(@alignCast(ctx.?));
+    var failure: app_error.Failure = .{};
+    return svc.all(arena, &failure, .{});
+}
+
+fn sabQuiet(err: anyerror) anyerror!void {
+    if (err == error.NotFound or err == error.Conflict) return;
+    return err;
+}
+
+fn sabPause(ctx: ?*anyopaque, arena: std.mem.Allocator, id: []const u8) anyerror!void {
+    const svc: *downloads_service.Service = @ptrCast(@alignCast(ctx.?));
+    var failure: app_error.Failure = .{};
+    _ = svc.pause(arena, &failure, id) catch |err| return sabQuiet(err);
+}
+
+fn sabResume(ctx: ?*anyopaque, arena: std.mem.Allocator, id: []const u8) anyerror!void {
+    const svc: *downloads_service.Service = @ptrCast(@alignCast(ctx.?));
+    var failure: app_error.Failure = .{};
+    _ = svc.resume_(arena, &failure, id) catch |err| return sabQuiet(err);
+}
+
+fn sabDelete(ctx: ?*anyopaque, arena: std.mem.Allocator, id: []const u8, delete_data: bool) anyerror!void {
+    const svc: *downloads_service.Service = @ptrCast(@alignCast(ctx.?));
+    var failure: app_error.Failure = .{};
+    svc.delete(arena, &failure, id, delete_data) catch |err| return sabQuiet(err);
+}
+
+fn sabUpdate(ctx: ?*anyopaque, arena: std.mem.Allocator, id: []const u8, priority: ?[]const u8, paused: bool, move: []const u8) anyerror!void {
+    const svc: *downloads_service.Service = @ptrCast(@alignCast(ctx.?));
+    var failure: app_error.Failure = .{};
+    if (priority != null or move.len > 0) {
+        var patch: downloads_service.Patch = .{ .move = move };
+        patch.priority = priority;
+        _ = svc.update(arena, &failure, id, patch) catch |err| return sabQuiet(err);
+    }
+    if (paused) _ = svc.pause(arena, &failure, id) catch |err| return sabQuiet(err);
+}
+
+const SabFeed = struct {
+    live: *sabnzbd_live.Live,
+    queue: *@import("queue.zig").Queue,
+};
+
+fn sabSpeed(ctx: ?*anyopaque) sabnzbd.SpeedSample {
+    const feed: *SabFeed = @ptrCast(@alignCast(ctx.?));
+    return .{ .bytes_per_sec = feed.live.speed(), .paused = feed.queue.isPaused() };
+}
+
+fn sabStage(ctx: ?*anyopaque, id: []const u8) ?event.Stage {
+    const feed: *SabFeed = @ptrCast(@alignCast(ctx.?));
+    return feed.live.stage(id);
+}
+
+fn sabRate(ctx: ?*anyopaque, id: []const u8) i64 {
+    const feed: *SabFeed = @ptrCast(@alignCast(ctx.?));
+    return feed.live.rate(id);
+}
+
+/// Applies bus events to the SABnzbd live cache until shutdown. A dropped
+/// subscription (missed events) clears the cache and subscribes again, as
+/// the Go tracker does.
+fn followSab(live: *sabnzbd_live.Live, bus: *events_bus.Bus) void {
+    defer sab_live_done.store(true, .release);
+    while (!sab_live_stop.load(.acquire)) {
+        const sub = bus.subscribe() catch return;
+        defer sub.deinit();
+        var missed = false;
+        while (!sab_live_stop.load(.acquire)) {
+            const item = sub.next(250) catch |err| switch (err) {
+                error.Timeout => continue,
+                error.Closed => {
+                    missed = sub.reason() != null;
+                    break;
+                },
+                else => return,
+            };
+            defer item.release();
+            live.apply(item.event());
+        }
+        if (sab_live_stop.load(.acquire) or !missed) return;
+        live.reset();
+    }
+}
+
+fn sabCatName(ctx: ?*anyopaque, arena: std.mem.Allocator, category_id: []const u8) []const u8 {
+    const svc: *@import("categories_service.zig").Service = @ptrCast(@alignCast(ctx.?));
+    const list = svc.list(arena) catch return "";
+    for (list) |c| if (std.mem.eql(u8, c.id, category_id)) return c.name;
+    return "";
+}
+
+fn sabDisk(_: ?*anyopaque, path: []const u8) sabnzbd.DiskSample {
+    const s = fsutil_space.diskSpace(path) catch return .{};
+    return .{
+        .free = std.math.cast(i64, s.free) orelse std.math.maxInt(i64),
+        .total = std.math.cast(i64, s.total) orelse std.math.maxInt(i64),
+        .ok = true,
+    };
+}
+
+fn listSabCats(ctx: ?*anyopaque, arena: std.mem.Allocator) anyerror![]const []const u8 {
+    const svc: *@import("categories_service.zig").Service = @ptrCast(@alignCast(ctx.?));
+    const list = try svc.list(arena);
+    const names = try arena.alloc([]const u8, list.len);
+    for (list, names) |c, *n| n.* = c.name;
+    return names;
+}
 
 /// Adapts the app key service to the HTTP server's KeyChecker.
 const KeyCheck = struct {

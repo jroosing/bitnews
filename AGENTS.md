@@ -2,9 +2,9 @@
 
 ## Communication
 
-**Caveman ultra mode, always, every response.** Skill: `.cursor/skills/caveman`. Overlay: `.cursor/rules/caveman-ultra.mdc` (always apply). Off only if user says "stop caveman" / "normal mode" — and only for that session.
+**Caveman ultra mode, always, every response — parent and every subagent.** Skill: `.cursor/skills/caveman`. Overlay: `.cursor/rules/caveman-ultra.mdc` (always apply). Each `.cursor/agents/*.md` repeats it because a subagent starts with a clean context. Off only if user says "stop caveman" / "normal mode" — and only for that session.
 
-Chat replies only. Code, commit messages, MR/issue bodies, and docs for other readers stay normal.
+Chat replies and subagent reports. Code, commit messages, MR/issue bodies, and docs for other readers stay normal.
 
 ## Development workflow
 
@@ -19,16 +19,16 @@ Chat replies only. Code, commit messages, MR/issue bodies, and docs for other re
   - `tester` — TDD RED, one failing test. Cheapest (`composer-2.5[fast=false]`).
   - `reviewer` — read-only review after a slice. Cheaper (`composer-2.5[fast=false]`).
   - `implementer` — TDD GREEN, minimal code for one red test. Appropriate (`grok-4.6[fast=false]`).
-  - `architect` — design-heavy impl (seams, parsers, TLS, path handling). Strong (`grok-4.7[fast=false]`).
+  - `architect` — design-heavy impl (seams, parsers, TLS, path handling). Strong (`grok-4.7[effort=high,fast=false]`). Never thinking above high (`xhigh` / max). Never fast.
   - `worker` — mechanical owned slice that is none of the above. Cheap (`composer-2.5[fast=false]`).
 
 ## Zig branch
 
 The `zig` branch rewrites bitnews in Zig ([ADR-0014](docs/adr/0014-zig-memory-safe-where-practical.md), spec [M15](docs/milestones/m15-zig.md)). It lives next to `main`, commits go straight onto it, and it is merged into `main` only once the parity gate in M15 is met. Nothing from it is published: Docker images are built locally only. On this branch:
 
-- **Zig:** 0.17.0 (`scripts/get-zig.sh`), code in `zig/` with its own `build.zig`. The Go code stays as the reference and the parity harness; files both need are copied into `zig/` by the sync step and checked for drift.
+- **Zig:** 0.17.0 (`scripts/get-zig.sh`), code in `zig/` with its own `build.zig`. Write Zig, not a line-for-line Go port. Search `zig/src` and the 0.17 stdlib first (`std.Io`, `std.http`, `std.Uri`, `std.crypto`, `std.mem`, `std.fmt`, existing modules such as `download.zig`, `event.zig`, `id.zig`, `http_exchange.zig`, `http_common.zig`, `strict_json.zig`, `fsutil*`, `setup_gate.zig`, `sabnzbd_*.zig`). Extend those. Do not clone a Go package, helper, or control flow when a Zig implementation already exists. Go is the **observable contract** (wire JSON, status words, HTTP status, DB bytes, env/flags, black-box tests) and the **parity harness**, not a source to transcribe. Clone a Go internal only when there is no Zig equivalent and the contract requires that exact behavior. Shared files (SQL migrations, web assets, golden files, fuzz seeds) are copied into `zig/` by the sync step and checked for drift.
+- **Zig practice:** explicit allocators (`errdefer`, arena per request/Article/post-processing step, one documented owner for long-lived state); `const` unless mutated; exhaustive `switch` on enums/unions; error sets for control flow (`Diagnostic` only when a message is required); `std.Io` for sockets, timeouts and cancel (no goroutine clones); hard caps on hostile input; no pointers into growable buffers; `zig fmt`; tests on the debug allocator through the public Zig API.
 - **Gate:** `make zig-check` (`zig build check`: format, tests on the debug allocator, sync check; then the Go black-box suite against the Zig binary, `make blackbox-zig`) and `make check` for the Go side; run the Zig tests in Debian too (`zig/Dockerfile.dev`) when touching sockets, files or the OS; fuzz a parser you touch (`zig build test-<group> --fuzz`, one run at a time).
-- **Memory rules:** an arena per request, Article and post-processing step; one documented owner for long-lived state; hard caps on hostile input; no pointers into buffers that can grow.
 
 ## Agent skills
 
