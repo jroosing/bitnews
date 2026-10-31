@@ -143,7 +143,9 @@ A Zig implementation of bitnews, on the `zig` branch, that can replace the Go on
 
 ### M15-07: Z6 — Web UI
 **Goal:** Sign-in, setup, queue, history, detail, settings and the live stream, on the `html` module and existing Zig auth/setup/HTTP — `.templ` files specify ids, classes and `hx-*`, not Go render internals to copy.
-- [ ] The web part of the black-box suite passes.
+- [x] The web part of the black-box suite passes.
+
+`TestAdminPasswordFile*`, `TestWhileSetupIsOpenTheSetupToken`, `TestWebRootRedirectsToSetupWhileSetupIsOpen` and `TestWebUnknownPathIsAnHTMLPageNotTheAPIError` pass against the Zig binary. That is the whole web slice of `internal/blackbox`. Queue, history, detail and settings pages are not in that suite.
 
 ### M15-08: Z7 — Torrents
 **Goal:** The libtorrent engine, the torrent runner, the qBittorrent adapter, and piece completion converted to fast-resume data on the first start, through the Zig hooks already left (`add_service.Torrents`, `WorkDirs.torrent`).

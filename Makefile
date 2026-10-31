@@ -114,9 +114,10 @@ generate-check:
 
 # ---- the Zig rewrite (branch zig, M15, ADR-0014) --------------------------------------
 
-# What the Zig daemon does not do yet, by milestone, and shrinks as they land:
-#   Z6  the admin account, the setup token and the web pages.
-ZIG_BLACKBOX_SKIP := TestAdminPasswordFile|TestWeb|TestWhileSetupIsOpenTheSetupToken
+# What the Zig daemon does not do yet, by milestone, and shrinks as they land.
+# Z6 (admin password file, setup token, web routing) is in the suite.
+# `^$$` is `^$` after Make expands it. An empty skip, or a bare `^`, would match every test.
+ZIG_BLACKBOX_SKIP := ^$$
 
 # On macOS the Homebrew OpenSSL is keg-only; pkg-config must find it.
 ZIG_ENV := PKG_CONFIG_PATH=$$(brew --prefix openssl@3 2>/dev/null)/lib/pkgconfig:$$(brew --prefix 2>/dev/null)/lib/pkgconfig:$$PKG_CONFIG_PATH

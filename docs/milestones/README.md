@@ -191,6 +191,6 @@ The Status column is maintained by hand when issues close. Run `gh issue list` f
 | M15-04 | [#12](https://github.com/jroosing/bitnews/issues/12) | Z3 — Usenet fetch | done |
 | M15-05 | [#13](https://github.com/jroosing/bitnews/issues/13) | Z4 — Post-processing | done |
 | M15-06 | [#14](https://github.com/jroosing/bitnews/issues/14) | Z5 — SABnzbd adapter | done |
-| M15-07 | [#15](https://github.com/jroosing/bitnews/issues/15) | Z6 — Web UI | open |
+| M15-07 | [#15](https://github.com/jroosing/bitnews/issues/15) | Z6 — Web UI | done |
 | M15-08 | [#16](https://github.com/jroosing/bitnews/issues/16) | Z7 — Torrents | open |
 | M15-09 | [#17](https://github.com/jroosing/bitnews/issues/17) | Z8 — Merge | open |

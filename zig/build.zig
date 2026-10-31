@@ -3,7 +3,7 @@ const std = @import("std");
 /// A group of modules tested together. Each group has one root file in src/
 /// that imports the files of the group, so a developer works in their files
 /// and runs `zig build test-<name>` without building the rest.
-const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events", "remover", "nzb", "yenc", "tls", "nntp", "scheduler", "filewriter", "queue", "add", "runner", "tool", "par2", "unpack", "finalize", "tidy", "postprocess", "sabnzbd", "html", "accounts", "web" };
+const groups = [_][]const u8{ "bootstrap", "store", "crypto", "http", "io", "app", "core", "settings", "servers", "categories", "downloads", "events", "remover", "nzb", "yenc", "tls", "nntp", "scheduler", "filewriter", "queue", "add", "runner", "tool", "par2", "unpack", "finalize", "tidy", "postprocess", "sabnzbd", "html", "accounts", "web", "torrent", "qbit" };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -129,9 +129,30 @@ pub fn build(b: *std.Build) void {
     spike_mod.linkSystemLibrary("crypto", .{});
     spike_mod.addRPath(.{ .cwd_relative = if (target.result.os.tag == .macos) "@loader_path/../lib" else "$ORIGIN/../lib" });
     const spike = b.addExecutable(.{ .name = "bitnews-spike", .root_module = spike_mod });
+    const check_mod = b.createModule(.{
+        .root_source_file = b.path("spike/lt_check.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{.{ .name = "bnlt", .module = lt_header.createModule() }},
+    });
+    check_mod.addObjectFile(lt_lib);
+    check_mod.addRPath(.{ .cwd_relative = if (target.result.os.tag == .macos) "@loader_path/../lib" else "$ORIGIN/../lib" });
+    const lt_check = b.addExecutable(.{ .name = "bitnews-lt-check", .root_module = check_mod });
     const spike_step = b.step("spike", "Build the Z0 libtorrent spike");
     spike_step.dependOn(&b.addInstallArtifact(spike, .{}).step);
+    spike_step.dependOn(&b.addInstallArtifact(lt_check, .{}).step);
     spike_step.dependOn(&b.addInstallLibFile(lt_lib, lt_name).step);
+    const run_check = b.addRunArtifact(lt_check);
+    run_check.step.dependOn(&b.addInstallArtifact(lt_check, .{}).step);
+    b.step("lt-check", "Local libtorrent session: listen, magnet, pause, peer, remove").dependOn(&run_check.step);
+
+    // The daemon loads the same libtorrent session. Tests do not: they never
+    // import torrent_session.zig.
+    exe_mod.addImport("bnlt", lt_header.createModule());
+    exe_mod.addObjectFile(lt_lib);
+    exe_mod.addRPath(.{ .cwd_relative = if (target.result.os.tag == .macos) "@loader_path/../lib" else "$ORIGIN/../lib" });
+    b.getInstallStep().dependOn(&b.addInstallLibFile(lt_lib, lt_name).step);
 }
 
 /// The system libraries the daemon links: OpenSSL for NNTPS and libcurl for

@@ -37,8 +37,37 @@ void bnlt_free(bnlt_session *s);
 /* Adds a magnet link, downloading into save_path. Returns 0 on success. */
 int bnlt_add_magnet(bnlt_session *s, const char *uri, const char *save_path);
 
+/* Adds a .torrent file. info_hash_out may be NULL; otherwise it receives the
+ * 20-byte v1 SHA-1 info-hash. Returns 0 on success. */
+int bnlt_add_torrent(bnlt_session *s, const void *bytes, size_t len, const char *save_path,
+                     uint8_t info_hash_out[20]);
+
+/* UDP/TCP listen port the session bound, or 0 when it is not known yet. */
+int bnlt_listen_port(bnlt_session *s);
+
 /* Status of the first torrent; returns 0 on success, 1 when there is none. */
 int bnlt_status_first(bnlt_session *s, bnlt_status *out);
+
+/* Status of the torrent with this 20-byte v1 info-hash.
+ * Returns 0 on success, 1 when it is not in the session.
+ * Named apart from the bnlt_status struct: C has one namespace for both. */
+int bnlt_status_hash(bnlt_session *s, const uint8_t info_hash[20], bnlt_status *out);
+
+/* Pause, resume, remove, or move that torrent. remove with delete_files != 0 also
+ * deletes the downloaded files. move_storage waits until libtorrent reports the
+ * move (or failure). Returns 0 on success, 1 when not found, 2 on failure. */
+int bnlt_pause(bnlt_session *s, const uint8_t info_hash[20]);
+int bnlt_resume(bnlt_session *s, const uint8_t info_hash[20]);
+int bnlt_remove(bnlt_session *s, const uint8_t info_hash[20], int delete_files);
+int bnlt_move_storage(bnlt_session *s, const uint8_t info_hash[20], const char *path);
+
+/* Copies the .torrent bytes of a torrent that already has metadata.
+ * Returns 0 on success, 1 when metadata is not ready or the torrent is absent,
+ * 2 on failure, 3 when `cap` is too small (`*out_len` is the size needed). */
+int bnlt_read_torrent(bnlt_session *s, const uint8_t info_hash[20], void *buf, size_t cap, size_t *out_len);
+
+/* addr is "ip:port". Returns 0 on success, 1 when the torrent or address is bad. */
+int bnlt_add_peer(bnlt_session *s, const uint8_t info_hash[20], const char *addr);
 
 /* Writes the next alert's message into buf (NUL terminated); returns 1 when
  * there was one, 0 when the queue is empty. */

@@ -87,8 +87,8 @@ pub const RunnerPorts = struct {
     }
 };
 
-/// The torrent runner's working directory of a Download (Go: `trun.ContentDir`).
-/// The torrent layout is Z7's; until then `WorkDirs.torrent` stays null.
+/// The torrent runner's save path. After a relocate this is the complete
+/// directory; otherwise `{torrent incomplete}/{id}`.
 pub const TorrentDir = struct {
     ctx: *anyopaque,
     dir_fn: *const fn (ctx: *anyopaque, arena: Allocator, d: dl.Download) anyerror![]const u8,

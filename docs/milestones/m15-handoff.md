@@ -18,7 +18,7 @@ Go is the observable contract and the parity harness, not a source to transcribe
 | Issue | Milestone | Work |
 |---|---|---|
 | #14 | Z5 | SABnzbd adapter. Done: `/sabnzbd/api` on the Zig daemon, `TestSABnzbd*` green against that binary. Soak stays in Z8. |
-| #15 | Z6 | Web UI (history, queue, settings pages), the admin account, setup token, `BITNEWS_ADMIN_PASSWORD_FILE`. The black-box tests for these are the only ones still skipped (`ZIG_BLACKBOX_SKIP` in the Makefile). |
+| #15 | Z6 | Done. Admin password file, setup token and the web routing checks in `internal/blackbox` pass against the Zig binary. `ZIG_BLACKBOX_SKIP` matches no test. |
 | #16 | Z7 | Torrents: libtorrent in-process through a C wrapper (only a spike exists), qBittorrent adapter, the torrent runner, seeding, `listen_port_changed` event, torrent port routes. Hooks already left: `add_service.Torrents` (answers `add_unavailable`) and `postprocess_adapters.WorkDirs.torrent`. |
 | #17 | Z8 | Merge to `main`: verify linux/amd64 (never run), the parity gate below, two weeks of soak on the real instance. |
 
